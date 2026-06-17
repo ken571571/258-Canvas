@@ -40,11 +40,11 @@ body { overflow-y: auto; background: var(--bg); }
                 <span class="dot"></span>
                 <span id="current-version">v1.0.0</span>
             </span>
-            <button class="btn btn-secondary" id="check-update-btn" onclick="checkUpdate()" data-t="about.checkUpdate">
+            <button class="btn btn-secondary" id="check-update-btn" onclick="checkUpdate()">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="margin-right:6px;vertical-align:-3px">
                     <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
                 </svg>
-                检查更新
+                <span data-t="about.checkUpdate">检查更新</span>
             </button>
         </div>
         <p class="update-status" id="update-status"></p>
@@ -60,11 +60,11 @@ body { overflow-y: auto; background: var(--bg); }
                 <p style="color:var(--muted);margin-top:2px" data-t="about.authorDesc">全栈开发者 · AI 创作工具探索者</p>
             </div>
         </div>
-        <p class="about-intro" style="margin-top:14px" data-t="about.intro1">
-            无限画布是一个<strong>聚合多 AI 平台</strong>的创作工具，支持
+        <p class="about-intro" style="margin-top:14px">
+            <span data-t="about.intro1a">无限画布是一个</span><strong data-t="about.intro1b">聚合多 AI 平台</strong><span data-t="about.intro1c">的创作工具，支持
             OpenAI、DeepSeek、Gemini、火山方舟、ModelScope 等主流 API，
-            提供<strong>文生图、图生图、视频生成、LLM 对话、Agent 智能体</strong>
-            等完整的 AI 创作工作流。更多功能持续迭代中 🚀
+            提供</span><strong data-t="about.intro1d">文生图、图生图、视频生成、LLM 对话、Agent 智能体</strong><span data-t="about.intro1e">
+            等完整的 AI 创作工作流。更多功能持续迭代中 🚀</span>
         </p>
     </div>
 
@@ -84,7 +84,7 @@ body { overflow-y: auto; background: var(--bg); }
 
     <!-- Footer -->
     <div class="about-footer" data-t="about.footer">
-        用 ❤️ 和 <span>AI</span> 构建 · 无限画布
+        用 ❤️ 和 AI 构建 · 无限画布
     </div>
 </div>
 
@@ -97,17 +97,11 @@ function t(key, fallback) {
 // —— 刷新页面中所有 data-t 和 JS 生成的文本 ——
 function refreshI18n() {
     if (typeof _i18nUpdate === 'function') _i18nUpdate();
-    // 更新 title
+    // 更新 title（<title> 在 <head> 中，document.querySelector 可找到）
     var titleEl = document.querySelector('title');
     if (titleEl) {
         var titleKey = titleEl.getAttribute('data-t');
-        if (titleKey) titleEl.textContent = t(titleKey, titleEl.textContent);
-    }
-    // 更新按钮文本（data-t 覆盖 button 的 textContent）
-    var btn = document.getElementById('check-update-btn');
-    if (btn && btn.disabled === false) {
-        // 恢复按钮默认文本
-        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="margin-right:6px;vertical-align:-3px"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>' + t('about.checkUpdate','检查更新');
+        if (titleKey) titleEl.textContent = t(titleKey, '关于 — 无限画布');
     }
 }
 
