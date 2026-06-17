@@ -8,6 +8,37 @@
 <link rel="stylesheet" href="/static/css/style.css?v=5">
 <style>
 .nav-icon { width:20px; height:20px; flex-shrink:0; }
+
+/* 语言下拉 */
+.lang-dropdown { position:relative; width:46px; transition:width .22s ease; }
+.sidebar:hover .lang-dropdown { width:170px; }
+.sidebar[data-mode="wide"] .lang-dropdown { width:170px; }
+.sidebar[data-mode="narrow"]:hover .lang-dropdown { width:46px; }
+
+.lang-btn { width:100% !important; }
+.lang-flag { flex-shrink:0; font-size:15px; line-height:1; }
+.lang-label { font-size:11px; font-weight:800; }
+.sidebar:not([data-mode="wide"]):not(:hover) .lang-label { position:absolute; opacity:0; pointer-events:none; }
+.sidebar[data-mode="narrow"]:hover .lang-label { position:absolute; opacity:0; pointer-events:none; }
+.sidebar:not([data-mode="narrow"]):hover .lang-label { position:static; opacity:1; }
+.sidebar[data-mode="wide"] .lang-label { position:static; opacity:1; }
+
+.lang-menu {
+    position:absolute; left:0; bottom:100%; margin-bottom:4px;
+    background:var(--surface); border:1px solid var(--border); border-radius:10px;
+    padding:4px; min-width:100px; z-index:200;
+    box-shadow:0 8px 24px rgba(0,0,0,.12);
+    display:flex; flex-direction:column; gap:2px;
+}
+.sidebar:hover .lang-menu { left:0; }
+.lang-item {
+    width:100%; padding:7px 10px; border:none; border-radius:7px;
+    background:transparent; color:var(--text); cursor:pointer;
+    font-size:12px; font-weight:700; text-align:left;
+    white-space:nowrap; transition:background .12s;
+}
+.lang-item:hover { background:var(--nav-hover); }
+.lang-item.active { background:var(--accent-soft); color:var(--accent); }
 </style>
 <script src="/static/js/ui-icon.js?v=1"></script>
 <script src="/static/js/ui-nav-btn.js?v=1"></script>
@@ -29,6 +60,17 @@
                 <span class="monitor-row"><span class="monitor-dot"></span><span id="online-count">1</span></span>
                 <span class="monitor-row"><span class="monitor-dot" style="background:var(--warn);box-shadow:0 0 0 3px color-mix(in srgb, var(--warn) 18%, transparent)"></span><span id="queue-count">0</span></span>
                 <span class="monitor-full">ONLINE <strong id="online-count-2">1</strong><span class="monitor-divider"></span>QUEUE <strong id="queue-count-2">0</strong></span>
+            </div>
+            <!-- 语言选择 -->
+            <div class="lang-dropdown" id="langDropdown">
+                <button class="side-pill lang-btn" onclick="toggleLangMenu()" title="切换语言">
+                    <span class="lang-flag">🌐</span>
+                    <span class="nav-label lang-label" id="langLabel">中文</span>
+                </button>
+                <div class="lang-menu" id="langMenu" style="display:none">
+                    <button class="lang-item active" onclick="selectLang('zh-CN')">中文</button>
+                    <button class="lang-item" onclick="selectLang('en')">English</button>
+                </div>
             </div>
             <button class="sidebar-mode-toggle" onclick="cycleSidebarMode()" title="切换侧边栏模式">
                 <span class="mode-icon" id="mode-icon">↔</span>
@@ -122,6 +164,30 @@ function cycleSidebarMode() {
     const next = SIDEBAR_MODES[(idx + 1) % SIDEBAR_MODES.length];
     applySidebarMode(next);
 }
+
+// ——— 语言切换下拉 ———
+function toggleLangMenu() {
+    const menu = document.getElementById('langMenu');
+    menu.style.display = menu.style.display === 'none' ? '' : 'none';
+}
+function selectLang(lang) {
+    document.getElementById('langMenu').style.display = 'none';
+    document.getElementById('langLabel').textContent = lang === 'zh-CN' ? '中文' : 'English';
+    document.querySelectorAll('.lang-item').forEach(function(el) {
+        el.classList.toggle('active', (lang === 'zh-CN' && el.textContent === '中文') || (lang === 'en' && el.textContent === 'English'));
+    });
+    if (typeof _switchLang === 'function') _switchLang(lang);
+}
+// 初始化语言标签
+(function(){
+    var cur = (typeof _getLang === 'function') ? _getLang() : (localStorage.getItem('canvas571_lang') || 'zh-CN');
+    document.getElementById('langLabel').textContent = cur === 'en' ? 'English' : '中文';
+})();
+// 点击外部关闭
+document.addEventListener('click', function(e) {
+    var dd = document.getElementById('langDropdown');
+    if (dd && !dd.contains(e.target)) document.getElementById('langMenu').style.display = 'none';
+});
 
 // Restore
 (function() {
