@@ -38,7 +38,7 @@ CanvasEngine.prototype._showLightbox = function(url, type) {
     if (type === 'image') {
         const dlBtn = document.createElement('a');
         dlBtn.href = url; dlBtn.download = url.split('/').pop() || 'image.png'; dlBtn.target = '_blank';
-        dlBtn.innerHTML = '⬇ 下载';
+        dlBtn.innerHTML = _t('lightbox.download','⬇ 下载');
         dlBtn.style.cssText = 'height:36px;padding:0 14px;border-radius:8px;border:none;background:rgba(255,255,255,.12);color:#fff;font-size:12px;font-weight:800;cursor:pointer;display:flex;align-items:center;gap:6px;text-decoration:none;transition:background .15s;';
         dlBtn.onmouseenter = () => dlBtn.style.background = 'rgba(255,255,255,.25)';
         dlBtn.onmouseleave = () => dlBtn.style.background = 'rgba(255,255,255,.12)';

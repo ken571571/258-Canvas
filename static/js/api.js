@@ -31,7 +31,7 @@ async function apiFetch(url, options = {}, retrying = false) {
         return response;
     }
 
-    const key = prompt("请输入访问密码");
+    const key = prompt(_t('auth.enterPassword','请输入访问密码'));
     if (!key) {
         return response;
     }

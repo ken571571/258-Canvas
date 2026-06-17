@@ -69,7 +69,7 @@ class CanvasEngine {
         const response = await apiFetch('/api/boards', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title: '默认画布' }),
+            body: JSON.stringify({ title: _t('canvas.defaultTitle','默认画布') }),
         });
         const data = await response.json();
         return data.canvas.id;
@@ -149,21 +149,21 @@ class CanvasEngine {
             // 保存成功 → 更新本地时间戳
             const data = await response.json().catch(() => ({}));
             this._canvasUpdatedAt = (data.canvas || {}).updated_at || 0;
-            this._setSaveIndicator('已保存', 'ok');
+            this._setSaveIndicator(_t('canvas.saved','已保存'), 'ok');
         } catch (error) {
             console.error('save failed', error);
-            this._setSaveIndicator('保存失败', 'error');
+            this._setSaveIndicator(_t('canvas.saveFailed','保存失败'), 'error');
         }
     }
 
     createNode(type, point = null) {
         const pt = point || this._menuPoint || this._screenToWorld(window.innerWidth / 2, window.innerHeight / 2);
         const labels = {
-            image: '图片', prompt: '提示词',
-            generator: '生成',      // 兼容旧节点
-            image_gen: '图片生成',
-            video_gen: '视频生成',
-            agent: 'Agent', loop: '列队', output: '输出', comfy: 'ComfyUI',
+            image: _t('nodeType.image','图片'), prompt: _t('nodeType.prompt','提示词'),
+            generator: _t('nodeType.generator','生成'),      // 兼容旧节点
+            image_gen: _t('nodeType.imageGen','图片生成'),
+            video_gen: _t('nodeType.videoGen','视频生成'),
+            agent: _t('nodeType.agent','Agent'), loop: _t('nodeType.loop','列队'), output: _t('nodeType.output','输出'), comfy: _t('nodeType.comfy','ComfyUI'),
         };
         const node = {
             id: this._uid(type),
@@ -353,7 +353,7 @@ class CanvasEngine {
 
     _markDirty() {
         this._snapshot();
-        this._setSaveIndicator('待保存');
+        this._setSaveIndicator(_t('canvas.pendingSave','待保存'));
         clearTimeout(this._saveDebounceTimer);
         this._saveDebounceTimer = setTimeout(() => this.save(), 800);
     }
@@ -367,7 +367,7 @@ class CanvasEngine {
         if (state === 'ok') {
             this._saveIndicatorTimer = window.setTimeout(() => {
                 if (indicator.dataset.state === 'ok') {
-                    indicator.textContent = '等待编辑';
+                    indicator.textContent = _t('canvas.waitingEdit','等待编辑');
                     indicator.dataset.state = '';
                 }
             }, 1200);

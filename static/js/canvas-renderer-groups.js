@@ -33,12 +33,12 @@ CanvasEngine.prototype._renderGroups = function() {
         div.setAttribute('data-group-id', group.id);
         div.innerHTML = `
             <div class="group-label-wrap">
-                <input class="group-label-input" data-group-id="${group.id}" value="${this._esc(group.label || '')}" placeholder="输入组名" maxlength="40"
+                <input class="group-label-input" data-group-id="${group.id}" value="${this._esc(group.label || '')}" placeholder="${_t('group.placeholder','输入组名')}" maxlength="40"
                     onblur="window._canvas._updateGroupLabel('${group.id}', this.value)"
                     onkeydown="if(event.key==='Enter')this.blur()"
                     onclick="event.stopPropagation()"
                     onmousedown="event.stopPropagation()">
-                <button class="group-delete" title="删除组（保留节点）" onclick="event.stopPropagation();">&times;</button>
+                <button class="group-delete" title="${_t('group.deleteTitle','删除组（保留节点）')}" onclick="event.stopPropagation();">&times;</button>
             </div>
             <div class="group-resize nw" data-corner="nw"></div>
             <div class="group-resize ne" data-corner="ne"></div>

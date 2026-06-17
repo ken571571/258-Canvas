@@ -1,98 +1,61 @@
 {
   "nav": {
-    "about": "关于",
-    "generate": "API生图",
-    "canvas": "无限画布",
-    "chat": "Chat 对话",
-    "agents": "Agent",
-    "comfyui": "ComfyUI",
-    "settings": "API 设置",
-    "theme": "切换主题"
+    "about": "关于", "generate": "API生图", "canvas": "无限画布", "chat": "Chat 对话",
+    "agents": "Agent", "comfyui": "ComfyUI", "settings": "API 设置", "theme": "切换主题"
   },
   "toolbar": {
-    "image": "图片",
-    "prompt": "提示词",
-    "imageGen": "生图",
-    "videoGen": "生视频",
-    "agent": "Agent",
-    "loop": "列队",
-    "output": "输出",
-    "comfyui": "ComfyUI",
-    "save": "保存",
-    "assets": "资产库",
-    "status": "当前状态",
-    "waiting": "等待编辑",
-    "saved": "已保存",
-    "saveFailed": "保存失败"
+    "image": "图片", "prompt": "提示词", "imageGen": "生图", "videoGen": "生视频",
+    "agent": "Agent", "loop": "列队", "output": "输出", "comfyui": "ComfyUI",
+    "save": "保存", "assets": "资产库", "status": "当前状态",
+    "waiting": "等待编辑", "saved": "已保存", "saveFailed": "保存失败"
   },
   "node": {
-    "dblClickDesc": "双击添加描述",
-    "clickUpload": "点击上传图片",
-    "dragFromAsset": "或从右侧资产库拖入",
-    "replace": "替换",
-    "delete": "删除",
+    "dblClickDesc": "双击添加描述", "clickUpload": "点击上传图片",
+    "dragFromAsset": "或从右侧资产库拖入", "replace": "替换", "delete": "删除",
     "inputPrompt": "输入提示词..."
   },
-  "nodeState": {
-    "running": "运行中",
-    "success": "成功",
-    "error": "失败"
+  "nodeType": {
+    "image": "图片", "prompt": "提示词", "generator": "生成",
+    "imageGen": "图片生成", "videoGen": "视频生成",
+    "agent": "Agent", "loop": "列队", "output": "输出", "comfy": "ComfyUI"
   },
+  "nodeState": { "running": "运行中", "success": "成功", "error": "失败" },
   "shortcuts": {
-    "title": "快捷键",
-    "subtitle": "按 ? 随时打开此面板 · 按 Esc 关闭",
-    "close": "关闭",
-    "pan1": "平移画布",
-    "pan2": "平移画布",
-    "zoom": "缩放画布",
-    "select": "框选节点",
-    "addRemove": "加选/减选",
-    "group": "打组",
-    "ungroup": "解组",
-    "undo": "撤销",
-    "copyPaste": "复制/粘贴",
-    "deleteSel": "删除选中",
-    "createNode": "创建节点",
-    "nodeMenu": "节点菜单",
-    "pan1keys": "Space+拖拽",
-    "pan2keys": "中键拖拽",
-    "zoomKeys": "滚轮",
-    "selectKeys": "Ctrl+拖拽",
-    "addRemoveKeys": "Shift+点击",
-    "groupKeys": "Ctrl+G",
-    "ungroupKeys": "Ctrl+Shift+G",
-    "undoKeys": "Ctrl+Z",
-    "copyPasteKeys": "Ctrl+C/V",
-    "deleteSelKeys": "Delete",
-    "createNodeKeys": "右键空白",
-    "nodeMenuKeys": "右键选中"
+    "title": "快捷键", "subtitle": "按 ? 随时打开此面板 · 按 Esc 关闭", "close": "关闭",
+    "pan1": "平移画布", "pan2": "平移画布", "zoom": "缩放画布", "select": "框选节点",
+    "addRemove": "加选/减选", "group": "打组", "ungroup": "解组", "undo": "撤销",
+    "copyPaste": "复制/粘贴", "deleteSel": "删除选中", "createNode": "创建节点", "nodeMenu": "节点菜单",
+    "pan1keys": "Space+拖拽", "pan2keys": "中键拖拽", "zoomKeys": "滚轮",
+    "selectKeys": "Ctrl+拖拽", "addRemoveKeys": "Shift+点击", "groupKeys": "Ctrl+G",
+    "ungroupKeys": "Ctrl+Shift+G", "undoKeys": "Ctrl+Z", "copyPasteKeys": "Ctrl+C/V",
+    "deleteSelKeys": "Delete", "createNodeKeys": "右键空白", "nodeMenuKeys": "右键选中"
   },
   "assets": {
-    "title": "资产库",
-    "input": "输入",
-    "output": "输出",
-    "search": "搜索...",
+    "title": "资产库", "input": "输入", "output": "输出", "search": "搜索...",
     "hint": "点击创建于视口中心 · 拖拽到画布上精准放置 · 拖到图片节点上替换"
   },
-  "sidebar": {
-    "auto": "Auto",
-    "narrow": "固定窄边",
-    "wide": "固定宽边"
-  },
-  "monitor": {
-    "online": "ONLINE",
-    "queue": "QUEUE"
-  },
+  "sidebar": { "auto": "Auto", "narrow": "固定窄边", "wide": "固定宽边" },
+  "monitor": { "online": "ONLINE", "queue": "QUEUE" },
   "chat": {
     "typeMessage": "输入消息... (Enter 发送, Shift+Enter 换行)",
-    "newChat": "新建对话",
-    "noMessages": "开始新对话"
+    "newChat": "新建对话", "noMessages": "开始新对话"
   },
-  "common": {
-    "ok": "确定",
-    "cancel": "取消",
-    "close": "关闭",
-    "save": "保存",
-    "delete": "删除"
-  }
+  "common": { "ok": "确定", "cancel": "取消", "close": "关闭", "save": "保存", "delete": "删除" },
+  "canvas": {
+    "defaultTitle": "默认画布", "untitled": "未命名画布", "waitingEdit": "等待编辑",
+    "pendingSave": "待保存", "saved": "已保存", "saveFailed": "保存失败"
+  },
+  "group": { "placeholder": "输入组名", "deleteTitle": "删除组（保留节点）" },
+  "pipeline": {
+    "savedToAssets": "已保存到资产库", "selectWorkflow": "请选择工作流",
+    "imageGenerated": "图片已生成", "videoGenerated": "视频已生成",
+    "resultImage": "生成结果", "resultVideo": "生成视频",
+    "videoFailed": "视频生成失败", "videoTimeout": "视频生成超时",
+    "selectAgent": "请先在上方下拉框选择一个智能体", "defaultTask": "请执行任务",
+    "noImageReturned": "未返回图片地址", "videoDoneNoUrl": "视频任务完成但无下载地址"
+  },
+  "lightbox": {
+    "download": "⬇ 下载", "close": "✕"
+  },
+  "auth": { "enterPassword": "请输入访问密码" }
 }

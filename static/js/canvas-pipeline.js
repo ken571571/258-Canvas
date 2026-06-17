@@ -171,7 +171,7 @@ CanvasEngine.prototype._saveOutputAsset = async function(url) {
         await apiFetch('/api/upload', { method: 'POST', body: form });
         // 刷新资产库
         if (typeof this._loadAssets === 'function') this._loadAssets('output');
-        alert('已保存到资产库');
+        alert(_t('pipeline.savedToAssets','已保存到资产库'));
     } catch(e) { alert('保存失败: ' + e.message); }
 };
 
@@ -315,7 +315,7 @@ CanvasEngine.prototype._upstreamOrder = function(nodeId, visited = new Set()) {
 };
 
 CanvasEngine.prototype._runComfyUI = async function(nodeId) {
-    const node = this.nodes.find(n=>n.id===nodeId); if(!node||!node.comfyWorkflow) { this._setNodeRunState(node,'error','请选择工作流'); return; }
+    const node = this.nodes.find(n=>n.id===nodeId); if(!node||!node.comfyWorkflow) { this._setNodeRunState(node,'error',_t('pipeline.selectWorkflow','请选择工作流')); return; }
     const inputs=this._collectInputs(nodeId);
     this._setNodeRunState(node,'running','提交 ComfyUI...');
     try {
@@ -409,12 +409,12 @@ CanvasEngine.prototype._runImageGenerator = async function(node, inputs, provide
         });
         const data = await response.json();
         if (data.detail) throw new Error(data.detail);
-        if (!data.url) throw new Error('未返回图片地址');
+        if (!data.url) throw new Error(_t('pipeline.noImageReturned','未返回图片地址'));
         const outputNode = this._ensureOutput(node.id);
-        outputNode.images = [...(outputNode.images || []), { url: data.url, name: '生成结果' }];
+        outputNode.images = [...(outputNode.images || []), { url: data.url, name: _t('pipeline.resultImage','生成结果') }];
         outputNode.outputText = '';
         this._loadOutputDimensions(outputNode);
-        this._setNodeRunState(node, 'success', '图片已生成');
+        this._setNodeRunState(node, 'success', _t('pipeline.imageGenerated','图片已生成'));
         this._renderAll();
         this._markDirty();
         this._refreshAssetLibrary();
@@ -454,23 +454,23 @@ CanvasEngine.prototype._runVideoGenerator = async function(node, inputs, provide
             const pollData = await pollResp.json();
             if (pollData.status === 'succeeded') {
                 const videoUrl = pollData.result?.video_url || '';
-                if (!videoUrl) throw new Error('视频任务完成但无下载地址');
+                if (!videoUrl) throw new Error(_t('pipeline.videoDoneNoUrl','视频任务完成但无下载地址'));
                 const outputNode = this._ensureOutput(node.id);
-                outputNode.videos = [...(outputNode.videos || []), { url: videoUrl, name: '生成视频' }];
+                outputNode.videos = [...(outputNode.videos || []), { url: videoUrl, name: _t('pipeline.resultVideo','生成视频') }];
                 outputNode.outputText = '';
                 this._loadOutputDimensions(outputNode);
-                this._setNodeRunState(node, 'success', '视频已生成');
+                this._setNodeRunState(node, 'success', _t('pipeline.videoGenerated','视频已生成'));
                 this._renderAll();
                 this._markDirty();
                 this._refreshAssetLibrary();
                 return;
             }
             if (pollData.status === 'failed') {
-                throw new Error(pollData.error || '视频生成失败');
+                throw new Error(pollData.error || _t('pipeline.videoFailed','视频生成失败'));
             }
             this._setNodeRunState(node, 'running', `视频生成中 (${pollData.progress || i * 3}s)...`);
         }
-        throw new Error('视频生成超时');
+        throw new Error(_t('pipeline.videoTimeout','视频生成超时'));
     } catch (error) {
         const msg = error.message || String(error);
         this._setNodeRunState(node, 'error', msg.slice(0, 200));
@@ -485,12 +485,12 @@ CanvasEngine.prototype._runAgent = async function(id) {
     if (!node) return;
 
     if (!node.agentId) {
-        this._setNodeRunState(node, 'error', '请先在上方下拉框选择一个智能体');
+        this._setNodeRunState(node, 'error', _t('pipeline.selectAgent','请先在上方下拉框选择一个智能体'));
         return;
     }
 
     const inputs = this._collectInputs(id);
-    const finalInput = [inputs.texts.join('\n'), node.userInput].filter(Boolean).join('\n') || '请执行任务';
+    const finalInput = [inputs.texts.join('\n'), node.userInput].filter(Boolean).join('\n') || _t('pipeline.defaultTask','请执行任务');
     this._setNodeRunState(node, 'running', 'Agent 执行中...');
 
     try {

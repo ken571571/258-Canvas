@@ -1,98 +1,61 @@
 {
   "nav": {
-    "about": "About",
-    "generate": "API Image",
-    "canvas": "Canvas",
-    "chat": "Chat",
-    "agents": "Agents",
-    "comfyui": "ComfyUI",
-    "settings": "Settings",
-    "theme": "Toggle Theme"
+    "about": "About", "generate": "API Image", "canvas": "Canvas", "chat": "Chat",
+    "agents": "Agents", "comfyui": "ComfyUI", "settings": "Settings", "theme": "Toggle Theme"
   },
   "toolbar": {
-    "image": "Image",
-    "prompt": "Prompt",
-    "imageGen": "Img Gen",
-    "videoGen": "Vid Gen",
-    "agent": "Agent",
-    "loop": "Loop",
-    "output": "Output",
-    "comfyui": "ComfyUI",
-    "save": "Save",
-    "assets": "Assets",
-    "status": "Status",
-    "waiting": "Waiting",
-    "saved": "Saved",
-    "saveFailed": "Save failed"
+    "image": "Image", "prompt": "Prompt", "imageGen": "Img Gen", "videoGen": "Vid Gen",
+    "agent": "Agent", "loop": "Loop", "output": "Output", "comfyui": "ComfyUI",
+    "save": "Save", "assets": "Assets", "status": "Status",
+    "waiting": "Waiting", "saved": "Saved", "saveFailed": "Save failed"
   },
   "node": {
-    "dblClickDesc": "Double-click to add description",
-    "clickUpload": "Click to upload image",
-    "dragFromAsset": "Or drag from asset panel",
-    "replace": "Replace",
-    "delete": "Delete",
+    "dblClickDesc": "Double-click to add description", "clickUpload": "Click to upload image",
+    "dragFromAsset": "Or drag from asset panel", "replace": "Replace", "delete": "Delete",
     "inputPrompt": "Enter prompt..."
   },
-  "nodeState": {
-    "running": "Running",
-    "success": "Success",
-    "error": "Error"
+  "nodeType": {
+    "image": "Image", "prompt": "Prompt", "generator": "Generate",
+    "imageGen": "Image Gen", "videoGen": "Video Gen",
+    "agent": "Agent", "loop": "Loop", "output": "Output", "comfy": "ComfyUI"
   },
+  "nodeState": { "running": "Running", "success": "Success", "error": "Error" },
   "shortcuts": {
-    "title": "Keyboard Shortcuts",
-    "subtitle": "Press ? to open · Press Esc to close",
-    "close": "Close",
-    "pan1": "Pan Canvas",
-    "pan2": "Pan Canvas",
-    "zoom": "Zoom Canvas",
-    "select": "Marquee Select",
-    "addRemove": "Add/Remove",
-    "group": "Group",
-    "ungroup": "Ungroup",
-    "undo": "Undo",
-    "copyPaste": "Copy/Paste",
-    "deleteSel": "Delete Selected",
-    "createNode": "Create Node",
-    "nodeMenu": "Node Menu",
-    "pan1keys": "Space+Drag",
-    "pan2keys": "Middle Drag",
-    "zoomKeys": "Scroll",
-    "selectKeys": "Ctrl+Drag",
-    "addRemoveKeys": "Shift+Click",
-    "groupKeys": "Ctrl+G",
-    "ungroupKeys": "Ctrl+Shift+G",
-    "undoKeys": "Ctrl+Z",
-    "copyPasteKeys": "Ctrl+C/V",
-    "deleteSelKeys": "Delete",
-    "createNodeKeys": "Right-click",
-    "nodeMenuKeys": "Right-click"
+    "title": "Keyboard Shortcuts", "subtitle": "Press ? to open · Press Esc to close", "close": "Close",
+    "pan1": "Pan Canvas", "pan2": "Pan Canvas", "zoom": "Zoom Canvas", "select": "Marquee Select",
+    "addRemove": "Add/Remove", "group": "Group", "ungroup": "Ungroup", "undo": "Undo",
+    "copyPaste": "Copy/Paste", "deleteSel": "Delete Selected", "createNode": "Create Node", "nodeMenu": "Node Menu",
+    "pan1keys": "Space+Drag", "pan2keys": "Middle Drag", "zoomKeys": "Scroll",
+    "selectKeys": "Ctrl+Drag", "addRemoveKeys": "Shift+Click", "groupKeys": "Ctrl+G",
+    "ungroupKeys": "Ctrl+Shift+G", "undoKeys": "Ctrl+Z", "copyPasteKeys": "Ctrl+C/V",
+    "deleteSelKeys": "Delete", "createNodeKeys": "Right-click", "nodeMenuKeys": "Right-click"
   },
   "assets": {
-    "title": "Asset Library",
-    "input": "Input",
-    "output": "Output",
-    "search": "Search...",
+    "title": "Asset Library", "input": "Input", "output": "Output", "search": "Search...",
     "hint": "Click to create at viewport center · Drag to place · Drop on image node to replace"
   },
-  "sidebar": {
-    "auto": "Auto",
-    "narrow": "Fixed Narrow",
-    "wide": "Fixed Wide"
-  },
-  "monitor": {
-    "online": "ONLINE",
-    "queue": "QUEUE"
-  },
+  "sidebar": { "auto": "Auto", "narrow": "Fixed Narrow", "wide": "Fixed Wide" },
+  "monitor": { "online": "ONLINE", "queue": "QUEUE" },
   "chat": {
     "typeMessage": "Type a message... (Enter to send, Shift+Enter for new line)",
-    "newChat": "New Chat",
-    "noMessages": "Start a new conversation"
+    "newChat": "New Chat", "noMessages": "Start a new conversation"
   },
-  "common": {
-    "ok": "OK",
-    "cancel": "Cancel",
-    "close": "Close",
-    "save": "Save",
-    "delete": "Delete"
-  }
+  "common": { "ok": "OK", "cancel": "Cancel", "close": "Close", "save": "Save", "delete": "Delete" },
+  "canvas": {
+    "defaultTitle": "Default Canvas", "untitled": "Untitled Canvas", "waitingEdit": "Waiting for edit",
+    "pendingSave": "Pending save", "saved": "Saved", "saveFailed": "Save failed"
+  },
+  "group": { "placeholder": "Group name", "deleteTitle": "Delete group (keep nodes)" },
+  "pipeline": {
+    "savedToAssets": "Saved to assets", "selectWorkflow": "Please select a workflow",
+    "imageGenerated": "Image generated", "videoGenerated": "Video generated",
+    "resultImage": "Generated image", "resultVideo": "Generated video",
+    "videoFailed": "Video generation failed", "videoTimeout": "Video generation timeout",
+    "selectAgent": "Please select an agent from the dropdown", "defaultTask": "Execute task",
+    "noImageReturned": "No image URL returned", "videoDoneNoUrl": "Video completed but no download URL"
+  },
+  "lightbox": {
+    "download": "⬇ Download", "close": "✕"
+  },
+  "auth": { "enterPassword": "Enter access password" }
 }

@@ -115,6 +115,16 @@ window.addEventListener('message', e => {
     if (e.data?.type === 'theme') {
         document.documentElement.classList.toggle('dark', e.data.theme === 'dark');
     }
+    if (e.data?.type === 'lang' && e.data.lang) {
+        document.documentElement.lang = e.data.lang;
+    }
+});
+
+// 语言切换后重新渲染画布节点（更新动态生成的中文文本）
+window.addEventListener('lang-applied', () => {
+    if (typeof engine !== 'undefined' && engine._renderAll) {
+        engine._renderAll();
+    }
 });
 
 function createNode(type) { engine.createNode(type); }
