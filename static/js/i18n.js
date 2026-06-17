@@ -70,11 +70,20 @@
     _currentLang = lang;
     localStorage.setItem(LANG_KEY, lang);
     document.documentElement.lang = lang;
+    if (_loaded) {
+      _applyLang();
+    }
+    // else: init hasn't finished yet; init() will call _applyLang() when ready
+  }
+
+  function _applyLang() {
     updateDOM();
     // Broadcast to iframes
     document.querySelectorAll('iframe').forEach(f => {
-      try { f.contentWindow.postMessage({ type: 'lang', lang }, '*'); } catch(e) {}
+      try { f.contentWindow.postMessage({ type: 'lang', lang: _currentLang }, '*'); } catch(e) {}
     });
+    // Dispatch event for parent frame UI updates
+    try { window.dispatchEvent(new CustomEvent('lang-applied', { detail: { lang: _currentLang } })); } catch(e) {}
   }
 
   function getLang() {
@@ -98,7 +107,7 @@
     document.documentElement.lang = _currentLang;
     await Promise.all([loadLocale('zh-CN'), loadLocale('en')]);
     _loaded = true;
-    updateDOM();
+    _applyLang();
   }
 
   // --- iframe message listener ---
@@ -107,7 +116,7 @@
       if (e.data.lang !== _currentLang) {
         _currentLang = e.data.lang;
         document.documentElement.lang = _currentLang;
-        updateDOM();
+        if (_loaded) updateDOM();
       }
     }
   });

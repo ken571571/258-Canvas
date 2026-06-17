@@ -181,8 +181,22 @@ function selectLang(lang) {
 // 初始化语言标签
 (function(){
     var cur = (typeof _getLang === 'function') ? _getLang() : (localStorage.getItem('canvas571_lang') || 'zh-CN');
-    document.getElementById('langLabel').textContent = cur === 'en' ? 'English' : '中文';
+    var labelEl = document.getElementById('langLabel');
+    if (labelEl) labelEl.textContent = cur === 'en' ? 'English' : '中文';
+    document.querySelectorAll('.lang-item').forEach(function(el) {
+        el.classList.toggle('active', (cur === 'zh-CN' && el.textContent === '中文') || (cur === 'en' && el.textContent === 'English'));
+    });
 })();
+// 监听语言变更事件（iframe 触发或其他来源）
+window.addEventListener('lang-applied', function(e) {
+    var lang = e.detail && e.detail.lang;
+    if (!lang) return;
+    var labelEl = document.getElementById('langLabel');
+    if (labelEl) labelEl.textContent = lang === 'en' ? 'English' : '中文';
+    document.querySelectorAll('.lang-item').forEach(function(el) {
+        el.classList.toggle('active', (lang === 'zh-CN' && el.textContent === '中文') || (lang === 'en' && el.textContent === 'English'));
+    });
+});
 // 点击外部关闭
 document.addEventListener('click', function(e) {
     var dd = document.getElementById('langDropdown');
