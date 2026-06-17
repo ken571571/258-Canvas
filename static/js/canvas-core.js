@@ -513,14 +513,14 @@ class CanvasEngine {
         const hasMulti = this.selected.size >= 2;
         menu.innerHTML = `
             ${!hasSelection ? `
-            <button onclick="window._canvas.createNode('image');document.getElementById('create-menu').style.display='none'">图片节点</button>
-            <button onclick="window._canvas.createNode('prompt');document.getElementById('create-menu').style.display='none'">提示词节点</button>
-            <button onclick="window._canvas.createNode('image_gen');document.getElementById('create-menu').style.display='none'">🖼 图片生成</button>
-            <button onclick="window._canvas.createNode('video_gen');document.getElementById('create-menu').style.display='none'">🎬 视频生成</button>
-            <button onclick="window._canvas.createNode('agent');document.getElementById('create-menu').style.display='none'">Agent 节点</button>
-            <button onclick="window._canvas.createNode('loop');document.getElementById('create-menu').style.display='none'">列队节点</button>
-            <button onclick="window._canvas.createNode('output');document.getElementById('create-menu').style.display='none'">输出节点</button>
-            <button onclick="window._canvas.createNode('comfy');document.getElementById('create-menu').style.display='none'">ComfyUI 节点</button>
+            <button onclick="window._canvas.createNode('image');document.getElementById('create-menu').style.display='none'">${_tt('图片节点')}</button>
+            <button onclick="window._canvas.createNode('prompt');document.getElementById('create-menu').style.display='none'">${_tt('提示词节点')}</button>
+            <button onclick="window._canvas.createNode('image_gen');document.getElementById('create-menu').style.display='none'">🖼 ${_tt('图片生成')}</button>
+            <button onclick="window._canvas.createNode('video_gen');document.getElementById('create-menu').style.display='none'">🎬 ${_tt('视频生成')}</button>
+            <button onclick="window._canvas.createNode('agent');document.getElementById('create-menu').style.display='none'">${_tt('Agent 节点')}</button>
+            <button onclick="window._canvas.createNode('loop');document.getElementById('create-menu').style.display='none'">${_tt('列队节点')}</button>
+            <button onclick="window._canvas.createNode('output');document.getElementById('create-menu').style.display='none'">${_tt('输出节点')}</button>
+            <button onclick="window._canvas.createNode('comfy');document.getElementById('create-menu').style.display='none'">${_tt('ComfyUI 节点')}</button>
             ` : ''}
             ${hasSelection ? `<div class="menu-section-title">选中操作</div>` : ''}
             ${hasSelection ? `<button onclick="window._canvas._copySelected();document.getElementById('create-menu').style.display='none'">复制 Ctrl+C</button>` : ''}

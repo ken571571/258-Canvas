@@ -128,9 +128,9 @@ CanvasEngine.prototype._curveMeta = function(start, end) {
 
 
 CanvasEngine.prototype._renderNodeStateBadge = function(node) {
-    if (node.runState === 'running') return '<span class="node-state-badge is-running">运行中</span>';
-    if (node.runState === 'success') return '<span class="node-state-badge is-success">成功</span>';
-    if (node.runState === 'error') return '<span class="node-state-badge is-error">失败</span>';
+    if (node.runState === 'running') return '<span class="node-state-badge is-running">' + _tt('运行中') + '</span>';
+    if (node.runState === 'success') return '<span class="node-state-badge is-success">' + _tt('成功') + '</span>';
+    if (node.runState === 'error') return '<span class="node-state-badge is-error">' + _tt('失败') + '</span>';
     return '';
 };
 

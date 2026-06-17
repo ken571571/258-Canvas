@@ -28,8 +28,8 @@ body { overflow-y: auto; background: var(--bg); }
     <!-- Hero -->
     <div class="about-hero">
         <div class="about-logo">∞</div>
-        <h1>无限画布</h1>
-        <p class="about-tagline">AI 驱动的无限创作平台</p>
+        <h1 data-t="nav.canvas">无限画布</h1>
+        <p class="about-tagline" data-t="about.tagline">AI 驱动的无限创作平台</p>
     </div>
 
     <!-- 版本信息 -->
@@ -121,7 +121,7 @@ async function checkUpdate() {
     var btn = document.getElementById('check-update-btn');
     var status = document.getElementById('update-status');
     btn.disabled = true;
-    btn.textContent = '检测中…';
+    btn.textContent = _t('about.checking','检测中…');
     status.textContent = '';
     status.className = 'update-status';
 
@@ -129,20 +129,23 @@ async function checkUpdate() {
         var resp = await fetch('/api/check-update');
         var data = await resp.json();
         if (data.update_available) {
-            status.textContent = '发现新版本: v' + data.latest.version + '，可前往设置页执行更新';
+            status.textContent = _t('about.newVersion','发现新版本: v') + data.latest.version + _t('about.updateHint','，可前往设置页执行更新');
             status.className = 'update-status has-update';
         } else if (data.error) {
-            status.textContent = '检查失败: ' + data.error;
+            status.textContent = _t('about.checkFailed','检查失败: ') + data.error;
         } else {
-            status.textContent = '已是最新版本 ✓';
+            status.textContent = _t('about.upToDate','已是最新版本 ✓');
         }
     } catch(e) {
-        status.textContent = '网络错误，请稍后重试';
+        status.textContent = _t('about.networkError','网络错误，请稍后重试');
     } finally {
         btn.disabled = false;
-        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="margin-right:6px;vertical-align:-3px"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>检查更新';
+        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="margin-right:6px;vertical-align:-3px"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>' + _t('about.checkUpdate','检查更新');
     }
 }
+
+// 语言切换时刷新翻译
+window.addEventListener('lang-applied', function() { if(window._i18nUpdate) window._i18nUpdate(); });
 </script>
 </body>
 </html>

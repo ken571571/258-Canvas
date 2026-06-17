@@ -32,11 +32,11 @@
 </head>
 <body>
 <div class="page">
-    <h1>API生图</h1>
-    <p class="page-subtitle">选择模型、尺寸和提示词，生成结果会保存在本地素材输出目录。</p>
+    <h1 data-t='nav.generate'>API生图</h1>
+    <p class="page-subtitle" data-t='generate.subtitle'>选择模型、尺寸和提示词，生成结果会保存在本地素材输出目录。</p>
     <div class="grid-2">
         <section class="panel">
-            <div class="panel-title">生成参数</div>
+            <div class="panel-title" data-t='generate.params'>生成参数</div>
             <div class="form-group">
                 <label>提示词 Prompt</label>
                 <textarea id="prompt" rows="4" placeholder="描述你想要的画面..."></textarea>
@@ -65,9 +65,9 @@
             </div>
         </section>
         <section class="panel">
-            <div class="panel-title">结果预览</div>
+            <div class="panel-title" data-t='generate.result'>结果预览</div>
             <div class="preview" id="preview">
-                <div class="preview-empty">等待生成结果</div>
+                <div class="preview-empty" data-t='generate.waiting'>等待生成结果</div>
             </div>
         </section>
     </div>
@@ -95,7 +95,7 @@ let currentGenerateProvider = '';
 async function loadModels() {
     const sel = document.getElementById('model-select');
     const providerSel = document.getElementById('provider-select');
-    sel.innerHTML = '<option>加载中...</option>';
+    sel.innerHTML = '<option>' + _t('common.loading','加载中...') + '</option>';
     allProviders = [];
 
     // 从后端获取 Provider 列表（内存缓存，多次调用不重复请求）
@@ -110,8 +110,8 @@ async function loadModels() {
     providerSel.innerHTML = '';
 
     if (!allProviders.length) {
-        sel.innerHTML = '<option value="">请在 API 设置中添加生图模型</option>';
-        providerSel.innerHTML = '<option value="">无可用平台</option>';
+        sel.innerHTML = '<option value="">' + _t('generate.addModels','请在 API 设置中添加生图模型') + '</option>';
+        providerSel.innerHTML = '<option value="">' + _t('generate.noPlatforms','无可用平台') + '</option>';
         return;
     }
 
@@ -146,7 +146,7 @@ function onProviderChangeForGenerate() {
 
     const p = allProviders.find(x => x.id === providerId);
     if (!p || !p.image_models.length) {
-        sel.innerHTML = '<option value="">该平台无可用模型</option>';
+        sel.innerHTML = '<option value="">' + _t('generate.noModels','该平台无可用模型') + '</option>';
         return;
     }
     p.image_models.forEach(m => {
@@ -160,11 +160,11 @@ async function generate() {
     const prompt = document.getElementById('prompt').value.trim();
     const model = document.getElementById('model-select').value;
 
-    if (!prompt) { status.textContent = '请输入提示词'; status.className = 'status error'; return; }
-    if (!model) { status.textContent = '请选择模型'; status.className = 'status error'; return; }
+    if (!prompt) { status.textContent = _t('generate.enterPrompt','请输入提示词'); status.className = 'status error'; return; }
+    if (!model) { status.textContent = _t('generate.selectModel','请选择模型'); status.className = 'status error'; return; }
 
-    btn.textContent = '生成中...'; btn.disabled = true;
-    status.textContent = '正在请求 API...'; status.className = 'status';
+    btn.textContent = _t('generate.generating','生成中...'); btn.disabled = true;
+    status.textContent = _t('generate.requesting','正在请求 API...'); status.className = 'status';
     document.getElementById('preview').innerHTML = '<div class="skeleton skeleton-block"></div>';
 
     // 直接用当前选中的平台
@@ -192,17 +192,17 @@ async function generate() {
                         <button onclick="event.stopPropagation();openLightbox('${imgUrl}')" title="放大">⛶</button>
                     </div>
                 </div>`;
-            status.textContent = '生成成功';
+            status.textContent = _t('generate.success','生成成功');
             status.className = 'status';
         } else {
-            status.textContent = '生成失败: ' + (data.detail || JSON.stringify(data));
+            status.textContent = _t('generate.failed','生成失败: ') + (data.detail || JSON.stringify(data));
             status.className = 'status error';
         }
     } catch(e) {
-        status.textContent = '请求失败: ' + e.message;
+        status.textContent = _t('generate.requestFailed','请求失败: ') + e.message;
         status.className = 'status error';
     }
-    btn.textContent = '生成图片'; btn.disabled = false;
+    btn.textContent = _t('generate.generateBtn','生成图片'); btn.disabled = false;
 }
 
 // 加载模型列表
