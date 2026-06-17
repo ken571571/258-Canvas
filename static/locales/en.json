@@ -1,0 +1,98 @@
+{
+  "nav": {
+    "about": "About",
+    "generate": "API Image",
+    "canvas": "Canvas",
+    "chat": "Chat",
+    "agents": "Agents",
+    "comfyui": "ComfyUI",
+    "settings": "Settings",
+    "theme": "Toggle Theme"
+  },
+  "toolbar": {
+    "image": "Image",
+    "prompt": "Prompt",
+    "imageGen": "Img Gen",
+    "videoGen": "Vid Gen",
+    "agent": "Agent",
+    "loop": "Loop",
+    "output": "Output",
+    "comfyui": "ComfyUI",
+    "save": "Save",
+    "assets": "Assets",
+    "status": "Status",
+    "waiting": "Waiting",
+    "saved": "Saved",
+    "saveFailed": "Save failed"
+  },
+  "node": {
+    "dblClickDesc": "Double-click to add description",
+    "clickUpload": "Click to upload image",
+    "dragFromAsset": "Or drag from asset panel",
+    "replace": "Replace",
+    "delete": "Delete",
+    "inputPrompt": "Enter prompt..."
+  },
+  "nodeState": {
+    "running": "Running",
+    "success": "Success",
+    "error": "Error"
+  },
+  "shortcuts": {
+    "title": "Keyboard Shortcuts",
+    "subtitle": "Press ? to open · Press Esc to close",
+    "close": "Close",
+    "pan1": "Pan Canvas",
+    "pan2": "Pan Canvas",
+    "zoom": "Zoom Canvas",
+    "select": "Marquee Select",
+    "addRemove": "Add/Remove",
+    "group": "Group",
+    "ungroup": "Ungroup",
+    "undo": "Undo",
+    "copyPaste": "Copy/Paste",
+    "deleteSel": "Delete Selected",
+    "createNode": "Create Node",
+    "nodeMenu": "Node Menu",
+    "pan1keys": "Space+Drag",
+    "pan2keys": "Middle Drag",
+    "zoomKeys": "Scroll",
+    "selectKeys": "Ctrl+Drag",
+    "addRemoveKeys": "Shift+Click",
+    "groupKeys": "Ctrl+G",
+    "ungroupKeys": "Ctrl+Shift+G",
+    "undoKeys": "Ctrl+Z",
+    "copyPasteKeys": "Ctrl+C/V",
+    "deleteSelKeys": "Delete",
+    "createNodeKeys": "Right-click",
+    "nodeMenuKeys": "Right-click"
+  },
+  "assets": {
+    "title": "Asset Library",
+    "input": "Input",
+    "output": "Output",
+    "search": "Search...",
+    "hint": "Click to create at viewport center · Drag to place · Drop on image node to replace"
+  },
+  "sidebar": {
+    "auto": "Auto",
+    "narrow": "Fixed Narrow",
+    "wide": "Fixed Wide"
+  },
+  "monitor": {
+    "online": "ONLINE",
+    "queue": "QUEUE"
+  },
+  "chat": {
+    "typeMessage": "Type a message... (Enter to send, Shift+Enter for new line)",
+    "newChat": "New Chat",
+    "noMessages": "Start a new conversation"
+  },
+  "common": {
+    "ok": "OK",
+    "cancel": "Cancel",
+    "close": "Close",
+    "save": "Save",
+    "delete": "Delete"
+  }
+}

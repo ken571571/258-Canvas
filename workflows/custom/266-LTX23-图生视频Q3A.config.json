@@ -1,0 +1,22 @@
+{
+  "title": "266-LTX23-图生视频Q3A",
+  "fields": [
+    {
+      "id": "f_17815143729780.4531901516126735",
+      "node": "59",
+      "input": "image",
+      "name": "image",
+      "type": "text",
+      "default": "ComfyUI_temp_gbxqp_00005_.png"
+    },
+    {
+      "id": "f_17815143729780.26971299252453473",
+      "node": "69:5",
+      "input": "text",
+      "name": "text",
+      "type": "text",
+      "default": "女人笑着说：“你觉得我漂亮么？”,头发在风中摇摆。背景有树叶在飘落。"
+    }
+  ],
+  "mini_cards": {}
+}

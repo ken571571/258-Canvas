@@ -1,0 +1,38 @@
+# 密钥文件
+**/.env
+*.bak
+
+# Python 缓存
+**/__pycache__/
+*.pyc
+
+# Python 运行环境
+python/
+
+# 用户数据
+data/
+skills/
+logs/
+
+# 日志文件
+*.log
+
+# 临时文件
+*.bak
+*.tmp
+*~
+
+# IDE
+.vscode/
+.idea/
+
+# 输出文件
+output/
+input/
+
+# 不上传的本地文档
+项目.MD
+AIHubMix_视频模型API文档.md
+AIHubMix_图片模型API文档.md
+evil.json
+test_regression.json

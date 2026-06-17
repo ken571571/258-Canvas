@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>本地 ComfyUI</title>
+<link rel="stylesheet" href="/static/css/style.css?v=4">
+<style>
+.comfy-page { display:flex; height:100vh; overflow:hidden; }
+.comfy-sidebar { width:280px; min-width:280px; background:var(--surface-2); border-right:1px solid var(--border); display:flex; flex-direction:column; overflow-y:auto; padding:16px 12px; gap:10px; }
+.comfy-main { flex:1; overflow-y:auto; padding:20px; display:flex; flex-direction:column; gap:16px; background:var(--bg); }
+.comfy-sidehead { display:flex; align-items:center; justify-content:space-between; }
+.comfy-sidehead h2 { font-size:12px; font-weight:900; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+.wf-list { display:flex; flex-direction:column; gap:3px; }
+.wf-item { padding:8px 10px; border-radius:6px; cursor:pointer; border:1px solid transparent; font-size:12px; font-weight:700; transition:all .12s; }
+.wf-item:hover { background:var(--surface); border-color:var(--border); }
+.wf-item.active { background:var(--surface); border-color:var(--border); }
+.wf-item .wf-meta { font-size:10px; color:var(--muted); margin-top:2px; }
+.upload-area { border:2px dashed var(--border-strong); border-radius:var(--radius); padding:20px; text-align:center; color:var(--muted); cursor:pointer; transition:all .15s; }
+.upload-area:hover { border-color:var(--accent); color:var(--text); }
+.upload-area input { display:none; }
+
+.block { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:18px 20px; display:flex; flex-direction:column; gap:12px; }
+.block-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding-bottom:10px; border-bottom:1px solid var(--border); }
+.block-title { font-size:12px; font-weight:900; letter-spacing:.06em; text-transform:uppercase; color:var(--text); }
+
+.field { display:flex; flex-direction:column; gap:5px; }
+.field label { font-size:11px; font-weight:800; color:var(--muted); }
+.field input, .field select { width:100%; height:36px; padding:0 10px; border-radius:6px; border:1px solid var(--border); background:var(--bg); color:var(--text); font-size:12px; outline:none; }
+.field textarea { width:100%; min-height:80px; padding:8px 10px; border-radius:6px; border:1px solid var(--border); background:var(--bg); color:var(--text); font-size:12px; outline:none; resize:vertical; font-family:ui-monospace,monospace; }
+.field input:focus, .field select:focus, .field textarea:focus { border-color:var(--accent); }
+
+.mapping-row { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; padding:6px 0; border-bottom:1px solid var(--border); font-size:11px; align-items:center; }
+.mapping-row input { height:30px; }
+.mapping-row .mapping-node { color:var(--accent); font-weight:800; font-family:ui-monospace,monospace; }
+
+.run-output { min-height:100px; max-height:300px; overflow-y:auto; background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); padding:12px; font-family:ui-monospace,monospace; font-size:11px; white-space:pre-wrap; color:var(--text); }
+</style>
+<script src="/static/js/i18n.js?v=1"></script>
+</head>
+<body>
+<div class="comfy-page">
+    <aside class="comfy-sidebar">
+        <div class="comfy-sidehead"><h2>工作流列表</h2><span style="font-size:10px;color:var(--muted);" id="wfCount">0</span></div>
+        <div class="wf-list" id="wfList"></div>
+        <label class="upload-area">
+            <div>+ 上传工作流 JSON</div>
+            <input type="file" accept=".json" id="wfUpload" onchange="uploadWorkflow(this)">
+        </label>
+    </aside>
+
+    <main class="comfy-main">
+        <div style="padding:60px;text-align:center;color:var(--muted);" id="emptyState">选择一个工作流开始配置</div>
+        <div id="detailPanel" style="display:none;flex-direction:column;gap:16px;">
+            <div class="block">
+                <div class="block-head">
+                    <div class="block-title" id="wfTitle">工作流配置</div>
+                    <div style="display:flex;gap:6px;">
+                        <button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="deleteWorkflow()">删除</button>
+                        <button class="btn btn-primary" style="font-size:11px;padding:4px 10px;" onclick="saveConfig()">保存配置</button>
+                    </div>
+                </div>
+                <div class="field"><label>工作流名称</label><input id="cfgTitle" placeholder="工作流名称" oninput="autoSave()"></div>
+            </div>
+
+            <div class="block">
+                <div class="block-head"><div class="block-title">节点参数映射</div><span style="font-size:10px;color:var(--muted);">暴露 ComfyUI 节点参数为画布输入</span></div>
+                <div id="mappingTable"></div>
+                <button class="btn btn-secondary" style="font-size:11px;align-self:flex-start;" onclick="autoDetectMapping()">自动检测参数</button>
+            </div>
+
+            <div class="block">
+                <div class="block-head"><div class="block-title">测试运行</div></div>
+                <div id="testFields"></div>
+                <button class="btn btn-primary" style="width:120px;" onclick="testRun()">测试运行</button>
+                <div class="run-output" id="runOutput" style="display:none;">等待运行...</div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<script src="/static/js/api.js?v=4"></script>
+<script>
+let workflows=[],currentWf='',currentWfData=null;
+function initTheme(){ if(localStorage.theme==='dark') document.documentElement.classList.add('dark'); }
+initTheme();
+
+async function loadWorkflows(){
+    try{const d=await apiJson('/api/comfyui/workflows');workflows=d.workflows||[];document.getElementById('wfCount').textContent=workflows.length;
+    document.getElementById('wfList').innerHTML=workflows.map(w=>`<div class="wf-item${w.name===currentWf?' active':''}" onclick="selectWorkflow('${w.name}')"><div>${esc(w.title||w.name)}</div><div class="wf-meta">${w.field_count||0}参数 · ${w.builtin?'内置':'自定义'}</div></div>`).join('')||'<div style="color:var(--muted);font-size:11px;padding:8px;">暂无工作流</div>';}catch(e){}
+}
+
+async function selectWorkflow(name){
+    currentWf=name;loadWorkflows();
+    try{const d=await apiJson('/api/comfyui/workflows/'+encodeURIComponent(name));currentWfData=d.workflow||{};
+    window.currentCfg=d.config||{title:'',fields:[]};
+    document.getElementById('emptyState').style.display='none';document.getElementById('detailPanel').style.display='flex';
+    document.getElementById('wfTitle').textContent=d.config?.title||name;
+    document.getElementById('cfgTitle').value=d.config?.title||'';
+    renderMapping(window.currentCfg.fields||[]);
+    }catch(e){}
+}
+
+function renderMapping(fields){
+    const tbl=document.getElementById('mappingTable');
+    if(!fields.length){tbl.innerHTML='<div style="color:var(--muted);font-size:11px;padding:12px;">点击"自动检测参数"或手动添加</div>';return;}
+    tbl.innerHTML=fields.map((f,i)=>`<div class="mapping-row"><span class="mapping-node">${esc(f.node||'')}::${esc(f.input||'')}</span><input value="${esc(f.name||'')}" placeholder="显示名称" onchange="currentCfg.fields[${i}].name=this.value"><select onchange="currentCfg.fields[${i}].type=this.value"><option value="text" ${f.type==='text'?'selected':''}>文本</option><option value="number" ${f.type==='number'?'selected':''}>数字</option><option value="image" ${f.type==='image'?'selected':''}>图片</option></select><button class="btn btn-secondary" style="font-size:10px;padding:2px 6px;" onclick="removeField(${i})">×</button></div>`).join('');
+    // Show test fields
+    const tf=document.getElementById('testFields');
+    tf.innerHTML=fields.map(f=>`<div class="field" style="margin-bottom:6px;"><label>${esc(f.name||f.node+'::'+f.input)}</label>${f.type==='image'?'<input type="text" placeholder="图片URL" id="tf_'+f.id+'">':'<input type="text" placeholder="输入值" id="tf_'+f.id+'">'}</div>`).join('');
+}
+
+function autoDetectMapping(){
+    if(!currentWfData) return;
+    const nodes=currentWfData;const fields=[];
+    if(typeof nodes!=='object') return;
+    Object.entries(nodes).forEach(([nid,nd])=>{
+        if(!nd||!nd.inputs) return;
+        Object.entries(nd.inputs).forEach(([ik,iv])=>{
+            if(typeof iv==='string'||typeof iv==='number'){
+                fields.push({id:'f_'+Date.now()+Math.random(),node:nid,input:ik,name:ik,type:typeof iv==='number'?'number':'text',default:iv});
+            }
+        });
+    });
+    if(!window.currentCfg) window.currentCfg={title:'',fields:[]};
+    window.currentCfg.fields=fields;renderMapping(fields);
+}
+
+function removeField(i){if(window.currentCfg?.fields){window.currentCfg.fields.splice(i,1);renderMapping(window.currentCfg.fields);}}
+function autoSave(){if(window.currentCfg)window.currentCfg.title=document.getElementById('cfgTitle').value;}
+
+async function saveConfig(){
+    if(!currentWf||!window.currentCfg) return;
+    window.currentCfg.title=document.getElementById('cfgTitle').value;
+    try{await apiFetch('/api/comfyui/workflows/'+encodeURIComponent(currentWf)+'/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(window.currentCfg)});showToast('保存成功');loadWorkflows();}catch(e){showToast('保存失败: '+e.message,'err');}
+}
+
+async function uploadWorkflow(input){
+    const file=input.files?.[0];if(!file) return;
+    try{const json=JSON.parse(await file.text());
+    const name=file.name.replace('.json','');
+    await apiFetch('/api/comfyui/workflows',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name,workflow:json})});
+    showToast('上传成功');loadWorkflows();selectWorkflow('custom/'+name+'.json');
+    }catch(e){showToast('上传失败: '+e.message,'err');}input.value='';
+}
+
+async function deleteWorkflow(){
+    if(!currentWf||!confirm('删除此工作流？')) return;
+    try{await apiFetch('/api/comfyui/workflows/'+encodeURIComponent(currentWf),{method:'DELETE'});currentWf='';loadWorkflows();document.getElementById('detailPanel').style.display='none';document.getElementById('emptyState').style.display='';}catch(e){showToast('删除失败: '+e.message,'err');}
+}
+
+async function testRun(){
+    if(!currentWf||!window.currentCfg) return;
+    const fields={};
+    (window.currentCfg.fields||[]).forEach(f=>{
+        const el=document.getElementById('tf_'+f.id);if(el) fields[f.node+'::'+f.input]=el.value;
+    });
+    document.getElementById('runOutput').style.display='';document.getElementById('runOutput').textContent='运行中...';
+    try{const d=await apiJson('/api/comfyui/workflows/'+encodeURIComponent(currentWf)+'/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fields:fields,client_id:'comfyui-page'})});
+    document.getElementById('runOutput').textContent=JSON.stringify(d,null,2);
+    }catch(e){document.getElementById('runOutput').textContent='运行失败: '+e.message;}
+}
+
+function showToast(m,t){const o=document.querySelector('.toast');if(o)o.remove();const d=document.createElement('div');d.className='toast '+(t||'ok');d.textContent=m;document.body.appendChild(d);setTimeout(()=>d.remove(),2800);}
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');}
+loadWorkflows();
+window.addEventListener('message',e=>{if(e.data?.type==='theme')document.documentElement.classList.toggle('dark',e.data.theme==='dark');if(e.data?.type==='refresh')loadWorkflows();});
+</script>
+</body>
+</html>

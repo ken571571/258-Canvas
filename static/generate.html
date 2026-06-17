@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>API生图</title>
+<link rel="stylesheet" href="/static/css/style.css?v=3">
+<style>
+.page{max-width:1080px}
+.actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.result-wrap{position:relative;display:inline-block;max-width:100%}
+.result-wrap img{cursor:zoom-in;max-width:100%;max-height:60vh;border-radius:8px;display:block}
+.result-wrap:hover .result-actions{opacity:1}
+.result-actions{position:absolute;top:8px;right:8px;display:flex;gap:6px;opacity:0;transition:opacity .2s}
+.result-actions button{width:36px;height:36px;border-radius:8px;border:1px solid rgba(255,255,255,.3);background:rgba(0,0,0,.45);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;backdrop-filter:blur(6px);transition:all .15s}
+.result-actions button:hover{background:rgba(0,0,0,.7);border-color:#fff}
+/* Lightbox */
+.lightbox{display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.92);align-items:center;justify-content:center;overflow:hidden}
+.lightbox.open{display:flex}
+.lightbox img{max-width:94vw;max-height:94vh;object-fit:contain;border-radius:4px;transition:transform .15s ease;cursor:grab;user-select:none}
+.lightbox img:active{cursor:grabbing}
+.lightbox-close{position:absolute;top:16px;right:20px;width:40px;height:40px;border-radius:8px;border:none;background:rgba(255,255,255,.12);color:#fff;font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:10}
+.lightbox-close:hover{background:rgba(255,255,255,.25)}
+.lightbox-dl{position:absolute;top:16px;right:68px;height:40px;padding:0 16px;border-radius:8px;border:none;background:rgba(255,255,255,.12);color:#fff;font-size:13px;font-weight:800;cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .15s;text-decoration:none;z-index:10}
+.lightbox-dl:hover{background:rgba(255,255,255,.25)}
+.lightbox-zoom{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:4px;background:rgba(0,0,0,.65);border-radius:10px;padding:6px;z-index:10;backdrop-filter:blur(6px)}
+.lightbox-zoom button{width:36px;height:36px;border-radius:8px;border:none;background:transparent;color:#fff;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;line-height:1}
+.lightbox-zoom button:hover{background:rgba(255,255,255,.18)}
+.lightbox-zoom .zoom-pct{color:rgba(255,255,255,.7);font-size:11px;font-weight:800;min-width:44px;text-align:center;font-family:ui-monospace,monospace}
+</style>
+<script src="/static/js/i18n.js?v=1"></script>
+</head>
+<body>
+<div class="page">
+    <h1>API生图</h1>
+    <p class="page-subtitle">选择模型、尺寸和提示词，生成结果会保存在本地素材输出目录。</p>
+    <div class="grid-2">
+        <section class="panel">
+            <div class="panel-title">生成参数</div>
+            <div class="form-group">
+                <label>提示词 Prompt</label>
+                <textarea id="prompt" rows="4" placeholder="描述你想要的画面..."></textarea>
+            </div>
+            <div class="form-group">
+                <label>API 平台</label>
+                <select id="provider-select" onchange="onProviderChangeForGenerate()"><option>加载中...</option></select>
+            </div>
+            <div class="form-group">
+                <label>模型</label>
+                <select id="model-select" onchange="localStorage.setItem('gen_model',this.value)"><option>加载中...</option></select>
+            </div>
+            <div class="form-group">
+                <label>尺寸</label>
+                <select id="size-select">
+                    <option value="1024x1024">1024x1024 (方形 1:1)</option>
+                    <option value="1792x1024">1792x1024 (横版 16:9)</option>
+                    <option value="1024x1792">1024x1792 (竖版 9:16)</option>
+                    <option value="1536x1024">1536x1024 (横版 3:2)</option>
+                    <option value="1024x1536">1024x1536 (竖版 2:3)</option>
+                </select>
+            </div>
+            <div class="actions">
+                <button class="btn btn-primary" id="generate-btn" onclick="generate()">生成图片</button>
+                <div class="status" id="status"></div>
+            </div>
+        </section>
+        <section class="panel">
+            <div class="panel-title">结果预览</div>
+            <div class="preview" id="preview">
+                <div class="preview-empty">等待生成结果</div>
+            </div>
+        </section>
+    </div>
+</div>
+
+<!-- 全图灯箱 -->
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+    <button class="lightbox-close" onclick="closeLightbox()" title="关闭">×</button>
+    <a class="lightbox-dl" id="lightboxDl" href="#" download target="_blank">⬇ 下载</a>
+    <img id="lightboxImg" src="" alt="预览" onclick="event.stopPropagation()" draggable="false">
+    <div class="lightbox-zoom" onclick="event.stopPropagation()">
+        <button onclick="lightboxZoom(-1)" title="缩小">−</button>
+        <span class="zoom-pct" id="zoomPct">100%</span>
+        <button onclick="lightboxZoom(1)" title="放大">+</button>
+        <button onclick="lightboxZoom(0)" title="重置">⟲</button>
+    </div>
+</div>
+
+<script src="/static/js/api.js?v=3"></script>
+<script>
+// 存储所有 provider 的完整数据
+let allProviders = [];
+let currentGenerateProvider = '';
+
+async function loadModels() {
+    const sel = document.getElementById('model-select');
+    const providerSel = document.getElementById('provider-select');
+    sel.innerHTML = '<option>加载中...</option>';
+    allProviders = [];
+
+    // 从后端获取 Provider 列表（内存缓存，多次调用不重复请求）
+    const remoteProvs = await refreshProviders();
+    remoteProvs.forEach(p => {
+        if ((p.image_models || []).length > 0) {
+            allProviders.push({ id: p.id, name: p.name || p.id, image_models: [...p.image_models] });
+        }
+    });
+
+    sel.innerHTML = '';
+    providerSel.innerHTML = '';
+
+    if (!allProviders.length) {
+        sel.innerHTML = '<option value="">请在 API 设置中添加生图模型</option>';
+        providerSel.innerHTML = '<option value="">无可用平台</option>';
+        return;
+    }
+
+    allProviders.forEach(p => {
+        providerSel.innerHTML += `<option value="${p.id}">${p.name || p.id} (${p.image_models.length} 个)</option>`;
+    });
+
+    // 恢复上次选择
+    const savedPid = localStorage.getItem('gen_provider');
+    const savedModel = localStorage.getItem('gen_model');
+    if (savedPid && allProviders.some(p => p.id === savedPid)) {
+        providerSel.value = savedPid;
+        currentGenerateProvider = savedPid;
+    } else {
+        providerSel.value = allProviders[0].id;
+        currentGenerateProvider = allProviders[0].id;
+    }
+    onProviderChangeForGenerate();
+    // 恢复上次模型
+    if (savedModel) {
+        const sel = document.getElementById('model-select');
+        setTimeout(() => { if ([...sel.options].some(o => o.value === savedModel)) sel.value = savedModel; }, 50);
+    }
+}
+
+function onProviderChangeForGenerate() {
+    const providerId = document.getElementById('provider-select').value;
+    currentGenerateProvider = providerId;
+    localStorage.setItem('gen_provider', providerId);
+    const sel = document.getElementById('model-select');
+    sel.innerHTML = '';
+
+    const p = allProviders.find(x => x.id === providerId);
+    if (!p || !p.image_models.length) {
+        sel.innerHTML = '<option value="">该平台无可用模型</option>';
+        return;
+    }
+    p.image_models.forEach(m => {
+        sel.innerHTML += `<option value="${m}">${m}</option>`;
+    });
+}
+
+async function generate() {
+    const btn = document.getElementById('generate-btn');
+    const status = document.getElementById('status');
+    const prompt = document.getElementById('prompt').value.trim();
+    const model = document.getElementById('model-select').value;
+
+    if (!prompt) { status.textContent = '请输入提示词'; status.className = 'status error'; return; }
+    if (!model) { status.textContent = '请选择模型'; status.className = 'status error'; return; }
+
+    btn.textContent = '生成中...'; btn.disabled = true;
+    status.textContent = '正在请求 API...'; status.className = 'status';
+    document.getElementById('preview').innerHTML = '<div class="skeleton skeleton-block"></div>';
+
+    // 直接用当前选中的平台
+    const providerId = currentGenerateProvider;
+
+    try {
+        const resp = await apiFetch('/api/generate', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                prompt: prompt,
+                model: model,
+                size: document.getElementById('size-select').value,
+                provider_id: providerId
+            })
+        });
+        const data = await resp.json();
+        if (resp.ok && data.url) {
+            const imgUrl = data.url;
+            document.getElementById('preview').innerHTML = `
+                <div class="result-wrap">
+                    <img src="${imgUrl}" alt="result" onclick="openLightbox('${imgUrl}')" title="点击放大">
+                    <div class="result-actions">
+                        <button onclick="event.stopPropagation();downloadImage('${imgUrl}')" title="下载">⬇</button>
+                        <button onclick="event.stopPropagation();openLightbox('${imgUrl}')" title="放大">⛶</button>
+                    </div>
+                </div>`;
+            status.textContent = '生成成功';
+            status.className = 'status';
+        } else {
+            status.textContent = '生成失败: ' + (data.detail || JSON.stringify(data));
+            status.className = 'status error';
+        }
+    } catch(e) {
+        status.textContent = '请求失败: ' + e.message;
+        status.className = 'status error';
+    }
+    btn.textContent = '生成图片'; btn.disabled = false;
+}
+
+// 加载模型列表
+loadModels();
+
+// 灯箱
+let lbScale = 1, lbPanX = 0, lbPanY = 0, lbDragging = false, lbLastX = 0, lbLastY = 0;
+
+function openLightbox(url) {
+    lbScale = 1; lbPanX = 0; lbPanY = 0;
+    const img = document.getElementById('lightboxImg');
+    img.src = url;
+    img.style.transform = 'scale(1) translate(0,0)';
+    document.getElementById('zoomPct').textContent = '100%';
+    document.getElementById('lightboxDl').href = url;
+    document.getElementById('lightboxDl').setAttribute('download', url.split('/').pop() || 'image.png');
+    document.getElementById('lightbox').classList.add('open');
+}
+
+function closeLightbox() {
+    document.getElementById('lightbox').classList.remove('open');
+}
+
+function lightboxZoom(dir) {
+    if (dir === 0) { lbScale = 1; lbPanX = 0; lbPanY = 0; }
+    else if (dir > 0) lbScale = Math.min(lbScale * 1.4, 8);
+    else lbScale = Math.max(lbScale / 1.4, 0.2);
+    if (lbScale <= 1) { lbPanX = 0; lbPanY = 0; }
+    applyLightboxTransform();
+}
+
+function applyLightboxTransform() {
+    const img = document.getElementById('lightboxImg');
+    img.style.transform = `scale(${lbScale}) translate(${lbPanX}px,${lbPanY}px)`;
+    document.getElementById('zoomPct').textContent = Math.round(lbScale * 100) + '%';
+}
+
+// Mouse wheel zoom
+document.getElementById('lightbox').addEventListener('wheel', function(e) {
+    if (!this.classList.contains('open')) return;
+    e.preventDefault();
+    const dir = e.deltaY < 0 ? 1 : -1;
+    if (dir > 0) lbScale = Math.min(lbScale * 1.15, 8);
+    else lbScale = Math.max(lbScale / 1.15, 0.2);
+    if (lbScale <= 1) { lbPanX = 0; lbPanY = 0; }
+    applyLightboxTransform();
+}, { passive: false });
+
+// Pan with mouse drag
+const lbImg = document.getElementById('lightboxImg');
+lbImg.addEventListener('mousedown', function(e) {
+    if (lbScale <= 1) return;
+    e.preventDefault();
+    lbDragging = true; lbLastX = e.clientX; lbLastY = e.clientY;
+});
+document.addEventListener('mousemove', function(e) {
+    if (!lbDragging) return;
+    lbPanX += (e.clientX - lbLastX) / lbScale;
+    lbPanY += (e.clientY - lbLastY) / lbScale;
+    lbLastX = e.clientX; lbLastY = e.clientY;
+    applyLightboxTransform();
+});
+document.addEventListener('mouseup', function() { lbDragging = false; });
+
+function downloadImage(url) {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = url.split('/').pop() || 'image.png';
+    a.click();
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox(); });
+
+// 监听主题切换
+window.addEventListener('message', e => {
+    if (e.data?.type === 'theme') {
+        document.documentElement.classList.toggle('dark', e.data.theme === 'dark');
+    }
+    if (e.data?.type === 'refresh') loadModels();
+});
+</script>
+</body>
+</html>

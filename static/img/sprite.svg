@@ -1,0 +1,142 @@
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+  <!-- 无限画布 — SVG Sprite (21 icons) -->
+  <!-- Usage: <ui-icon name="icon-name" size="20"></ui-icon> -->
+  <!-- Renders: <svg><use href="/static/img/sprite.svg#icon-name"></use></svg> -->
+
+  <!-- 1. logo — 无限画布 logo (infinity loop) -->
+  <symbol id="logo" viewBox="0 0 24 24">
+    <path d="M12 12c-2-2.67-4-4-6-4a4 4 0 1 0 0 8c2 0 4-1.33 6-4 2 2.67 4 4 6 4a4 4 0 0 0 0-8c-2 0-4 1.33-6 4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+  </symbol>
+
+  <!-- 2. sparkle — 生图 (star/sparkle) -->
+  <symbol id="sparkle" viewBox="0 0 24 24">
+    <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+
+  <!-- 3. grid — 无限画布 (4-square grid) -->
+  <symbol id="grid" viewBox="0 0 24 24">
+    <rect width="7" height="7" x="3" y="3" rx="1" fill="none" stroke="currentColor" stroke-width="2"/>
+    <rect width="7" height="7" x="14" y="3" rx="1" fill="none" stroke="currentColor" stroke-width="2"/>
+    <rect width="7" height="7" x="3" y="14" rx="1" fill="none" stroke="currentColor" stroke-width="2"/>
+    <rect width="7" height="7" x="14" y="14" rx="1" fill="none" stroke="currentColor" stroke-width="2"/>
+  </symbol>
+
+  <!-- 4. chat — Chat 对话 (message bubble) -->
+  <symbol id="chat" viewBox="0 0 24 24">
+    <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+
+  <!-- 5. monitor — Agent (robot/monitor with stand) -->
+  <symbol id="monitor" viewBox="0 0 24 24">
+    <path d="M12 8V4H8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    <rect width="16" height="12" x="4" y="8" rx="2" fill="none" stroke="currentColor" stroke-width="2"/>
+    <path d="M2 14h2" fill="none" stroke="currentColor" stroke-width="2"/>
+    <path d="M20 14h2" fill="none" stroke="currentColor" stroke-width="2"/>
+    <path d="M15 13v2" fill="none" stroke="currentColor" stroke-width="2"/>
+    <path d="M9 13v2" fill="none" stroke="currentColor" stroke-width="2"/>
+  </symbol>
+
+  <!-- 6. box — ComfyUI (3D cube/hexagon network node) -->
+  <symbol id="box" viewBox="0 0 24 24">
+    <path d="m7.5 4.27 9 5.15" fill="none" stroke="currentColor" stroke-width="2"/>
+    <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" fill="none" stroke="currentColor" stroke-width="2"/>
+    <path d="m3.3 7 8.7 5 8.7-5" fill="none" stroke="currentColor" stroke-width="2"/>
+    <path d="M12 22V12" fill="none" stroke="currentColor" stroke-width="2"/>
+  </symbol>
+
+  <!-- 7. settings — API 设置 (gear) -->
+  <symbol id="settings" viewBox="0 0 24 24">
+    <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/>
+  </symbol>
+
+  <!-- 8. sun — 亮色主题切换 (sun with rays) -->
+  <symbol id="sun" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2"/>
+    <path d="M12 2v2M12 20v2m-7.07-17.07 1.41 1.41m9.9 9.9 1.41 1.41M2 12h2m16 0h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+  </symbol>
+
+  <!-- 9. moon — 暗色主题切换 (crescent moon) -->
+  <symbol id="moon" viewBox="0 0 24 24">
+    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+  </symbol>
+
+  <!-- 10. image — 图片节点 (photo with landscape) -->
+  <symbol id="image" viewBox="0 0 24 24">
+    <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="2"/>
+    <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor" stroke="none"/>
+    <polyline points="21 15 16 10 5 21" fill="none" stroke="currentColor" stroke-width="2"/>
+  </symbol>
+
+  <!-- 11. prompt — 提示词节点 (T-bar text cursor) -->
+  <symbol id="prompt" viewBox="0 0 24 24">
+    <polyline points="4 7 4 4 20 4 20 7" fill="none" stroke="currentColor" stroke-width="2"/>
+    <line x1="9" y1="20" x2="15" y2="20" fill="none" stroke="currentColor" stroke-width="2"/>
+    <line x1="12" y1="4" x2="12" y2="20" fill="none" stroke="currentColor" stroke-width="2"/>
+  </symbol>
+
+  <!-- 12. lightning — 生图节点 (lightning bolt) -->
+  <symbol id="lightning" viewBox="0 0 24 24">
+    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="none" stroke="currentColor" stroke-width="2"/>
+  </symbol>
+
+  <!-- 13. video — 生视频节点 (camera with play) -->
+  <symbol id="video" viewBox="0 0 24 24">
+    <polygon points="23 7 16 12 23 17 23 7" fill="none" stroke="currentColor" stroke-width="2"/>
+    <rect x="1" y="5" width="15" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2"/>
+  </symbol>
+
+  <!-- 14. agent — Agent 节点 (robot head) -->
+  <symbol id="agent" viewBox="0 0 24 24">
+    <rect x="7" y="8" width="10" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    <circle cx="12" cy="5" r="2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    <line x1="12" y1="2" x2="12" y2="5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+  </symbol>
+
+  <!-- 15. list — 列队/循环节点 (bullet list) -->
+  <symbol id="list" viewBox="0 0 24 24">
+    <line x1="8" y1="6" x2="21" y2="6" fill="none" stroke="currentColor" stroke-width="2"/>
+    <line x1="8" y1="12" x2="21" y2="12" fill="none" stroke="currentColor" stroke-width="2"/>
+    <line x1="8" y1="18" x2="21" y2="18" fill="none" stroke="currentColor" stroke-width="2"/>
+    <circle cx="4" cy="6" r="1.5" fill="currentColor" stroke="none"/>
+    <circle cx="4" cy="12" r="1.5" fill="currentColor" stroke="none"/>
+    <circle cx="4" cy="18" r="1.5" fill="currentColor" stroke="none"/>
+  </symbol>
+
+  <!-- 16. download — 输出节点 (download/export) -->
+  <symbol id="download" viewBox="0 0 24 24">
+    <polyline points="7 13 12 18 17 13" fill="none" stroke="currentColor" stroke-width="2"/>
+    <polyline points="12 18 12 2" fill="none" stroke="currentColor" stroke-width="2"/>
+    <path d="M20 22H4a2 2 0 01-2-2v-2a2 2 0 012-2h16a2 2 0 012 2v2a2 2 0 01-2 2z" fill="none" stroke="currentColor" stroke-width="2"/>
+  </symbol>
+
+  <!-- 17. cube — ComfyUI 工具栏 (hexagon) -->
+  <symbol id="cube" viewBox="0 0 24 24">
+    <polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2" fill="none" stroke="currentColor" stroke-width="2"/>
+    <line x1="12" y1="22" x2="12" y2="15.5" fill="none" stroke="currentColor" stroke-width="2"/>
+  </symbol>
+
+  <!-- 18. save — 保存 (floppy disk) -->
+  <symbol id="save" viewBox="0 0 24 24">
+    <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z" fill="none" stroke="currentColor" stroke-width="2"/>
+    <polyline points="17 21 17 13 7 13 7 21" fill="none" stroke="currentColor" stroke-width="2"/>
+    <polyline points="7 3 7 8 15 8" fill="none" stroke="currentColor" stroke-width="2"/>
+  </symbol>
+
+  <!-- 19. folder — 资产库 (folder/panel grid) -->
+  <symbol id="folder" viewBox="0 0 24 24">
+    <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="2"/>
+    <line x1="3" y1="9" x2="21" y2="9" fill="none" stroke="currentColor" stroke-width="2"/>
+    <line x1="9" y1="21" x2="9" y2="9" fill="none" stroke="currentColor" stroke-width="2"/>
+  </symbol>
+
+  <!-- 20. refresh — 检查更新 (circular arrows) -->
+  <symbol id="refresh" viewBox="0 0 24 24">
+    <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+
+  <!-- 21. check — 勾选标记 (model picker) -->
+  <symbol id="check" viewBox="0 0 24 24">
+    <polyline points="20 6 9 17 4 12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+</svg>

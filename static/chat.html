@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chat 对话</title>
+<link rel="stylesheet" href="/static/css/style.css?v=4">
+<style>
+.chat-page { display:flex; height:100vh; overflow:hidden; }
+.chat-sidebar {
+    width:260px; min-width:260px; background:var(--surface-2);
+    border-right:1px solid var(--border); display:flex; flex-direction:column;
+    overflow-y:auto; padding:14px 12px; gap:8px;
+}
+.chat-sidehead { display:flex; align-items:center; justify-content:space-between; }
+.chat-sidehead h2 { font-size:12px; font-weight:900; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+.chat-main { flex:1; display:flex; flex-direction:column; min-width:0; }
+.chat-log { flex:1; overflow-y:auto; padding:18px; display:flex; flex-direction:column; gap:12px; background:var(--bg); }
+.chat-msg { max-width:min(78%, 760px); padding:11px 14px; border-radius:var(--radius); font-size:14px; line-height:1.65; white-space:pre-wrap; }
+.chat-msg.user { align-self:flex-end; background:var(--accent); color:var(--accent-ink); }
+.chat-msg.assistant { align-self:flex-start; background:var(--surface); color:var(--text); border:1px solid var(--border); }
+.chat-input-row { display:flex; gap:10px; padding:14px 16px; border-top:1px solid var(--border); background:var(--surface); }
+.chat-input-row textarea { flex:1; padding:11px 12px; border-radius:var(--radius); border:1px solid var(--border); background:var(--bg); color:var(--text); font-size:14px; resize:none; min-height:44px; outline:none; }
+.chat-input-row textarea:focus { border-color:var(--accent); box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent); }
+.chat-input-row .stream-toggle { min-width:40px; padding:8px 10px; border-radius:var(--radius); border:1px solid var(--border); background:var(--surface-2); color:var(--muted); cursor:pointer; font-size:12px; font-weight:800; }
+.chat-input-row .stream-toggle.active { color:var(--good); border-color:color-mix(in srgb, var(--good) 50%, var(--border)); background:color-mix(in srgb, var(--good) 10%, var(--surface)); }
+
+.conv-list { display:flex; flex-direction:column; gap:3px; }
+.conv-item {
+    display:flex; align-items:center; gap:8px; padding:9px 10px; border-radius:6px;
+    cursor:pointer; border:1px solid transparent; transition:all .12s;
+    font-size:12.5px; font-weight:700; color:var(--text);
+}
+.conv-item:hover { background:var(--surface); border-color:var(--border); }
+.conv-item.active { background:var(--surface); border-color:var(--border); }
+.conv-item .conv-title { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.conv-item .conv-del {
+    width:22px; height:22px; border-radius:5px; border:none; background:transparent;
+    color:var(--muted); font-size:13px; cursor:pointer; display:none;
+    align-items:center; justify-content:center; flex-shrink:0;
+}
+.conv-item:hover .conv-del { display:flex; }
+.conv-item .conv-del:hover { color:#fff; background:#dc2626; }
+
+.add-conv-btn { width:100%; height:36px; border:1px dashed var(--border-strong); border-radius:var(--radius); background:transparent; color:var(--muted); cursor:pointer; font-size:11px; font-weight:800; display:flex; align-items:center; justify-content:center; gap:6px; transition:all .15s; }
+.add-conv-btn:hover { color:var(--text); border-color:var(--muted); background:var(--surface); }
+
+.welcome { align-self:center; text-align:center; color:var(--muted); font-size:13px; margin-top:56px; padding:12px 16px; border:1px dashed var(--border); border-radius:var(--radius); background:var(--surface); }
+
+.model-row { display:flex; gap:6px; padding:6px 0; }
+.model-row select { flex:1; height:30px; padding:0 8px; border-radius:6px; border:1px solid var(--border); background:var(--bg); color:var(--text); font-size:11px; outline:none; }
+</style>
+<script src="/static/js/i18n.js?v=1"></script>
+</head>
+<body>
+<div class="chat-page">
+    <aside class="chat-sidebar">
+        <div class="chat-sidehead"><h2>对话历史</h2><span style="font-size:10px;color:var(--muted);font-weight:800;" id="convCount">0</span></div>
+        <div class="model-row">
+            <select id="providerSelect" onchange="updateModelSelect()"></select>
+            <select id="modelSelect" onchange="currentModel=this.value;localStorage.setItem('chat_model',this.value)"></select>
+        </div>
+        <button class="add-conv-btn" onclick="newConv()"><span>+</span> 新对话</button>
+        <div class="conv-list" id="convList"></div>
+    </aside>
+    <main class="chat-main">
+        <div class="chat-log" id="chat-log">
+            <div class="welcome">输入消息开始对话，Enter 发送</div>
+        </div>
+        <div class="chat-input-row">
+            <button class="stream-toggle active" id="stream-btn" onclick="toggleStream()" title="流式输出">⚡</button>
+            <textarea id="chat-input" rows="1" placeholder="输入消息... (Enter 发送, Shift+Enter 换行)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();send()}"></textarea>
+            <button class="btn btn-primary" onclick="send()">发送</button>
+        </div>
+    </main>
+</div>
+
+<script src="/static/js/api.js?v=4"></script>
+<script>
+const log = document.getElementById('chat-log');
+const input = document.getElementById('chat-input');
+const convList = document.getElementById('convList');
+let currentConvId = '';
+let useStream = true;
+let currentModel = 'gpt-4o-mini';
+let currentProvider = 'openai';
+
+function initTheme() { if(localStorage.theme==='dark') document.documentElement.classList.add('dark'); }
+initTheme();
+
+// ===== 模型选择 =====
+function loadProviders() {
+    const sel = document.getElementById('providerSelect');
+    try {
+        const data = getCachedProviders();
+        const withChat = data.filter(p => (p.chat_models||[]).length > 0);
+        sel.innerHTML = withChat.map(p => `<option value="${p.id}">${esc(p.name||p.id)}</option>`).join('') || '<option value="openai">OpenAI</option>';
+        // 恢复上次选择
+        const savedPid = localStorage.getItem('chat_provider') || (withChat[0]?.id || 'openai');
+        if (withChat.some(p => p.id === savedPid)) sel.value = savedPid;
+        currentProvider = sel.value;
+        updateModelSelect(true);
+    } catch(e) { sel.innerHTML = '<option value="openai">OpenAI</option>'; }
+}
+function updateModelSelect(restoring = false) {
+    const sel = document.getElementById('modelSelect');
+    const pid = document.getElementById('providerSelect').value;
+    currentProvider = pid;
+    localStorage.setItem('chat_provider', pid);
+    try {
+        const data = getCachedProviders();
+        const p = data.find(x => x.id === pid);
+        const models = (p?.chat_models||[]).length ? p.chat_models : ['gpt-4o-mini'];
+        sel.innerHTML = models.map(m => `<option value="${m}">${m}</option>`).join('');
+        const savedModel = localStorage.getItem('chat_model');
+        if (restoring && savedModel && models.includes(savedModel)) { sel.value = savedModel; currentModel = savedModel; }
+        else { currentModel = models[0]; }
+    } catch(e) { sel.innerHTML = '<option value="gpt-4o-mini">gpt-4o-mini</option>'; }
+}
+
+// ===== 对话历史 =====
+async function loadConversations() {
+    try {
+        const r = await apiFetch('/api/threads');
+        const d = await r.json();
+        const convs = d.conversations || [];
+        document.getElementById('convCount').textContent = convs.length;
+        convList.innerHTML = convs.map(c => {
+            const active = c.id === currentConvId ? ' active' : '';
+            return `<div class="conv-item${active}" onclick="switchConv('${c.id}')">
+                <span class="conv-title" title="${esc(c.title||c.id)}">${esc(c.title||'对话')}</span>
+                <span style="font-size:9px;color:var(--muted);flex-shrink:0;">${c.message_count||0}</span>
+                <button class="conv-del" onclick="event.stopPropagation();deleteConv('${c.id}')" title="删除">×</button>
+            </div>`;
+        }).join('') || '<div style="color:var(--muted);font-size:11px;text-align:center;padding:12px;">暂无对话</div>';
+        // Keep current selection in sync
+        if (currentConvId && !convs.find(c => c.id === currentConvId)) {
+            convList.querySelector('.active')?.classList.remove('active');
+        }
+    } catch (e) { console.error(e); }
+}
+
+function newConv() {
+    currentConvId = '';
+    log.innerHTML = '<div class="welcome">输入消息开始对话，Enter 发送</div>';
+    convList.querySelectorAll('.conv-item').forEach(el => el.classList.remove('active'));
+    input.focus();
+}
+
+async function switchConv(id) {
+    if (!id) { newConv(); return; }
+    currentConvId = id;
+    try {
+        const r = await apiFetch('/api/threads/' + id);
+        if (!r.ok) { newConv(); return; }
+        const d = await r.json();
+        log.innerHTML = '';
+        (d.messages || []).forEach(m => {
+            if (m.role === 'user' || m.role === 'assistant') addMsg(m.role, m.content);
+        });
+        if (!d.messages?.length) log.innerHTML = '<div class="welcome">对话已加载。</div>';
+    } catch (e) { log.innerHTML = '<div class="welcome">加载失败。</div>'; }
+    log.scrollTop = log.scrollHeight;
+    loadConversations();
+}
+
+async function deleteConv(id) {
+    if (!confirm('确定删除此对话？')) return;
+    try {
+        await apiFetch('/api/threads/' + id, { method: 'DELETE' });
+        if (currentConvId === id) newConv();
+        loadConversations();
+    } catch (e) { alert('删除失败: '+e.message); }
+}
+
+// ===== 消息 =====
+function addMsg(role, text) {
+    if (!text) return;
+    const div = document.createElement('div');
+    div.className = 'chat-msg ' + role;
+    div.textContent = text;
+    log.appendChild(div);
+    log.scrollTop = log.scrollHeight;
+}
+function addStreamMsg(role) {
+    const div = document.createElement('div');
+    div.className = 'chat-msg ' + role;
+    div.id = 'stream-msg';
+    log.appendChild(div);
+    return div;
+}
+
+// ===== 发送 =====
+async function send() {
+    const text = input.value.trim();
+    if (!text) return;
+    addMsg('user', text);
+    input.value = '';
+    if (useStream) await sendStream(text);
+    else await sendNormal(text);
+    loadConversations();
+}
+
+async function sendNormal(text) {
+    try {
+        const resp = await apiFetch('/api/llm', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ message: text, provider_id: currentProvider, model: currentModel, conversation_id: currentConvId })
+        });
+        const data = await resp.json();
+        addMsg('assistant', data.reply || '无回复');
+        if (data.conversation_id) { currentConvId = data.conversation_id; loadConversations(); }
+    } catch (e) { addMsg('assistant', '错误: '+e.message); }
+}
+
+async function sendStream(text) {
+    const streamDiv = addStreamMsg('assistant');
+    let fullContent = '';
+    try {
+        const resp = await apiFetch('/api/llm/stream', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ message: text, provider_id: currentProvider, model: currentModel, conversation_id: currentConvId })
+        });
+        const reader = resp.body.getReader(); const decoder = new TextDecoder(); let buffer = '';
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n'); buffer = lines.pop() || '';
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    const ds = line.slice(6);
+                    if (ds === '[DONE]') continue;
+                    try {
+                        const data = JSON.parse(ds);
+                        if (data.content) { fullContent += data.content; streamDiv.textContent = fullContent; log.scrollTop = log.scrollHeight; }
+                        if (data.done && data.conversation_id) { currentConvId = data.conversation_id; loadConversations(); }
+                        if (data.error) streamDiv.textContent = '错误: '+data.error;
+                    } catch(e) {}
+                }
+            }
+        }
+    } catch(e) { streamDiv.textContent = fullContent || ('错误: '+e.message); }
+    if (streamDiv.id === 'stream-msg') streamDiv.removeAttribute('id');
+}
+
+function toggleStream() { useStream = !useStream; document.getElementById('stream-btn').classList.toggle('active', useStream); }
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'); }
+
+(async function() {
+    await refreshProviders();
+    loadConversations();
+    loadProviders();
+    input.focus();  // 自动聚焦输入框，用户可直接输入
+})();
+window.addEventListener('message', e => { if (e.data?.type === 'theme') document.documentElement.classList.toggle('dark', e.data.theme === 'dark'); if (e.data?.type === 'refresh') { refreshProviders().then(() => loadProviders()); } });
+</script>
+</body>
+</html>

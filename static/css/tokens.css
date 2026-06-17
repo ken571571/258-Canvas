@@ -1,0 +1,66 @@
+/* === 无限画布 — Design Tokens === */
+/* Layer: tokens (lowest precedence) */
+
+@layer tokens {
+  :root {
+    color-scheme: light;
+    --bg: #fbfbf8;
+    --surface: #ffffff;
+    --surface-2: #f3f4f1;
+    --sidebar-bg: #f7f7f2;
+    --stage-bg: #edece7;
+    --border: #deded5;
+    --border-strong: #c9c9bd;
+    --text: #202124;
+    --muted: #74756f;
+    --accent: #2563eb;
+    --accent-ink: #ffffff;
+    --accent-soft: #e8efff;
+    --good: #10b981;
+    --bad: #ef4444;
+    --warn: #b7791f;
+    --nav-hover: #ecefe7;
+    --shadow: 0 10px 28px rgba(32, 33, 36, .08);
+    --radius: 8px;
+  }
+
+  html.dark {
+    color-scheme: dark;
+    --bg: #0f1115;
+    --surface: #1a1d24;
+    --surface-2: #242830;
+    --sidebar-bg: #13151a;
+    --stage-bg: #0b0d10;
+    --border: #2a2e38;
+    --border-strong: #383d48;
+    --text: #e4e4e7;
+    --muted: #8b8fa3;
+    --accent: #60a5fa;
+    --accent-ink: #0a1018;
+    --accent-soft: #172033;
+    --nav-hover: #1e2129;
+    --shadow: 0 16px 34px rgba(0, 0, 0, .44);
+  }
+
+  /* ——— Reset ——— */
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body {
+    height:100%;
+    overflow:hidden;
+    font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background:var(--bg);
+    color:var(--text);
+  }
+  button, input, textarea, select { font:inherit; }
+  button:disabled { opacity:.55; cursor:not-allowed; }
+
+  /* ——— Scrollbar ——— */
+  ::-webkit-scrollbar{width:8px;height:8px}
+  ::-webkit-scrollbar-thumb{background:color-mix(in srgb, var(--muted) 45%, transparent);border-radius:999px}
+  ::-webkit-scrollbar-track{background:transparent}
+
+  /* ——— Dark shadow override ——— */
+  html.dark {
+    --shadow: 0 12px 36px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.03);
+  }
+}

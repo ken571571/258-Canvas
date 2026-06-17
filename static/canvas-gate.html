@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>画布管理</title>
+<link rel="stylesheet" href="/static/css/style.css?v=4">
+<style>
+.page { padding:28px 32px; max-width:1100px; margin:0 auto; height:100vh; overflow-y:auto; }
+.page h1 { font-size:24px; font-weight:900; margin-bottom:6px; }
+.page-sub { color:var(--muted); font-size:13px; margin-bottom:24px; }
+.gate-toolbar { display:flex; gap:10px; margin-bottom:20px; align-items:center; }
+.gate-toolbar input { flex:1; height:40px; padding:0 14px; border-radius:var(--radius); border:1px solid var(--border); background:var(--bg); color:var(--text); font-size:13px; outline:none; max-width:320px; }
+.gate-toolbar input:focus { border-color:var(--accent); box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent); }
+.gate-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(240px, 1fr)); gap:16px; }
+.gate-card {
+    background:var(--surface); border:1px solid var(--border); border-radius:12px;
+    overflow:hidden; cursor:pointer; transition:all .2s ease; position:relative;
+}
+.gate-card:hover { transform:translateY(-3px); box-shadow:0 12px 28px rgba(0,0,0,.1); border-color:var(--border-strong); }
+.gate-card-preview { height:140px; background:var(--stage-bg); display:flex; align-items:center; justify-content:center; font-size:40px; color:var(--muted); }
+.gate-card-body { padding:14px 16px; }
+.gate-card-title { font-size:14px; font-weight:800; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.gate-card-meta { font-size:11px; color:var(--muted); margin-top:4px; }
+.gate-card-actions { position:absolute; top:8px; right:8px; display:flex; gap:4px; opacity:0; transition:opacity .15s; }
+.gate-card:hover .gate-card-actions { opacity:1; }
+.gate-card-actions button { width:28px; height:28px; border-radius:6px; border:none; background:rgba(0,0,0,.45); color:#fff; cursor:pointer; font-size:13px; display:flex; align-items:center; justify-content:center; backdrop-filter:blur(6px); transition:all .15s; }
+.gate-card-actions button:hover { background:rgba(0,0,0,.7); }
+.gate-card-actions button.del:hover { background:rgba(220,38,38,.8); }
+.empty-state { text-align:center; padding:60px; color:var(--muted); }
+.empty-state button { margin-top:16px; }
+</style>
+<script src="/static/js/i18n.js?v=1"></script>
+</head>
+<body>
+<div class="page">
+    <h1>画布管理</h1>
+    <p class="page-sub">管理所有画布，点击进入编辑</p>
+    <div class="gate-toolbar">
+        <input id="searchInput" type="text" placeholder="搜索画布..." oninput="renderCards()">
+        <button class="btn btn-primary" onclick="createCanvas()">+ 新建画布</button>
+    </div>
+    <div class="gate-grid" id="cardGrid"></div>
+    <div class="empty-state" id="emptyState" style="display:none;">
+        <div style="font-size:48px;margin-bottom:12px;">🎨</div>
+        还没有画布，创建一个开始吧
+        <br><button class="btn btn-primary" onclick="createCanvas()">+ 新建画布</button>
+    </div>
+</div>
+
+<script src="/static/js/api.js?v=4"></script>
+<script>
+let canvases = [];
+
+async function load() {
+    try {
+        const data = await apiJson('/api/boards');
+        canvases = (data.canvases || []).filter(c => !c.deleted_at);
+        renderCards();
+    } catch(e) { console.error(e); }
+}
+
+function renderCards() {
+    const q = (document.getElementById('searchInput')?.value || '').toLowerCase();
+    const filtered = canvases.filter(c => !q || (c.title||'').toLowerCase().includes(q));
+    const grid = document.getElementById('cardGrid');
+    const empty = document.getElementById('emptyState');
+
+    if (!filtered.length) {
+        grid.innerHTML = '';
+        empty.style.display = '';
+        return;
+    }
+    empty.style.display = 'none';
+    grid.innerHTML = filtered.map(c => {
+        const nodeCount = (c.nodes||[]).length;
+        const date = c.updated_at ? new Date(c.updated_at).toLocaleDateString('zh-CN') : '';
+        return `<div class="gate-card" onclick="openCanvas('${c.id}')">
+            <div class="gate-card-preview">${nodeCount ? '🔲' + nodeCount : '📄'}</div>
+            <div class="gate-card-body">
+                <div class="gate-card-title">${esc(c.title||'未命名')}</div>
+                <div class="gate-card-meta">${nodeCount} 节点 · ${date}</div>
+            </div>
+            <div class="gate-card-actions" onclick="event.stopPropagation()">
+                <button data-rename-id="${c.id}" data-rename-title="${esc(c.title||'')}" onclick="renameCanvas(this.dataset.renameId, this.dataset.renameTitle)" title="重命名">✎</button>
+                <button class="del" onclick="deleteCanvas('${c.id}')" title="删除">×</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+async function createCanvas() {
+    const name = prompt('画布名称:', '新画布');
+    if (name === null) return;  // 用户点了取消
+    const title = name.trim() || '新画布';
+    try {
+        const data = await apiJson('/api/boards', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({title})
+        });
+        openCanvas(data.canvas.id);
+    } catch(e) { alert('创建失败: '+e.message); }
+}
+
+function openCanvas(id) {
+    localStorage.setItem('canvas_current_id', id);
+    window.parent.postMessage({type:'navigate', page:'canvas'}, '*');
+}
+
+async function renameCanvas(id, oldTitle) {
+    const name = prompt('新名称:', oldTitle)?.trim();
+    if (!name) return;
+    try {
+        await apiJson(`/api/boards/${id}/meta`, {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({title:name})
+        });
+        load();
+    } catch(e) { alert('重命名失败: '+e.message); }
+}
+
+async function deleteCanvas(id) {
+    if (!confirm('确定删除此画布？')) return;
+    try {
+        await apiFetch(`/api/boards/${id}`, {method:'DELETE'});
+        load();
+    } catch(e) { alert('删除失败: '+e.message); }
+}
+
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'); }
+
+(function(){ if(localStorage.theme==='dark') document.documentElement.classList.add('dark'); })();
+load();
+window.addEventListener('message', e => {
+    if (e.data?.type === 'theme') document.documentElement.classList.toggle('dark', e.data.theme === 'dark');
+    if (e.data?.type === 'refresh') load();
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,1587 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>API 设置 — 无限画布</title>
+<link rel="stylesheet" href="/static/css/style.css?v=4">
+<style>
+/* === 页面框架 === */
+.api-page { display:flex; height:100vh; overflow:hidden; }
+.api-sidebar {
+    width:290px; min-width:290px; background:var(--surface-2);
+    border-right:1px solid var(--border); display:flex; flex-direction:column;
+    overflow-y:auto; padding:18px 14px; gap:14px;
+}
+.api-main {
+    flex:1; overflow-y:auto; padding:24px 28px;
+    display:flex; flex-direction:column; gap:20px;
+    background:var(--bg);
+}
+.api-sidehead { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.api-sidehead h2 { font-size:13px; font-weight:900; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+
+/* === 侧边栏 Provider 列表 === */
+.provider-list { display:flex; flex-direction:column; gap:6px; }
+.provider-item {
+    display:grid; grid-template-columns:32px 1fr 28px; align-items:center; gap:10px;
+    padding:10px 12px; border-radius:var(--radius); cursor:pointer;
+    border:1px solid transparent; transition:all .15s;
+    position:relative;
+}
+.provider-item::before {
+    content:""; position:absolute; left:0; top:10px; bottom:10px;
+    width:2px; border-radius:999px; background:transparent; transition:background .15s;
+}
+.provider-item:hover { background:var(--surface); border-color:var(--border); }
+.provider-item.active { background:var(--surface); border-color:var(--border); }
+.provider-item.active::before { background:var(--accent); }
+.provider-dot {
+    width:32px; height:32px; border-radius:8px; display:flex; align-items:center; justify-content:center;
+    font-size:15px; font-weight:900; color:var(--muted); background:var(--bg);
+}
+.provider-item.active .provider-dot { background:color-mix(in srgb, var(--accent) 12%, transparent); color:var(--accent); }
+.provider-name { font-size:13px; font-weight:800; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.provider-meta { font-size:10.5px; color:var(--muted); margin-top:1px; font-weight:600; }
+.provider-del {
+    width:28px; height:28px; border-radius:6px; display:flex; align-items:center; justify-content:center;
+    color:var(--muted); font-size:16px; cursor:pointer; transition:all .15s;
+    visibility:hidden;
+}
+.provider-item:hover .provider-del { visibility:visible; }
+.provider-del:hover { color:var(--bad); background:color-mix(in srgb, var(--bad) 10%, transparent); }
+
+.add-provider-btn {
+    width:100%; height:42px; border:1px dashed var(--border-strong); border-radius:var(--radius);
+    background:transparent; color:var(--muted); cursor:pointer;
+    font-size:12px; font-weight:800; display:flex; align-items:center; justify-content:center; gap:8px;
+    transition:all .15s;
+}
+.add-provider-btn:hover { color:var(--text); border-color:var(--muted); background:var(--surface); }
+
+/* 默认平台推荐列表 */
+.recommend-toggle {
+    width:100%; height:38px; border:1px solid var(--border); border-radius:var(--radius);
+    background:var(--surface); color:var(--muted); cursor:pointer;
+    font-size:11.5px; font-weight:800; display:flex; align-items:center; justify-content:space-between;
+    padding:0 14px; transition:all .15s;
+}
+.recommend-toggle:hover { color:var(--text); border-color:var(--muted); }
+.recommend-toggle .rec-arrow { font-size:10px; transition:transform .2s; }
+.recommend-toggle.open .rec-arrow { transform:rotate(180deg); }
+
+.recommend-list { display:flex; flex-direction:column; gap:2px; max-height:280px; overflow-y:auto; }
+.recommend-list .rec-item {
+    display:flex; align-items:center; gap:8px; padding:7px 10px; border-radius:6px;
+    cursor:pointer; font-size:12px; font-weight:700; color:var(--muted);
+    transition:all .12s; border:1px solid transparent;
+}
+.recommend-list .rec-item:hover { background:var(--surface); color:var(--text); border-color:var(--border); }
+.recommend-list .rec-item .rec-dot {
+    width:24px; height:24px; border-radius:5px; display:flex; align-items:center; justify-content:center;
+    font-size:11px; font-weight:900; background:var(--bg); color:var(--muted); flex-shrink:0;
+}
+.recommend-list .rec-item .rec-badge {
+    margin-left:auto; font-size:9px; padding:1px 5px; border-radius:3px; font-weight:800;
+    background:color-mix(in srgb, var(--good) 10%, transparent); color:var(--good);
+    white-space:nowrap;
+}
+.recommend-list .rec-item .rec-badge.third { background:color-mix(in srgb, var(--warn) 10%, transparent); color:var(--warn); }
+.recommend-list .rec-item .rec-added { font-size:9px; color:var(--muted); margin-left:auto; }
+
+/* === 推荐平台卡片面板 === */
+.platforms-panel { display:flex; flex-direction:column; gap:20px; }
+.platforms-panel-head { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+.platforms-panel-head h2 { font-size:16px; font-weight:900; }
+.platforms-card-grid {
+    display:grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap:10px;
+}
+.platform-card {
+    background:var(--surface); border:1px solid var(--border); border-radius:12px;
+    padding:14px; display:flex; flex-direction:column; gap:10px;
+    transition:box-shadow .15s, transform .15s;
+}
+.platform-card:hover { box-shadow:0 6px 20px rgba(0,0,0,.05); transform:translateY(-1px); }
+html.dark .platform-card:hover { box-shadow:0 6px 20px rgba(0,0,0,.3); }
+.platform-card-top { display:flex; align-items:flex-start; gap:10px; }
+.platform-card-avatar {
+    width:38px; height:38px; border-radius:10px; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+    font-size:14px; font-weight:900;
+    background:var(--accent-soft); color:var(--accent);
+}
+.platform-card-info { flex:1; min-width:0; }
+.platform-card-name { font-size:13px; font-weight:900; }
+.platform-card-desc { font-size:11px; color:var(--muted); line-height:1.45; margin-top:2px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.platform-card-meta { display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-top:4px; }
+.platform-card-tag {
+    display:inline-block; padding:1px 7px; border-radius:4px;
+    font-size:10px; font-weight:700; background:var(--surface-2); color:var(--muted);
+}
+.platform-card-tag.official { background:color-mix(in srgb, var(--good) 10%, transparent); color:var(--good); }
+.platform-card-tag.third { background:color-mix(in srgb, var(--warn) 10%, transparent); color:var(--warn); }
+.platform-card-actions { display:flex; gap:6px; align-items:center; padding-top:6px; border-top:1px solid var(--border); }
+.platform-card-actions .btn-xs {
+    font-size:10px; font-weight:800; padding:3px 9px; border-radius:5px;
+    border:1px solid var(--border); background:var(--surface); color:var(--muted);
+    cursor:pointer; transition:all .12s;
+}
+.platform-card-actions .btn-xs:hover { background:var(--nav-hover); color:var(--text); }
+.platform-card-actions .btn-xs.add { background:var(--accent); color:var(--accent-ink); border-color:transparent; }
+.platform-card-actions .btn-xs.add:hover { filter:brightness(1.1); }
+.platform-card-actions .added-mark { margin-left:auto; font-size:10px; color:var(--good); font-weight:700; }
+
+/* === 安全/ComfyUI 快速入口 === */
+.quick-links { display:flex; flex-direction:column; gap:4px; margin-top:auto; padding-top:12px; border-top:1px solid var(--border); }
+.quick-link {
+    height:40px; border-radius:var(--radius); display:flex; align-items:center; gap:10px;
+    padding:0 12px; font-size:12px; font-weight:800; color:var(--muted); cursor:pointer;
+    transition:all .15s; border:none; background:transparent; text-align:left; width:100%;
+}
+.quick-link:hover { color:var(--text); background:var(--surface); }
+.quick-link .dot { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+.quick-link .dot.green { background:var(--good); }
+.quick-link .dot.orange { background:var(--warn); }
+
+/* === 主内容区 === */
+.content-head {
+    display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;
+    padding:20px 24px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+}
+.content-head .editor-title { font-size:22px; font-weight:900; letter-spacing:-.01em; }
+.content-head .editor-sub { margin-top:4px; color:var(--muted); font-size:12px; font-weight:600; }
+.content-actions { display:flex; gap:8px; align-items:center; }
+
+.block {
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+    padding:20px 24px; display:flex; flex-direction:column; gap:16px;
+}
+.block-head {
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding-bottom:14px; border-bottom:1px solid var(--border);
+}
+.block-title { font-size:12px; font-weight:900; letter-spacing:.08em; text-transform:uppercase; color:var(--text); }
+.block-desc { margin-top:4px; color:var(--muted); font-size:11.5px; font-weight:600; max-width:560px; }
+
+.form-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.form-grid .full { grid-column:1/-1; }
+
+.field { display:flex; flex-direction:column; gap:6px; }
+.field label { font-size:11px; font-weight:800; color:var(--muted); letter-spacing:.02em; }
+.field input, .field select {
+    width:100%; height:42px; padding:0 12px; border-radius:var(--radius);
+    border:1px solid var(--border); background:var(--bg); color:var(--text);
+    font-size:13px; outline:none; transition:border-color .15s, box-shadow .15s;
+}
+.field input:focus, .field select:focus {
+    border-color:var(--accent); box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.field .hint { font-size:10.5px; color:var(--muted); font-weight:600; }
+.field .hint code { padding:1px 6px; border-radius:5px; background:var(--surface-2); font-family:ui-monospace,Menlo,monospace; font-size:10.5px; }
+
+/* Key 输入行 */
+.key-row { display:grid; grid-template-columns:1fr auto; gap:8px; align-items:center; }
+.key-actions { display:flex; gap:6px; }
+.key-btn {
+    width:42px; height:42px; border-radius:var(--radius); border:1px solid var(--border);
+    background:var(--surface); color:var(--muted); cursor:pointer; display:flex; align-items:center; justify-content:center;
+    transition:all .15s; font-size:16px;
+}
+.key-btn:hover { color:var(--text); border-color:var(--muted); }
+.key-btn.clear:hover { color:var(--bad); border-color:var(--bad); background:color-mix(in srgb, var(--bad) 6%, transparent); }
+.key-btn.eye-btn { font-size:14px; transition:color .15s, background .15s; }
+.get-key-btn {
+    height:28px; padding:0 12px; border-radius:6px; border:1px solid #2563eb;
+    background:rgba(37,99,235,.08); color:#2563eb; cursor:pointer;
+    font-size:11px; font-weight:800; white-space:nowrap; transition:all .15s;
+    display:inline-flex; align-items:center; gap:4px;
+}
+.get-key-btn:hover { background:#2563eb; color:#fff; }
+
+/* 模型列表 */
+.model-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.model-grid .wide { grid-column:1/-1; }
+
+.model-list { display:flex; flex-direction:column; gap:6px; }
+.model-row {
+    display:grid; grid-template-columns:1fr 34px; align-items:center; gap:6px;
+    padding:5px; border:1px solid var(--border); border-radius:var(--radius);
+    background:var(--bg);
+}
+.model-row input {
+    height:36px; padding:0 10px; border:none; background:transparent;
+    font-size:12.5px; font-family:ui-monospace,Menlo,monospace; color:var(--text);
+    width:100%; outline:none;
+}
+.model-row:focus-within { border-color:var(--accent); }
+
+.model-add-row { display:grid; grid-template-columns:1fr auto; gap:8px; align-items:center; margin-top:8px; }
+.model-add-row input { height:36px; padding:0 10px; border-radius:var(--radius); border:1px dashed var(--border); background:transparent; font-size:12.5px; font-family:ui-monospace,Menlo,monospace; outline:none; width:100%; }
+.model-add-row input:focus { border-color:var(--accent); border-style:solid; }
+.model-add-btn {
+    height:36px; padding:0 14px; border-radius:var(--radius); border:1px solid var(--border);
+    background:var(--surface); color:var(--muted); cursor:pointer;
+    font-size:11.5px; font-weight:800; white-space:nowrap; transition:all .15s;
+}
+.model-add-btn:hover { color:var(--text); border-color:var(--muted); }
+
+.del-model-btn {
+    width:34px; height:34px; border-radius:6px; border:none; background:transparent;
+    color:var(--muted); cursor:pointer; font-size:15px; display:flex; align-items:center; justify-content:center;
+    transition:all .15s;
+}
+.del-model-btn:hover { color:var(--bad); background:color-mix(in srgb, var(--bad) 8%, transparent); }
+
+/* 操作按钮行 */
+.action-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+
+/* 状态提示 */
+.inline-status { font-size:11.5px; font-weight:700; min-height:20px; padding:6px 0; }
+.inline-status.ok { color:var(--good); }
+.inline-status.err { color:var(--bad); }
+/* Toast */
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:9999;padding:10px 20px;border-radius:var(--radius);font-size:13px;font-weight:800;animation:toast-in .25s;max-width:90vw;text-align:center}
+.toast.ok{background:var(--good);color:#fff}
+.toast.err{background:var(--bad);color:#fff}
+.toast.warn{background:var(--warn);color:#fff}
+@keyframes toast-in{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+/* 空状态快捷操作 */
+.empty-hint-btn{display:inline-block;margin-top:8px;padding:4px 12px;border-radius:6px;border:1px solid var(--accent);background:transparent;color:var(--accent);font-size:11px;font-weight:800;cursor:pointer;transition:all .15s}
+.empty-hint-btn:hover{background:var(--accent);color:var(--accent-ink)}
+
+/* === 模型选择器浮层 === */
+.picker-overlay { display:none; position:fixed; inset:0; z-index:300; background:rgba(0,0,0,.32); backdrop-filter:blur(8px); align-items:center; justify-content:center; padding:28px; }
+.picker-overlay.open { display:flex; }
+.picker-modal { width:min(800px,96vw); max-height:85vh; background:var(--surface); border:1px solid var(--border); border-radius:14px; display:flex; flex-direction:column; overflow:hidden; box-shadow:var(--shadow); }
+.picker-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:16px 20px; border-bottom:1px solid var(--border); }
+.picker-title { font-size:16px; font-weight:900; color:var(--text); }
+.picker-count { font-size:11px; color:var(--muted); font-weight:700; margin-top:2px; }
+.picker-close { width:32px; height:32px; border-radius:8px; display:flex; align-items:center; justify-content:center; color:var(--muted); cursor:pointer; font-size:16px; transition:all .15s; }
+.picker-close:hover { background:var(--surface-2); color:var(--text); }
+.picker-toolbar { display:flex; align-items:center; gap:10px; padding:12px 20px; border-bottom:1px solid var(--border); flex-wrap:wrap; }
+.picker-search { flex:1; min-width:140px; height:36px; padding:0 12px; border:1px solid var(--border); border-radius:var(--radius); background:var(--bg); color:var(--text); outline:none; font-size:12.5px; }
+.picker-search:focus { border-color:var(--accent); }
+.picker-tabs { display:flex; gap:3px; background:var(--surface-2); padding:3px; border-radius:var(--radius); border:1px solid var(--border); }
+.picker-tab { height:30px; padding:0 12px; border-radius:6px; display:inline-flex; align-items:center; gap:5px; color:var(--muted); font-size:11px; font-weight:800; cursor:pointer; border:none; background:transparent; transition:all .15s; }
+.picker-tab:hover { color:var(--text); }
+.picker-tab.active { background:var(--surface); color:var(--text); box-shadow:0 1px 2px rgba(0,0,0,.05); }
+.picker-tab .cat-count { font-size:10px; padding:1px 5px; border-radius:4px; background:var(--surface-2); color:var(--muted); font-weight:800; }
+.picker-tab.active .cat-count { background:var(--bg); color:var(--text); }
+.picker-body { flex:1; overflow-y:auto; padding:8px 14px 14px; }
+.picker-body:empty::after { content:'加载中…'; display:block; padding:40px; text-align:center; color:var(--muted); font-size:13px; }
+.picker-row { display:flex; align-items:center; gap:12px; padding:10px 12px; border-bottom:1px solid var(--border); cursor:pointer; transition:background .12s; }
+.picker-row:hover { background:var(--surface-2); }
+.picker-check { width:20px; height:20px; border:2px solid var(--border-strong); border-radius:5px; flex-shrink:0; display:flex; align-items:center; justify-content:center; color:transparent; transition:all .15s; }
+.picker-check.on { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
+.picker-check svg { width:12px; height:12px; }
+.picker-model-name { flex:1; font-size:13px; font-weight:600; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:ui-monospace,Menlo,monospace; }
+.picker-model-tag { font-size:9.5px; font-weight:800; padding:2px 7px; border-radius:4px; text-transform:uppercase; letter-spacing:.04em; }
+.picker-model-tag.img { background:color-mix(in srgb, var(--good) 14%, transparent); color:var(--good); }
+.picker-model-tag.chat { background:color-mix(in srgb, var(--accent) 14%, transparent); color:var(--accent); }
+.picker-model-tag.video { background:color-mix(in srgb, var(--warn) 14%, transparent); color:var(--warn); }
+.picker-bot { display:flex; align-items:center; gap:10px; padding:12px 20px; border-top:1px solid var(--border); background:var(--surface-2); flex-wrap:wrap; }
+.picker-sum-chip { padding:5px 12px; border-radius:6px; font-size:11px; font-weight:800; color:var(--accent-ink); background:var(--accent); }
+.picker-sum-chip.empty { background:var(--surface-2); color:var(--muted); border:1px solid var(--border); }
+.picker-foot { display:flex; align-items:center; justify-content:flex-end; gap:8px; padding:12px 20px; border-top:1px solid var(--border); }
+
+/* === 弹窗 === */
+.modal-overlay {
+    position:fixed; inset:0; z-index:200; background:rgba(0,0,0,.38); backdrop-filter:blur(6px);
+    display:none; align-items:center; justify-content:center; padding:24px;
+}
+.modal-overlay.open { display:flex; }
+.modal-box {
+    width:min(520px,90vw); max-height:85vh; overflow-y:auto;
+    background:var(--surface); border:1px solid var(--border); border-radius:12px;
+    box-shadow:var(--shadow); padding:24px; display:flex; flex-direction:column; gap:16px;
+}
+.modal-box h3 { font-size:18px; font-weight:900; }
+.modal-box .field { width:100%; }
+.modal-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:4px; }
+
+@media (max-width:860px) {
+    .api-page { flex-direction:column; }
+    .api-sidebar { width:100%; min-width:0; max-height:200px; flex-shrink:0; }
+    .form-grid, .model-grid { grid-template-columns:1fr; }
+    .content-head { flex-direction:column; align-items:flex-start; }
+}
+</style>
+<script src="/static/js/i18n.js?v=1"></script>
+</head>
+<body>
+
+<div class="api-page">
+    <!-- ===== 左侧 Provider 列表 ===== -->
+    <aside class="api-sidebar">
+        <div class="api-sidehead">
+            <h2>平台列表</h2>
+            <span style="font-size:10px;color:var(--muted);font-weight:800;" id="providerCount">0</span>
+        </div>
+        <div class="provider-list" id="providerList"></div>
+        <button class="add-provider-btn" onclick="addProvider()">
+            <span style="font-size:18px;">+</span> 新增平台
+        </button>
+        <button class="add-provider-btn" onclick="showPlatformsView()" style="border-style:solid;">
+            <span style="font-size:16px;">📋</span> 浏览推荐平台
+        </button>
+        <div class="quick-links">
+            <button class="quick-link" onclick="scrollToSection('securityBlock')">
+                <span class="dot green"></span> 安全设置
+            </button>
+        </div>
+    </aside>
+
+    <!-- ===== 右侧配置区 ===== -->
+    <main class="api-main">
+
+        <!-- === 配置视图 === -->
+        <div id="configView">
+
+        <!-- 顶部操作栏 -->
+        <div class="content-head">
+            <div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;">
+                <div>
+                    <div class="editor-title" id="editorTitle">选择平台</div>
+                    <div class="editor-sub" id="editorSub">从左侧列表选择一个平台进行配置</div>
+                </div>
+                <span id="verifyStatus" style="font-size:11.5px;font-weight:700;min-width:180px;"></span>
+            </div>
+            <div class="content-actions">
+                <button class="btn btn-secondary" onclick="openRegister()" style="color:#2563eb;border-color:rgba(37,99,235,.3);background:rgba(37,99,235,.06);">注册账号</button>
+                <button class="btn btn-secondary" onclick="deleteCurrentProvider()" id="deleteBtn" style="display:none;" title="删除当前平台">删除</button>
+                <button class="btn btn-secondary" onclick="testConnection()" id="testBtn">验证连接</button>
+                <button class="btn btn-secondary" onclick="fetchModels()" id="fetchBtn">拉取模型</button>
+                <button class="btn btn-primary" onclick="saveCurrent()">保存当前</button>
+            </div>
+        </div>
+
+        <!-- 基本信息 -->
+        <section class="block" id="basicBlock">
+            <div class="block-head">
+                <div>
+                    <div class="block-title">基本信息</div>
+                    <div class="block-desc">平台显示名、唯一标识和请求地址</div>
+                </div>
+            </div>
+            <div class="form-grid">
+                <div class="field">
+                    <label>平台名称</label>
+                    <input id="nameInput" type="text" placeholder="例如: OpenAI" oninput="updateProviderMeta()">
+                    <span class="hint">平台 ID: <code id="idPreview">—</code></span>
+                </div>
+                <div class="field">
+                    <label>协议类型</label>
+                    <select id="protocolSelect" onchange="onProtocolChange()">
+                        <option value="openai">OpenAI 协议</option>
+                        <option value="apimart">APIMart</option>
+                        <option value="gemini">Gemini 协议</option>
+                        <option value="volcengine">火山方舟</option>
+                        <option value="modelscope">ModelScope</option>
+                                                <option value="runninghub">RunningHub</option>
+                        <option value="deepseek">DeepSeek</option>
+                    </select>
+                </div>
+                <div class="field full" id="baseUrlField">
+                    <label>请求地址 (Base URL)</label>
+                    <input id="baseInput" type="text" placeholder="https://api.openai.com/v1" oninput="updateProviderMeta()">
+                </div>
+                <div class="field full" id="keyField">
+                    <span style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                        <label>API Key</label>
+                        <button class="get-key-btn" onclick="openKeyPage()" title="获取 API Key">获取 API Key &#8599;</button>
+                    </span>
+                    <div class="key-row">
+                        <input id="keyInput" type="password" placeholder="sk-..." autocomplete="off">
+                        <div class="key-actions">
+                            <button class="key-btn eye-btn" onclick="toggleKeyVis('keyInput', this)" title="显示/隐藏">&#128065;</button>
+                            <button class="key-btn" onclick="saveKeyOnly()" title="保存 Key">&#10003;</button>
+                            <button class="key-btn clear" onclick="clearKeyOnly()" title="清除 Key">&#10005;</button>
+                        </div>
+                    </div>
+                    <span class="hint" id="keyHint"></span>
+                    <script>document.getElementById('keyInput').addEventListener('input', function(){
+                        const hint = document.getElementById('keyHint');
+                        if (this.value.trim() && this.dataset.masked !== 'true') {
+                            hint.textContent = '已输入但未保存，切换平台前请点 ✓';
+                            hint.style.color = 'var(--warn)';
+                        } else { hint.style.color = ''; }
+                    });</script>
+                </div>
+                <!-- RunningHub 余额 Key（仅 RunningHub 显示） -->
+                <div class="field full" id="walletKeyField" style="display:none;">
+                    <span><label>账户余额 API Key <span style="color:var(--muted);font-weight:600;">· 可选</span></label></span>
+                    <div class="key-row">
+                        <input id="walletKeyInput" type="password" placeholder="使用账户余额接口时填写..." autocomplete="off">
+                        <div class="key-actions">
+                            <button class="key-btn eye-btn" onclick="toggleKeyVis('walletKeyInput', this)" title="显示/隐藏">&#128065;</button>
+                            <button class="key-btn" onclick="saveWalletKey()" title="保存余额 Key">&#10003;</button>
+                            <button class="key-btn clear" onclick="clearWalletKey()" title="清除余额 Key">&#10005;</button>
+                        </div>
+                    </div>
+                    <span class="hint" id="walletKeyHint"></span>
+                </div>
+            </div>
+        </section>
+
+        <!-- 模型列表 -->
+        <div class="model-grid">
+            <section class="block">
+                <div class="block-head">
+                    <div>
+                        <div class="block-title">生图模型</div>
+                        <div class="block-desc">在线生图和画布 API 生成使用</div>
+                    </div>
+                </div>
+                <div class="model-list" id="imageModelList"></div>
+                <div class="model-add-row">
+                    <input id="newImageModel" type="text" placeholder="输入模型名，如 dall-e-3" onkeydown="if(event.key==='Enter')addModel('image')">
+                    <button class="model-add-btn" onclick="addModel('image')">+ 添加</button>
+                </div>
+            </section>
+
+            <section class="block">
+                <div class="block-head">
+                    <div>
+                        <div class="block-title">文本模型</div>
+                        <div class="block-desc">GPT 对话和 Agent 节点使用</div>
+                    </div>
+                </div>
+                <div class="model-list" id="chatModelList"></div>
+                <div class="model-add-row">
+                    <input id="newChatModel" type="text" placeholder="输入模型名，如 gpt-4o-mini" onkeydown="if(event.key==='Enter')addModel('chat')">
+                    <button class="model-add-btn" onclick="addModel('chat')">+ 添加</button>
+                </div>
+            </section>
+
+            <section class="block wide" id="videoModelBlock">
+                <div class="block-head">
+                    <div>
+                        <div class="block-title">视频模型</div>
+                        <div class="block-desc">画布视频生成节点使用</div>
+                    </div>
+                </div>
+                <div class="model-list" id="videoModelList"></div>
+                <div class="model-add-row">
+                    <input id="newVideoModel" type="text" placeholder="输入模型名，如 veo3-fast" onkeydown="if(event.key==='Enter')addModel('video')">
+                    <button class="model-add-btn" onclick="addModel('video')">+ 添加</button>
+                </div>
+            </section>
+        </div>
+
+        <!-- 安全设置 -->
+        <section class="block" id="securityBlock">
+            <div class="block-head">
+                <div>
+                    <div class="block-title">安全设置</div>
+                    <div class="block-desc">访问密码和跨域来源配置</div>
+                </div>
+            </div>
+            <div class="form-grid">
+                <div class="field">
+                    <label>访问密码 (APP_API_KEY)</label>
+                    <input id="appApiKey" type="password" placeholder="留空则不启用鉴权" autocomplete="off">
+                    <span class="hint">设置后所有 API 请求需要携带 X-API-Key，浏览器会自动存储</span>
+                </div>
+                <div class="field">
+                    <label>CORS 允许来源</label>
+                    <input id="corsOrigins" type="text" placeholder="https://your-domain.com（可选）" autocomplete="off">
+                    <span class="hint">多个来源用逗号分隔</span>
+                </div>
+            </div>
+        </section>
+
+        <div style="display:flex;align-items:center;gap:10px;padding:4px 0;">
+            <button class="btn btn-primary" onclick="saveAll()">保存全部设置</button>
+            <span id="globalStatus" class="inline-status"></span>
+        </div>
+        </div><!-- /configView -->
+
+        <!-- === 推荐平台面板 === -->
+        <div id="platformsView" style="display:none;" class="platforms-panel">
+            <div class="platforms-panel-head">
+                <h2>📋 推荐平台</h2>
+                <button class="btn btn-secondary" onclick="showConfigView()" style="font-size:11px;padding:6px 14px;">← 返回配置</button>
+            </div>
+            <div class="platforms-card-grid" id="platformsCardGrid"></div>
+        </div>
+    </main>
+</div>
+
+<!-- 模型选择器浮层 -->
+<div class="picker-overlay" id="modelPickerOverlay" onclick="if(event.target===this)closeModelPicker()">
+    <div class="picker-modal">
+        <div class="picker-head">
+            <div>
+                <div class="picker-title">从上游拉取的模型清单</div>
+                <div class="picker-count" id="pickerCount">—</div>
+            </div>
+            <div class="picker-close" onclick="closeModelPicker()">&#10005;</div>
+        </div>
+        <div class="picker-toolbar">
+            <input id="pickerFilter" class="picker-search" type="text" placeholder="按名称搜索模型…" oninput="renderModelPicker()">
+            <div class="picker-tabs">
+                <button class="picker-tab active" data-cat="all" onclick="selectPickerCat('all')">全部 <span class="cat-count">0</span></button>
+                <button class="picker-tab" data-cat="image" onclick="selectPickerCat('image')">生图 <span class="cat-count">0</span></button>
+                <button class="picker-tab" data-cat="chat" onclick="selectPickerCat('chat')">LLM <span class="cat-count">0</span></button>
+                <button class="picker-tab" data-cat="video" onclick="selectPickerCat('video')">视频 <span class="cat-count">0</span></button>
+            </div>
+        </div>
+        <div id="pickerList" class="picker-body"></div>
+        <div class="picker-bot">
+            <span class="picker-sum-chip" id="sumImage">生图 0</span>
+            <span class="picker-sum-chip" id="sumChat">LLM 0</span>
+            <span class="picker-sum-chip" id="sumVideo">视频 0</span>
+            <span id="sumUnsel" style="margin-left:auto;color:var(--muted);font-size:11px;font-weight:700">未选 0</span>
+        </div>
+        <div class="picker-foot">
+            <button class="btn btn-secondary" type="button" onclick="closeModelPicker()">取消</button>
+            <button class="btn btn-primary" type="button" onclick="applyModelPicker()">应用到模型列表</button>
+        </div>
+    </div>
+</div>
+
+<!-- 新增 Provider 弹窗 -->
+<div class="modal-overlay" id="addProviderModal">
+    <div class="modal-box">
+        <h3>新增 API 平台</h3>
+        <div class="field">
+            <label>平台名称</label>
+            <input id="newProviderName" type="text" placeholder="例如: Gemini" oninput="autoGenProviderId()">
+        </div>
+        <div class="field">
+            <label>平台 ID</label>
+            <input id="newProviderId" type="text" placeholder="例如: gemini" oninput="this.value=this.value.replace(/[^a-zA-Z0-9_-]/g,'').toLowerCase()">
+            <span class="hint">唯一标识，只能使用英文、数字、下划线和连字符</span>
+        </div>
+        <div class="field">
+            <label>协议类型</label>
+            <select id="newProviderProtocol">
+                <option value="openai">OpenAI 协议</option>
+                <option value="apimart">APIMart</option>
+                <option value="gemini">Gemini 协议</option>
+                <option value="volcengine">火山方舟</option>
+                <option value="modelscope">ModelScope</option>
+                                <option value="runninghub">RunningHub</option>
+                <option value="deepseek">DeepSeek</option>
+            </select>
+        </div>
+        <div class="field">
+            <label>类型</label>
+            <select id="newProviderVendor">
+                <option value="official">🏛️ 官方 API</option>
+                <option value="third_party">🔄 第三方中转</option>
+            </select>
+            <span class="hint">官方 API 直接来自模型厂商，第三方中转通过中间商转发请求</span>
+        </div>
+        <div class="modal-actions">
+            <button class="btn btn-secondary" onclick="closeAddModal()">取消</button>
+            <button class="btn btn-primary" onclick="confirmAddProvider()">确认新增</button>
+        </div>
+    </div>
+</div>
+
+<script src="/static/js/api.js?v=4"></script>
+<script>
+// ===== 数据模型 =====
+let providers = [];
+let currentProviderId = null;
+const PROVIDER_CONFIG_PREFIX = 'canvas571_cfg_';
+const DEFAULT_BASE_URLS = {
+    'openai':'https://api.openai.com/v1','apimart':'https://api.apimart.ai',
+    'gemini':'https://generativelanguage.googleapis.com/v1beta',
+    'volcengine':'https://ark.cn-beijing.volces.com/api/v3',
+    'modelscope':'https://api-inference.modelscope.cn/v1',
+    'runninghub':'https://www.runninghub.cn',
+    'deepseek':'https://api.deepseek.com'
+};
+
+// ===== 初始化 =====
+async function init() {
+    // 从后端加载 Provider 列表
+    try {
+        const resp = await apiFetch('/api/providers');
+        const data = await resp.json();
+        const remoteProvs = data.providers || [];
+        // 仅用远程数据更新已有平台的模型列表，不自动添加新平台
+        const local = loadLocalProviders();
+        for (const rp of remoteProvs) {
+            const existing = local.find(p => p.id === rp.id);
+            if (existing) {
+                if (!existing.image_models.length) existing.image_models = rp.image_models || [];
+                if (!existing.chat_models.length) existing.chat_models = rp.chat_models || [];
+                if (!existing.video_models.length) existing.video_models = rp.video_models || [];
+            }
+        }
+        saveLocalProviders(local);
+    } catch (e) {
+        console.error('加载 Provider 列表失败:', e);
+    }
+
+    providers = loadLocalProviders();
+    // 补全缺失字段（vendor, desc）- 兼容旧版本存储的数据
+    providers = backfillProviderDefaults(providers);
+    saveLocalProviders(providers);
+    if (!providers.length) {
+        providers = initDefaultProviders();
+        saveLocalProviders(providers);
+    }
+
+    // 加载安全设置
+    await loadSecuritySettings();
+
+    renderProviderList();
+    if (providers.length > 0) selectProvider(providers[0].id);
+}
+
+function initDefaultProviders() {
+    return [
+        { id: 'openai', name: 'OpenAI', protocol: 'openai', base_url: 'https://api.openai.com/v1', vendor: 'official',
+          desc: 'openai.com', image_models: ['dall-e-3', 'gpt-image-2'], chat_models: ['gpt-4o-mini', 'gpt-4o'], video_models: ['veo3-fast'] },
+        { id: 'apimart', name: 'APIMart', protocol: 'apimart', base_url: 'https://api.apimart.ai', vendor: 'third_party',
+          desc: 'apimart.ai · API 中转', image_models: ['nano-banana-pro', 'gpt-image-2'], chat_models: ['gpt-4o-mini', 'gemini-3.1-flash-image-preview-2k'], video_models: ['veo3-fast', 'veo3.1-fast', 'veo2', 'sora-2', 'wan2.6-t2v', 'wan2.6-i2v'] },
+        { id: 'gemini', name: 'Gemini', protocol: 'gemini', base_url: 'https://generativelanguage.googleapis.com/v1beta', vendor: 'official',
+          desc: 'Google AI', image_models: ['gemini-2.5-flash-image-preview'], chat_models: ['gemini-2.5-flash', 'gemini-2.5-pro'], video_models: [] },
+        { id: 'volcengine', name: '火山方舟', protocol: 'volcengine', base_url: 'https://ark.cn-beijing.volces.com/api/v3', vendor: 'official',
+          desc: '字节跳动 ARK 平台', image_models: ['doubao-seedream-3-0', 'doubao-seedream-4-0'], chat_models: ['doubao-1-5-pro-32k', 'deepseek-v4-pro'], video_models: ['doubao-seedance-2-0-260128', 'doubao-seedance-2-0-fast-260128'] },
+        { id: 'modelscope', name: 'ModelScope', protocol: 'modelscope', base_url: 'https://api-inference.modelscope.cn/v1', vendor: 'official',
+          desc: '阿里魔搭社区', image_models: ['Tongyi-MAI/Z-Image-Turbo', 'Qwen/Qwen-Image-Edit-2511'], chat_models: ['Qwen/Qwen3-235B-A22B'], video_models: [] },
+        { id: 'runninghub', name: 'RunningHub', protocol: 'runninghub', base_url: 'https://www.runninghub.cn', vendor: 'official',
+          desc: 'AI 工作流平台', image_models: ['seedream-v5-lite/text-to-image'], chat_models: [], video_models: [] },
+        { id: 'deepseek', name: 'DeepSeek', protocol: 'openai', base_url: 'https://api.deepseek.com', vendor: 'official',
+          desc: 'deepseek.com', image_models: [], chat_models: ['deepseek-chat', 'deepseek-reasoner'], video_models: [] },
+        { id: 'aihubmix', name: 'AIHubMix', protocol: 'openai', base_url: 'https://aihubmix.com/v1', vendor: 'third_party',
+          desc: 'aihubmix.com · 推理时代',
+          image_models: ['gpt-image-2', 'dall-e-3'],
+          chat_models: ['gpt-4o-mini', 'gpt-4o', 'deepseek-v4-flash', 'gemini-2.5-flash'],
+          video_models: [
+            'wan2.6-t2v', 'wan2.6-i2v', 'wan2.5-t2v-preview', 'wan2.5-i2v-preview',
+            'wan2.2-t2v-plus', 'wan2.2-i2v-plus',
+            'sora-2', 'sora-2-pro',
+            'veo-3.1-generate-preview', 'veo-3.1-fast-generate-preview', 'veo-3.0-generate-preview', 'veo-2.0-generate-001',
+                        'doubao-seedance-2-0-260128', 'doubao-seedance-2-0-fast-260128',
+            'doubao-seedance-1-0-pro-fast-251015', 'doubao-seedance-1-0-pro',
+          ] },
+    ];
+}
+
+// 用默认数据中缺失的字段补全已有的 provider（vendor, desc 等）
+function backfillProviderDefaults(list) {
+    const defaults = initDefaultProviders();
+    for (const p of list) {
+        const def = defaults.find(d => d.id === p.id);
+        if (def) {
+            if (!p.vendor) p.vendor = def.vendor;
+            if (!p.desc) p.desc = def.desc;
+            if (!p.base_url) p.base_url = def.base_url;
+            // 修正被后端覆写的 protocol（modelscope/deepseek 后端返回 "openai"）
+            if (p.protocol === 'openai' && def.protocol !== 'openai') p.protocol = def.protocol;
+            if (p.id === 'apimart' && p.base_url === 'https://ai.comfly.chat') p.base_url = def.base_url;
+        }
+    }
+    return list;
+}
+
+// ===== Local storage =====
+function loadLocalProviders() {
+    try {
+        const raw = localStorage.getItem(PROVIDER_CONFIG_PREFIX + 'list');
+        return raw ? JSON.parse(raw) : [];
+    } catch (e) { return []; }
+}
+function saveLocalProviders(list) {
+    localStorage.setItem(PROVIDER_CONFIG_PREFIX + 'list', JSON.stringify(list));
+}
+
+async function loadSecuritySettings() {
+    try {
+        const resp = await apiFetch('/api/settings/api-keys');
+        const data = await resp.json();
+        const keys = data.keys || {};
+        if (keys.APP_API_KEY) document.getElementById('appApiKey').value = keys.APP_API_KEY;
+        if (keys.CORS_ORIGINS) document.getElementById('corsOrigins').value = keys.CORS_ORIGINS;
+    } catch (e) { console.error('加载安全设置失败:', e); }
+}
+
+// ===== 渲染侧边栏 =====
+function renderProviderList() {
+    const container = document.getElementById('providerList');
+    document.getElementById('providerCount').textContent = providers.length;
+
+    container.innerHTML = providers.map(p => {
+        const active = p.id === currentProviderId ? ' active' : '';
+        const initials = (p.name || p.id).slice(0, 2).toUpperCase();
+        const modelCount = (p.image_models?.length || 0) + (p.chat_models?.length || 0) + (p.video_models?.length || 0);
+        const isOfficial = p.vendor !== 'third_party';
+        const vendorBadge = isOfficial
+            ? '<span style="display:inline-block;padding:1px 6px;border-radius:4px;background:color-mix(in srgb, var(--good) 12%, transparent);color:var(--good);font-size:9px;font-weight:900;letter-spacing:.04em;">官网</span>'
+            : '<span style="display:inline-block;padding:1px 6px;border-radius:4px;background:color-mix(in srgb, var(--warn) 12%, transparent);color:var(--warn);font-size:9px;font-weight:900;letter-spacing:.04em;">第三方</span>';
+        return `<div class="provider-item${active}" onclick="selectProvider('${p.id}')" id="prov-${p.id}">
+            <div class="provider-dot">${initials}</div>
+            <div>
+                <div class="provider-name">${esc(p.name)} ${vendorBadge}</div>
+                <div class="provider-meta">${esc(p.desc || '')} · ${modelCount} 模型</div>
+            </div>
+            <div class="provider-del" onclick="event.stopPropagation();removeProvider('${p.id}')" title="删除">×</div>
+        </div>`;
+    }).join('');
+}
+
+// ===== 选择 Provider =====
+function selectProvider(id) {
+    // 如果当前在推荐平台卡片页，先切回配置视图
+    showConfigView();
+
+    // 切换前检查是否有未保存的 Key
+    if (currentProviderId && currentProviderId !== id) {
+        const prevInput = document.getElementById('keyInput');
+        const prevStored = localStorage.getItem(PROVIDER_CONFIG_PREFIX + 'key_' + currentProviderId) || '';
+        if (prevInput.value.trim() && prevInput.dataset.masked === 'false' && prevInput.value !== prevStored) {
+            if (!confirm('当前平台有未保存的 Key，切换平台将丢失。是否保存？')) return;
+            saveKeyOnly();
+        }
+    }
+
+    currentProviderId = id;
+    const p = providers.find(x => x.id === id);
+    if (!p) return;
+
+    const vendorBadge = p.vendor !== 'third_party'
+        ? '<span style="color:var(--good);font-weight:900;">🏛️ 官方</span>'
+        : '<span style="color:var(--warn);font-weight:900;">🔄 第三方中转</span>';
+    document.getElementById('editorTitle').textContent = p.name;
+    document.getElementById('editorSub').innerHTML = `${vendorBadge} &nbsp;·&nbsp; 协议: ${p.protocol} &nbsp;·&nbsp; ${(p.image_models||[]).length + (p.chat_models||[]).length + (p.video_models||[]).length} 个模型`;
+    document.getElementById('deleteBtn').style.display = (providers.length <= 1) ? 'none' : '';
+
+    document.getElementById('nameInput').value = p.name;
+    document.getElementById('idPreview').textContent = p.id;
+    document.getElementById('protocolSelect').value = p.protocol;
+    document.getElementById('baseInput').value = p.base_url || DEFAULT_BASE_URLS[p.id] || '';
+
+    // Key 显示脱敏
+    const storedKey = localStorage.getItem(PROVIDER_CONFIG_PREFIX + 'key_' + p.id) || '';
+    const keyInput = document.getElementById('keyInput');
+    if (storedKey) {
+        keyInput.value = storedKey.length > 8 ? '••••' + storedKey.slice(-4) : '••••';
+        keyInput.dataset.masked = 'true';
+        document.getElementById('keyHint').textContent = 'Key 已保存';
+    } else {
+        keyInput.value = '';
+        keyInput.dataset.masked = '';
+        document.getElementById('keyHint').textContent = '';
+    }
+    // RunningHub 余额 Key
+    const storedWalletKey = localStorage.getItem(PROVIDER_CONFIG_PREFIX + 'wallet_key_' + p.id) || '';
+    const walletInput = document.getElementById('walletKeyInput');
+    if (storedWalletKey) {
+        walletInput.value = storedWalletKey.length > 8 ? '••••' + storedWalletKey.slice(-4) : '••••';
+        walletInput.dataset.masked = 'true';
+        document.getElementById('walletKeyHint').textContent = '余额 Key 已保存';
+    } else {
+        walletInput.value = '';
+        walletInput.dataset.masked = '';
+        document.getElementById('walletKeyHint').textContent = '';
+    }
+
+    // 重置眼睛按钮状态
+    document.querySelectorAll('.eye-btn').forEach(b => { b.style.color = ''; b.style.background = ''; b.title = '显示/隐藏'; });
+    document.getElementById('verifyStatus').innerHTML = '';
+
+    onProtocolChange();
+    renderModelLists();
+    renderProviderList();
+}
+
+// ===== 协议切换 =====
+function onProtocolChange() {
+    const protocol = document.getElementById('protocolSelect').value;
+    document.getElementById('videoModelBlock').style.display = (protocol === 'gemini' || protocol === 'modelscope' || protocol === 'runninghub') ? 'none' : '';
+
+    // 预填默认 API 地址
+    const p = providers.find(x => x.id === currentProviderId);
+    const baseInput = document.getElementById('baseInput');
+    if (!baseInput.value.trim() && DEFAULT_BASE_URLS[protocol]) {
+        baseInput.value = DEFAULT_BASE_URLS[protocol];
+        if (p) p.base_url = DEFAULT_BASE_URLS[protocol];
+    }
+}
+
+// ===== 模型列表渲染 =====
+function renderModelLists() {
+    const p = providers.find(x => x.id === currentProviderId);
+    if (!p) return;
+
+    const renderList = (containerId, models, type) => {
+        const container = document.getElementById(containerId);
+        if (!models || !models.length) {
+            container.innerHTML = `<div style="padding:14px;color:var(--muted);font-size:12px;text-align:center;border:1px dashed var(--border);border-radius:var(--radius);">
+                暂无模型<br><button class="empty-hint-btn" onclick="fetchModels()">从 API 拉取模型</button>
+                <span style="margin:0 6px;color:var(--muted)">或</span>
+                <span style="font-size:11px">在下方手动添加</span>
+            </div>`;
+        } else {
+            container.innerHTML = models.map((m, i) => `
+                <div class="model-row">
+                    <input value="${esc(m)}" onchange="updateModel('${type}', ${i}, this.value)" placeholder="模型名称">
+                    <button class="del-model-btn" onclick="removeModel('${type}', ${i})" title="删除">×</button>
+                </div>
+            `).join('');
+        }
+    };
+
+    renderList('imageModelList', p.image_models, 'image');
+    renderList('chatModelList', p.chat_models, 'chat');
+    renderList('videoModelList', p.video_models, 'video');
+}
+
+function addModel(type) {
+    const inputId = type === 'image' ? 'newImageModel' : type === 'chat' ? 'newChatModel' : 'newVideoModel';
+    const input = document.getElementById(inputId);
+    const val = input.value.trim();
+    if (!val) return;
+
+    const p = providers.find(x => x.id === currentProviderId);
+    if (!p) return;
+    const key = type + '_models';
+    if (!p[key]) p[key] = [];
+    if (p[key].includes(val)) { input.value = ''; return; }
+    p[key].push(val);
+    input.value = '';
+    saveLocalProviders(providers);
+    renderModelLists();
+    renderProviderList();
+}
+
+function updateModel(type, index, value) {
+    const p = providers.find(x => x.id === currentProviderId);
+    if (!p) return;
+    const key = type + '_models';
+    if (p[key] && p[key][index] !== undefined) {
+        const trimmed = value.trim();
+        if (!trimmed) {
+            // 清空了就删除
+            p[key].splice(index, 1);
+            renderModelLists();
+        } else {
+            p[key][index] = trimmed;
+        }
+        saveLocalProviders(providers);
+        renderProviderList();
+    }
+}
+
+function removeModel(type, index) {
+    const p = providers.find(x => x.id === currentProviderId);
+    if (!p) return;
+    const key = type + '_models';
+    if (p[key]) {
+        p[key].splice(index, 1);
+        saveLocalProviders(providers);
+        renderModelLists();
+        renderProviderList();
+    }
+}
+
+// ===== 推荐平台卡片面板 =====
+function showPlatformsView() {
+    document.getElementById('configView').style.display = 'none';
+    document.getElementById('platformsView').style.display = 'flex';
+    renderPlatformCards();
+}
+function showConfigView() {
+    document.getElementById('platformsView').style.display = 'none';
+    document.getElementById('configView').style.display = '';
+}
+
+function renderPlatformCards() {
+    const defaults = initDefaultProviders();
+    const grid = document.getElementById('platformsCardGrid');
+    grid.innerHTML = defaults.map(d => {
+        const initials = d.name.slice(0, 2).toUpperCase();
+        const exists = providers.find(p => p.id === d.id);
+        const badgeCls = d.vendor === 'third_party' ? 'third' : 'official';
+        const badgeTxt = d.vendor === 'third_party' ? '第三方' : '官网';
+        const imgN = (d.image_models || []).length;
+        const chatN = (d.chat_models || []).length;
+        const vidN = (d.video_models || []).length;
+        const modelsStr = [imgN ? imgN+' 图' : '', chatN ? chatN+' 文' : '', vidN ? vidN+' 视频' : ''].filter(Boolean).join(' · ') || '暂无模型';
+
+        const actionHtml = exists
+            ? '<span class="added-mark">✓ 已添加</span><button class="btn-xs" onclick="event.stopPropagation();removePlatformCard(\'' + d.id + '\')" title="移除">✕</button>'
+            : '<button class="btn-xs add" onclick="event.stopPropagation();addPlatformCard(\'' + d.id + '\')">+ 添加</button>';
+
+        var clickAction = exists ? 'onclick="selectPlatformCard(\'' + d.id + '\')"' : '';
+        return '<div class="platform-card" ' + clickAction + ' style="' + (exists ? 'cursor:pointer;' : '') + '">' +
+            '<div class="platform-card-top">' +
+                '<div class="platform-card-avatar">' + initials + '</div>' +
+                '<div class="platform-card-info">' +
+                    '<div class="platform-card-name">' + esc(d.name) + '</div>' +
+                    '<div class="platform-card-desc">' + esc(d.desc || '') + '</div>' +
+                '</div>' +
+            '</div>' +
+            '<div class="platform-card-meta">' +
+                '<span class="platform-card-tag ' + badgeCls + '">' + badgeTxt + '</span>' +
+                '<span class="platform-card-tag">' + esc(d.protocol) + '</span>' +
+                (d.base_url ? '<span class="platform-card-tag" style="font-family:monospace;font-size:9px;">' + esc(d.base_url.replace(/^https?:\/\//, '')) + '</span>' : '') +
+            '</div>' +
+            '<div style="font-size:10px;color:var(--muted);">模型: ' + modelsStr + '</div>' +
+            '<div class="platform-card-actions">' + actionHtml + '</div>' +
+        '</div>';
+    }).join('');
+}
+
+function selectPlatformCard(id) {
+    // 点击已添加的平台卡片 → 跳转到配置视图并选中该平台
+    showConfigView();
+    selectProvider(id);
+    // 滚动左侧列表使该平台可见
+    const el = document.getElementById('prov-' + id);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function addPlatformCard(id) {
+    if (providers.find(p => p.id === id)) { showToast('该平台已在列表中', 'warn'); return; }
+    const def = initDefaultProviders().find(d => d.id === id);
+    if (!def) return;
+    providers.push({
+        id: def.id, name: def.name, protocol: def.protocol,
+        base_url: def.base_url || '', vendor: def.vendor || 'official',
+        desc: def.desc || '', image_models: [...(def.image_models || [])],
+        chat_models: [...(def.chat_models || [])], video_models: [...(def.video_models || [])]
+    });
+    saveLocalProviders(providers);
+    renderProviderList();
+    renderPlatformCards();
+    selectProvider(def.id);
+    showToast('已添加 ' + def.name);
+}
+
+function removePlatformCard(id) {
+    if (!confirm('确定要移除 "' + id + '" 平台配置吗？')) return;
+    providers = providers.filter(p => p.id !== id);
+    saveLocalProviders(providers);
+    renderProviderList();
+    renderPlatformCards();
+    if (currentProviderId === id) {
+        currentProviderId = '';
+        document.getElementById('configView').style.display = '';
+        document.getElementById('platformsView').style.display = 'none';
+        if (providers.length > 0) selectProvider(providers[0].id);
+    }
+    showToast('已移除');
+}
+
+// ===== Provider CRUD =====
+function addProvider() {
+    document.getElementById('newProviderName').value = '';
+    document.getElementById('newProviderId').value = '';
+    document.getElementById('newProviderProtocol').value = 'openai';
+    document.getElementById('addProviderModal').classList.add('open');
+    setTimeout(() => document.getElementById('newProviderName').focus(), 100);
+}
+
+function autoGenProviderId() {
+    const name = document.getElementById('newProviderName').value.trim();
+    if (name && !document.getElementById('newProviderId').value) {
+        const id = name.toLowerCase().replace(/[^a-z0-9_-]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+        document.getElementById('newProviderId').value = id;
+    }
+}
+
+function closeAddModal() {
+    document.getElementById('addProviderModal').classList.remove('open');
+}
+
+function confirmAddProvider() {
+    const name = document.getElementById('newProviderName').value.trim();
+    const id = document.getElementById('newProviderId').value.trim();
+    const protocol = document.getElementById('newProviderProtocol').value;
+    const vendor = document.getElementById('newProviderVendor').value;
+
+    if (!name) { showToast('请输入平台名称', 'warn'); return; }
+    if (!id || !/^[a-zA-Z0-9_-]{2,40}$/.test(id)) { showToast('平台 ID 只能使用英文、数字、下划线、连字符，2-40 个字符', 'warn'); return; }
+    if (providers.find(p => p.id === id)) { showToast('平台 ID 已存在', 'warn'); return; }
+
+    providers.push({ id, name, protocol, vendor, base_url: '', desc: '', image_models: [], chat_models: [], video_models: [] });
+    saveLocalProviders(providers);
+    closeAddModal();
+    renderProviderList();
+    selectProvider(id);
+}
+
+function removeProvider(id) {
+    if (!confirm(`确定要删除 "${id}" 平台配置吗？`)) return;
+    providers = providers.filter(p => p.id !== id);
+    // 清理所有关联的 key
+    localStorage.removeItem(PROVIDER_CONFIG_PREFIX + 'key_' + id);
+    localStorage.removeItem(PROVIDER_CONFIG_PREFIX + 'wallet_key_' + id);
+    saveLocalProviders(providers);
+
+    if (currentProviderId === id) {
+        currentProviderId = providers.length > 0 ? providers[0].id : null;
+        if (currentProviderId) selectProvider(currentProviderId);
+        else {
+            document.getElementById('editorTitle').textContent = '选择平台';
+            document.getElementById('editorSub').textContent = '从左侧列表选择一个平台进行配置';
+            document.getElementById('deleteBtn').style.display = 'none';
+        }
+    }
+    renderProviderList();
+}
+
+function deleteCurrentProvider() {
+    if (!currentProviderId) return;
+    if (providers.length <= 1) {
+        showToast('至少需要保留一个平台', 'warn');
+        return;
+    }
+    removeProvider(currentProviderId);
+}
+
+function guessHomePage(baseUrl) {
+    if (!baseUrl) return '';
+    try {
+        const u = new URL(baseUrl);
+        let host = u.hostname;
+        // 去掉常见 API 子域名前缀: api. / ark. / api-inference. 等
+        host = host.replace(/^(api|ark|api-inference)\./, '');
+        return u.protocol + '//' + host;
+    } catch(e) {
+        return baseUrl.replace(/\/v\d+.*$/, '').replace(/\/(api|ark).*$/, '');
+    }
+}
+
+function openKeyPage() {
+    const keyUrls = {
+        'openai':     'https://platform.openai.com/api-keys',
+        'apimart':    'https://apimart.ai/zh/keys',
+        'gemini':     'https://aistudio.google.com/apikey',
+        'volcengine': 'https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey',
+        'modelscope': 'https://www.modelscope.cn/my/access/token',
+        'runninghub': 'https://www.runninghub.cn/enterprise-api/consumerApi',
+                'deepseek':   'https://platform.deepseek.com/api_keys',
+    };
+    let url = keyUrls[currentProviderId];
+    if (!url) {
+        const base = (document.getElementById('baseInput').value || '').trim();
+        url = guessHomePage(base);
+    }
+    window.open(url || 'about:blank', '_blank');
+}
+
+function openRegister() {
+    const regUrls = {
+        'openai':     'https://platform.openai.com/signup',
+        'apimart':    'https://apimart.ai/zh/register',
+        'gemini':     'https://aistudio.google.com/',
+        'volcengine': 'https://console.volcengine.com/ark/region:ark+cn-beijing/overview',
+        'modelscope': 'https://www.modelscope.cn/',
+        'runninghub': 'https://www.runninghub.cn/',
+                'deepseek':   'https://platform.deepseek.com/',
+    };
+    let url = currentProviderId ? regUrls[currentProviderId] : null;
+    if (!url) {
+        url = guessHomePage((document.getElementById('baseInput').value || '').trim());
+    }
+    window.open(url || 'about:blank', '_blank');
+}
+
+function switchToProvider(providerId) {
+    // 切换到正确的平台
+    selectProvider(providerId);
+    // 滚动侧边栏使该平台可见
+    const el = document.getElementById('prov-' + providerId);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function autoDetectProtocol(url) {
+    if (!url) return null;
+    const u = url.toLowerCase();
+    if (u.includes('api.apimart.ai') || u.includes('ai.comfly.chat')) return 'apimart';
+    if (u.includes('generativelanguage.googleapis.com')) return 'gemini';
+    if (u.includes('ark.cn-beijing.volces.com') || u.includes('volces.com')) return 'volcengine';
+    if (u.includes('modelscope.cn') || u.includes('modelscope.ai')) return 'modelscope';
+    if (u.includes('runninghub.cn') || u.includes('runninghub.ai')) return 'runninghub';
+    if (u.includes('api.openai.com') || u.includes('openai.com')) return 'openai';
+    if (u.includes('api.deepseek.com') || u.includes('deepseek.com')) return 'deepseek';
+    return null;
+}
+
+function updateProviderMeta() {
+    const p = providers.find(x => x.id === currentProviderId);
+    if (!p) return;
+    p.name = document.getElementById('nameInput').value.trim() || p.id;
+    p.protocol = document.getElementById('protocolSelect').value;
+    p.base_url = document.getElementById('baseInput').value.trim();
+    // 自动检测协议
+    const detected = autoDetectProtocol(p.base_url);
+    if (detected && detected !== p.protocol ) {
+        document.getElementById('protocolSelect').value = detected;
+        p.protocol = detected;
+        onProtocolChange();
+    }
+    saveLocalProviders(providers);
+    document.getElementById('editorTitle').textContent = p.name;
+    document.getElementById('idPreview').textContent = p.id;
+    renderProviderList();
+}
+
+// ===== Key 操作 =====
+async function saveKeyOnly() {
+    const p = providers.find(x => x.id === currentProviderId);
+    if (!p) return;
+    const val = document.getElementById('keyInput').value.trim();
+    if (!val) return;
+
+    // 保存到 localStorage
+    localStorage.setItem(PROVIDER_CONFIG_PREFIX + 'key_' + p.id, val);
+
+    // 同时保存到后端 .env
+    const envKey = providerEnvKey(p.id);
+    try {
+        await apiFetch('/api/settings/api-keys', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ [envKey]: val })
+        });
+        document.getElementById('keyHint').textContent = 'Key 已保存到后端';
+        document.getElementById('keyHint').className = 'hint';
+    } catch (e) {
+        document.getElementById('keyHint').textContent = 'Key 已保存到浏览器，但后端写入失败: ' + e.message;
+        document.getElementById('keyHint').style.color = 'var(--bad)';
+    }
+    // 保存后保持显示真实 Key，点击眼睛才会掩码
+    document.getElementById('keyInput').dataset.masked = 'false';
+}
+
+function toggleKeyVis(inputId, btn) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    const isPassword = input.type === 'password';
+    if (isPassword && input.dataset.masked === 'true') {
+        // 从 localStorage 读取真实 Key 填入
+        const storageKey = inputId === 'keyInput'
+            ? PROVIDER_CONFIG_PREFIX + 'key_' + currentProviderId
+            : PROVIDER_CONFIG_PREFIX + 'wallet_key_' + currentProviderId;
+        const real = localStorage.getItem(storageKey) || '';
+        if (real) { input.value = real; input.dataset.masked = 'false'; }
+    }
+    if (!isPassword && input.dataset.masked === 'false') {
+        // 重新掩码
+        const val = input.value;
+        input.value = val.length > 8 ? '••••' + val.slice(-4) : '••••';
+        input.dataset.masked = 'true';
+    }
+    input.type = isPassword ? 'text' : 'password';
+    btn.style.color = isPassword ? 'var(--accent)' : '';
+    btn.style.background = isPassword ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : '';
+    btn.title = isPassword ? '隐藏' : '显示/隐藏';
+}
+
+function clearKeyOnly() {
+    const p = providers.find(x => x.id === currentProviderId);
+    if (!p) return;
+    if (!confirm('确定清除此平台的 API Key？')) return;
+
+    localStorage.removeItem(PROVIDER_CONFIG_PREFIX + 'key_' + p.id);
+    document.getElementById('keyInput').value = '';
+    document.getElementById('keyInput').dataset.masked = '';
+    document.getElementById('keyHint').textContent = 'Key 已清除';
+
+    const envKey = providerEnvKey(p.id);
+    apiFetch('/api/settings/api-keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [envKey]: '' })
+    }).catch(() => {});
+}
+
+// RunningHub 余额 Key
+function saveWalletKey() {
+    const p = providers.find(x => x.id === currentProviderId);
+    if (!p) return;
+    const val = document.getElementById('walletKeyInput').value.trim();
+    if (!val) return;
+    localStorage.setItem(PROVIDER_CONFIG_PREFIX + 'wallet_key_' + p.id, val);
+    apiFetch('/api/settings/api-keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 'RUNNINGHUB_WALLET_API_KEY': val })
+    }).then(() => {
+        document.getElementById('walletKeyHint').textContent = '余额 Key 已保存';
+        document.getElementById('walletKeyHint').className = 'hint';
+    }).catch(e => {
+        document.getElementById('walletKeyHint').textContent = 'Key 已保存到浏览器，但后端写入失败';
+    });
+    document.getElementById('walletKeyInput').dataset.masked = 'false';
+}
+
+function clearWalletKey() {
+    const p = providers.find(x => x.id === currentProviderId);
+    if (!p) return;
+    if (!confirm('确定清除 RunningHub 余额 Key？')) return;
+    localStorage.removeItem(PROVIDER_CONFIG_PREFIX + 'wallet_key_' + p.id);
+    document.getElementById('walletKeyInput').value = '';
+    document.getElementById('walletKeyInput').dataset.masked = '';
+    document.getElementById('walletKeyHint').textContent = '余额 Key 已清除';
+    apiFetch('/api/settings/api-keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 'RUNNINGHUB_WALLET_API_KEY': '' })
+    }).catch(() => {});
+}
+
+function providerEnvKey(providerId) {
+    const keyMap = {
+        'openai': 'API_PROVIDER_OPENAI_KEY',
+        'apimart': 'APIMART_API_KEY',
+        'gemini': 'GEMINI_API_KEY',
+        'volcengine': 'ARK_API_KEY',
+        'modelscope': 'MODELSCOPE_API_KEY',
+        'runninghub': 'RUNNINGHUB_API_KEY',
+                'deepseek': 'DEEPSEEK_API_KEY',
+    };
+    return keyMap[providerId] || `API_PROVIDER_${providerId.toUpperCase().replace(/-/g, '_')}_KEY`;
+}
+
+function providerBaseUrlEnvKey(providerId) {
+    // 内置平台已有约定的 _BASE_URL 变量名
+    const keyMap = {
+        'openai': 'OPENAI_BASE_URL',
+        'deepseek': 'DEEPSEEK_BASE_URL',
+        'apimart': 'APIMART_BASE_URL',
+        'gemini': 'GEMINI_BASE_URL',
+        'volcengine': 'VOLCENGINE_BASE_URL',
+        'modelscope': 'MODELSCOPE_BASE_URL',
+        'runninghub': 'RUNNINGHUB_BASE_URL',
+    };
+    return keyMap[providerId] || `${providerId.toUpperCase().replace(/-/g, '_')}_BASE_URL`;
+}
+
+// ===== 模型选择器状态 =====
+let lastFetchedAll = [];
+let pickerState = { category: {}, selected: {} };
+let pickerVisibleIds = [];
+
+// ===== 验证连接 =====
+async function testConnection() {
+    const status = document.getElementById('verifyStatus');
+    const p = providers.find(x => x.id === currentProviderId);
+    if (!p) return;
+
+    status.innerHTML = '<span style=\"color:var(--muted)\">验证中...</span>';
+
+    const apiKey = localStorage.getItem(PROVIDER_CONFIG_PREFIX + 'key_' + p.id) || '';
+    const baseUrl = document.getElementById('baseInput').value.trim();
+
+    try {
+        const resp = await apiFetch(`/api/providers/${currentProviderId}/test-connection`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ api_key: apiKey, base_url: baseUrl, protocol: p.protocol || 'openai' })
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            let msg = `<span style=\"color:var(--good);font-weight:800\">✓ 地址验证通过 · ${data.latency_ms}ms</span>`;
+            if (data.protocol && data.protocol !== document.getElementById('protocolSelect').value) {
+                document.getElementById('protocolSelect').value = data.protocol;
+                if (p) { p.protocol = data.protocol; saveLocalProviders(providers); }
+                onProtocolChange();
+                msg += ` <span style=\"color:var(--accent);font-size:10.5px\">(已自动识别为 ${data.protocol})</span>`;
+            }
+            status.innerHTML = msg;
+        } else if (data.mismatch) {
+            // URL 跟当前平台不匹配
+            const switchBtn = `<button onclick=\"switchToProvider('${data.protocol}')\" style=\"margin-left:6px;padding:2px 10px;border-radius:4px;border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);font-size:11px;font-weight:800;cursor:pointer\">切换到 ${data.protocol}</button>`;
+            status.innerHTML = `<span style=\"color:var(--warn);font-weight:800\">⚠ ${esc(data.error||'')}</span>${switchBtn}`;
+        } else {
+            status.innerHTML = `<span style=\"color:var(--warn);font-weight:800\">⚠ 验证失败 (HTTP ${data.status_code||'?'})</span> <span style=\"color:var(--muted);font-size:10.5px\">${esc((data.error||'').slice(0,80))}</span>`;
+        }
+    } catch (e) {
+        status.innerHTML = `<span style=\"color:var(--bad);font-weight:800\">⚠ ${esc(e.message)}</span>`;
+    }
+}
+
+// ===== 拉取模型 =====
+async function fetchModels() {
+    const status = document.getElementById('verifyStatus');
+    const p = providers.find(x => x.id === currentProviderId);
+    if (!p) return;
+
+    document.getElementById('fetchBtn').disabled = true;
+    document.getElementById('fetchBtn').textContent = '拉取中...';
+    status.innerHTML = '<span style=\"color:var(--muted)\">正在拉取模型列表...</span>';
+
+    const apiKey = localStorage.getItem(PROVIDER_CONFIG_PREFIX + 'key_' + p.id) || '';
+    const baseUrl = document.getElementById('baseInput').value.trim();
+
+    try {
+        const resp = await apiFetch(`/api/providers/${currentProviderId}/fetch-models`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ api_key: apiKey, base_url: baseUrl, protocol: p.protocol || 'openai' })
+        });
+        const data = await resp.json();
+
+        lastFetchedAll = data.all || [];
+        const existing = {
+            image: new Set(p.image_models || []),
+            chat: new Set(p.chat_models || []),
+            video: new Set(p.video_models || [])
+        };
+        const suggestion = {
+            image: new Set(data.image_models || []),
+            chat: new Set(data.chat_models || []),
+            video: new Set(data.video_models || [])
+        };
+
+        // 构建 pickerState
+        pickerState = { category: {}, selected: {} };
+        const allIds = new Set([...lastFetchedAll, ...(p.image_models||[]), ...(p.chat_models||[]), ...(p.video_models||[])]);
+        allIds.forEach(id => {
+            let cat;
+            if (existing.image.has(id)) cat = 'image';
+            else if (existing.video.has(id)) cat = 'video';
+            else if (existing.chat.has(id)) cat = 'chat';
+            else if (suggestion.image.has(id)) cat = 'image';
+            else if (suggestion.video.has(id)) cat = 'video';
+            else cat = 'chat';
+            pickerState.category[id] = cat;
+            pickerState.selected[id] = existing.image.has(id) || existing.chat.has(id) || existing.video.has(id);
+        });
+
+        status.innerHTML = `<span style=\"color:var(--good);font-weight:800\">✓ 已拉取 ${data.total} 个模型</span>`;
+
+        // 打开模型选择器
+        openModelPicker();
+
+    } catch (e) {
+        status.innerHTML = `<span style=\"color:var(--bad);font-weight:800\">⚠ 拉取失败: ${esc(e.message)}</span>`;
+    } finally {
+        document.getElementById('fetchBtn').disabled = false;
+        document.getElementById('fetchBtn').textContent = '拉取模型';
+    }
+}
+
+// ===== 模型选择器 =====
+function openModelPicker() {
+    if (!lastFetchedAll.length) { showToast('没有拉取到模型，请先点"拉取模型"', 'warn'); return; }
+    document.querySelectorAll('.picker-tab').forEach(t => t.classList.toggle('active', t.dataset.cat === 'all'));
+    document.getElementById('modelPickerOverlay').classList.add('open');
+    renderModelPicker();
+}
+
+function closeModelPicker() {
+    document.getElementById('modelPickerOverlay').classList.remove('open');
+}
+
+function selectPickerCat(cat) {
+    document.querySelectorAll('.picker-tab').forEach(t => t.classList.toggle('active', t.dataset.cat === cat));
+    renderModelPicker();
+}
+
+function renderModelPicker() {
+    const filter = (document.getElementById('pickerFilter')?.value || '').toLowerCase();
+    const currentTab = document.querySelector('.picker-tab.active')?.dataset.cat || 'all';
+    const ids = Object.keys(pickerState.category).sort();
+
+    const totals = { all: ids.length, image: 0, chat: 0, video: 0 };
+    const selecteds = { all: 0, image: 0, chat: 0, video: 0 };
+    ids.forEach(id => {
+        const cat = pickerState.category[id];
+        totals[cat] = (totals[cat]||0) + 1;
+        if (pickerState.selected[id]) { selecteds[cat] = (selecteds[cat]||0) + 1; selecteds.all++; }
+    });
+
+    const list = ids.filter(id => {
+        if (filter && !id.toLowerCase().includes(filter)) return false;
+        if (currentTab === 'all') return true;
+        return pickerState.category[id] === currentTab;
+    });
+    pickerVisibleIds = list;
+
+    document.getElementById('pickerCount').textContent = `共 ${totals.all} 个模型 · 当前显示 ${list.length} 个`;
+    document.querySelectorAll('.picker-tab').forEach(tab => {
+        const cat = tab.dataset.cat;
+        const cnt = tab.querySelector('.cat-count');
+        if (cnt) cnt.textContent = `${selecteds[cat]||0}/${totals[cat]||0}`;
+    });
+
+    const html = list.map((id, i) => {
+        const checked = pickerState.selected[id];
+        const cat = pickerState.category[id];
+        const tagCls = cat === 'image' ? 'img' : cat === 'video' ? 'video' : 'chat';
+        const tagLabel = cat === 'image' ? 'IMG' : cat === 'video' ? 'VID' : 'TXT';
+        return `<div class=\"picker-row\" onclick=\"togglePickerRowByIndex(${i})\">
+            <div class=\"picker-check${checked?' on':''}\">
+                <svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"3\" stroke-linecap=\"round\"><polyline points=\"20 6 9 17 4 12\"></polyline></svg>
+            </div>
+            <div class=\"picker-model-name\" title=\"${esc(id)}\">${esc(id)}</div>
+            <span class=\"picker-model-tag ${tagCls}\">${tagLabel}</span>
+        </div>`;
+    }).join('');
+    document.getElementById('pickerList').innerHTML = html || '<div style=\"padding:40px;text-align:center;color:var(--muted);font-size:13px\">无匹配模型</div>';
+
+    const si = selecteds;
+    ['Image','Chat','Video'].forEach((k, i) => {
+        const el = document.getElementById('sum' + k);
+        if (el) { el.textContent = `${k==='Image'?'生图':k==='Chat'?'LLM':'视频'} ${si[k.toLowerCase()]||0}`; el.classList.toggle('empty', !si[k.toLowerCase()]); }
+    });
+    const unsel = document.getElementById('sumUnsel');
+    if (unsel) unsel.textContent = `未选 ${totals.all - selecteds.all}`;
+}
+
+function togglePickerRowByIndex(index) {
+    const id = pickerVisibleIds[index];
+    if (typeof id !== 'string') return;
+    pickerState.selected[id] = !pickerState.selected[id];
+    renderModelPicker();
+}
+
+function applyModelPicker() {
+    const p = providers.find(x => x.id === currentProviderId);
+    if (!p) return;
+    const image = [], chat = [], video = [];
+    Object.entries(pickerState.selected).forEach(([id, sel]) => {
+        if (!sel) return;
+        const cat = pickerState.category[id];
+        if (cat === 'image') image.push(id);
+        else if (cat === 'video') video.push(id);
+        else chat.push(id);
+    });
+    p.image_models = image;
+    p.chat_models = chat;
+    p.video_models = video;
+    saveLocalProviders(providers);
+    renderModelLists();
+    renderProviderList();
+    closeModelPicker();
+}
+
+// ===== 保存当前 =====
+async function saveCurrent() {
+    const status = document.getElementById('verifyStatus');
+    if (!currentProviderId) { showToast('请先选择平台', 'warn'); return; }
+
+    // 同步编辑内容到数据模型中
+    updateProviderMeta();
+
+    const p = providers.find(x => x.id === currentProviderId);
+    if (!p) return;
+
+    const updates = {};
+    const storedKey = localStorage.getItem(PROVIDER_CONFIG_PREFIX + 'key_' + p.id);
+    if (storedKey) updates[providerEnvKey(p.id)] = storedKey;
+    const walletKey = localStorage.getItem(PROVIDER_CONFIG_PREFIX + 'wallet_key_' + p.id);
+    if (walletKey) updates['RUNNINGHUB_WALLET_API_KEY'] = walletKey;
+    // 同时保存 Base URL（自定义平台必需，否则 Chat/生图 无法知道请求地址）
+    const baseUrl = document.getElementById('baseInput').value.trim();
+    if (baseUrl) updates[providerBaseUrlEnvKey(p.id)] = baseUrl;
+
+    if (!Object.keys(updates).length) {
+        status.innerHTML = '<span style=\"color:var(--muted)\">无需保存</span>';
+        setTimeout(() => { if (status.textContent === '无需保存') status.innerHTML = ''; }, 2000);
+        return;
+    }
+
+    try {
+        await apiFetch('/api/settings/api-keys', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updates)
+        });
+        status.innerHTML = '<span style=\"color:var(--good)\">✓ 已保存 ' + p.name + '</span>';
+        setTimeout(() => { if (status.innerHTML.includes('已保存')) status.innerHTML = ''; }, 2500);
+    } catch (e) {
+        status.innerHTML = '<span style=\"color:var(--bad)\">保存失败: ' + esc(e.message) + '</span>';
+    }
+}
+
+// ===== 保存全部 =====
+async function saveAll() {
+    const status = document.getElementById('globalStatus');
+    status.textContent = '正在保存…';
+    status.className = 'inline-status';
+
+    // 1. 保存当前 provider 的编辑内容
+    if (currentProviderId) {
+        updateProviderMeta();
+    }
+
+    // 2. 收集所有要保存的 env 值
+    const updates = {};
+
+    // API Keys + Base URLs
+    for (const p of providers) {
+        const storedKey = localStorage.getItem(PROVIDER_CONFIG_PREFIX + 'key_' + p.id);
+        if (storedKey) {
+            updates[providerEnvKey(p.id)] = storedKey;
+        }
+        const walletKey = localStorage.getItem(PROVIDER_CONFIG_PREFIX + 'wallet_key_' + p.id);
+        if (walletKey) {
+            updates['RUNNINGHUB_WALLET_API_KEY'] = walletKey;
+        }
+        // 保存 Base URL（自定义平台必需）
+        const baseUrl = p.base_url || '';
+        if (baseUrl) {
+            updates[providerBaseUrlEnvKey(p.id)] = baseUrl;
+        }
+    }
+
+    // 安全设置
+    const appKey = document.getElementById('appApiKey').value.trim();
+    if (appKey) updates['APP_API_KEY'] = appKey;
+    const cors = document.getElementById('corsOrigins').value.trim();
+    if (cors) updates['CORS_ORIGINS'] = cors;
+
+    try {
+        await apiFetch('/api/settings/api-keys', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updates)
+        });
+
+        // 保存 APP_API_KEY 到浏览器（后续请求自动携带）
+        if (appKey) setStoredApiKey(appKey);
+
+        status.textContent = '全部设置已保存成功';
+        status.className = 'inline-status ok';
+    } catch (e) {
+        status.textContent = '保存失败: ' + e.message;
+        status.className = 'inline-status err';
+    }
+}
+
+// ===== 辅助 =====
+function esc(str) { return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+function scrollToSection(id) {
+    const el = document.getElementById(id);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function showToast(msg, type) {
+    const old = document.querySelector('.toast');
+    if (old) old.remove();
+    const t = document.createElement('div');
+    t.className = 'toast ' + (type || 'ok');
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 2800);
+}
+
+function confirmDialog(msg) { return window.confirm(msg); }
+
+// ===== 初始化 =====
+(function(){ if(localStorage.theme==='dark') document.documentElement.classList.add('dark'); })();
+init();
+
+// 接收主题切换
+window.addEventListener('message', e => {
+    if (e.data?.type === 'theme') {
+        document.documentElement.classList.toggle('dark', e.data.theme === 'dark');
+    }
+});
+</script>
+</body>
+</html>

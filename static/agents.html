@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent 智能体</title>
+<link rel="stylesheet" href="/static/css/style.css?v=4">
+<style>
+.agent-page { display:flex; height:100vh; overflow:hidden; }
+
+.col-sidebar { width:240px; min-width:240px; background:var(--surface-2); border-right:1px solid var(--border); display:flex; flex-direction:column; overflow-y:auto; padding:16px 12px; gap:10px; }
+.col-designer { width:570px; min-width:340px; border-right:1px solid var(--border); display:flex; flex-direction:column; background:var(--bg); }
+.col-config { flex:1; overflow-y:auto; padding:14px 16px; display:flex; flex-direction:column; gap:10px; background:var(--bg); min-width:0; }
+
+.sidehead { display:flex; align-items:center; justify-content:space-between; }
+.sidehead h2 { font-size:12px; font-weight:900; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+.agent-list { display:flex; flex-direction:column; gap:3px; }
+.agent-item { display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:6px; cursor:pointer; border:1px solid transparent; transition:all .12s; }
+.agent-item:hover { background:var(--surface); border-color:var(--border); }
+.agent-item.active { background:var(--surface); border-color:var(--border); }
+.agent-dot { width:26px; height:26px; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:900; color:var(--muted); background:var(--bg); flex-shrink:0; }
+.agent-item.active .agent-dot { background:color-mix(in srgb, var(--accent) 12%, transparent); color:var(--accent); }
+.agent-name { font-size:12px; font-weight:800; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.add-agent-btn { width:100%; height:34px; border:1px dashed var(--border-strong); border-radius:var(--radius); background:transparent; color:var(--muted); cursor:pointer; font-size:11px; font-weight:800; display:flex; align-items:center; justify-content:center; gap:6px; transition:all .15s; }
+.add-agent-btn:hover { color:var(--text); border-color:var(--muted); background:var(--surface); }
+
+/* Agent设计器 */
+.designer-head { padding:16px 16px 12px; border-bottom:1px solid var(--border); }
+.designer-head h3 { font-size:14px; font-weight:900; }
+.designer-head p { font-size:10.5px; color:var(--muted); margin-top:3px; }
+.designer-chat { flex:1; overflow-y:auto; padding:12px 14px; display:flex; flex-direction:column; gap:10px; }
+.designer-msg { max-width:100%; padding:10px 12px; border-radius:var(--radius); font-size:12.5px; line-height:1.55; }
+.designer-msg.user { align-self:flex-end; background:var(--accent); color:var(--accent-ink); }
+.designer-msg.assistant { align-self:flex-start; background:var(--surface); border:1px solid var(--border); }
+.designer-msg .prompt-block { background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:8px 10px; margin:8px 0 4px; font-family:ui-monospace,Menlo,monospace; font-size:11.5px; white-space:pre-wrap; max-height:180px; overflow-y:auto; }
+.designer-input-row { display:flex; gap:6px; padding:10px 14px; border-top:1px solid var(--border); }
+.designer-input-row input { flex:1; height:36px; padding:0 10px; border-radius:var(--radius); border:1px solid var(--border); background:var(--bg); font-size:12.5px; outline:none; }
+.designer-input-row input:focus { border-color:var(--accent); }
+.designer-input-row button { height:36px; padding:0 14px; border-radius:var(--radius); border:1px solid var(--accent); background:var(--accent); color:var(--accent-ink); font-size:12px; font-weight:800; cursor:pointer; white-space:nowrap; }
+.designer-input-row .des-apply-btn { background:var(--good); border-color:var(--good); font-size:11px; padding:0 8px; }
+
+/* 配置区紧凑模式 */
+.cfg-block { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:14px 16px; display:flex; flex-direction:column; gap:10px; }
+.cfg-head { display:flex; align-items:center; justify-content:space-between; gap:8px; padding-bottom:10px; border-bottom:1px solid var(--border); }
+.cfg-title { font-size:11px; font-weight:900; letter-spacing:.06em; text-transform:uppercase; color:var(--text); }
+.cfg-row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.cfg-row .field { flex:1; min-width:120px; }
+.field { display:flex; flex-direction:column; gap:4px; }
+.field label { font-size:10px; font-weight:800; color:var(--muted); }
+.field select, .field input, .field textarea { width:100%; padding:7px 10px; border-radius:6px; border:1px solid var(--border); background:var(--bg); color:var(--text); font-size:12px; outline:none; font-family:inherit; }
+.field textarea { resize:vertical; min-height:60px; line-height:1.5; }
+.field input:focus, .field select:focus, .field textarea:focus { border-color:var(--accent); }
+
+.skill-grid { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+.skill-card { display:flex; align-items:flex-start; gap:6px; padding:8px 10px; border-radius:6px; border:1px solid var(--border); cursor:pointer; transition:all .12s; background:var(--bg); font-size:11px; }
+.skill-card:hover { border-color:var(--accent); }
+.skill-card.on { border-color:var(--accent); background:color-mix(in srgb, var(--accent) 8%, transparent); }
+.skill-card input { display:none; }
+.skill-card .skill-name { font-size:11.5px; font-weight:800; }
+.skill-card .skill-desc { font-size:10px; color:var(--muted); margin-top:1px; line-height:1.3; }
+
+.kb-list { display:flex; flex-wrap:wrap; gap:4px; }
+.kb-chip { display:inline-flex; align-items:center; gap:3px; padding:3px 10px; border-radius:999px; border:1px solid var(--border); background:var(--bg); font-size:10.5px; font-weight:700; cursor:pointer; transition:all .12s; color:var(--muted); }
+.kb-chip:hover { border-color:var(--muted); color:var(--text); }
+.kb-chip.on { border-color:var(--accent); background:color-mix(in srgb, var(--accent) 10%, transparent); color:var(--accent); }
+
+.file-list { display:flex; flex-direction:column; gap:2px; max-height:100px; overflow-y:auto; }
+.file-item { display:flex; align-items:center; gap:4px; padding:2px 6px; border-radius:3px; font-size:10.5px; }
+.file-item:hover { background:var(--bg); }
+.file-item .file-name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; }
+.file-item .file-del { color:var(--muted); cursor:pointer; font-size:12px; }
+.file-item .file-del:hover { color:var(--bad); }
+
+.run-output { min-height:80px; max-height:180px; overflow-y:auto; background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:10px; font-family:ui-monospace,Menlo,monospace; font-size:11px; line-height:1.5; white-space:pre-wrap; color:var(--text); }
+.run-output .step { color:var(--muted); }
+.run-output .tool { color:var(--accent); font-weight:700; }
+.run-output .error { color:var(--bad); }
+.run-output .final { margin-top:8px; padding-top:8px; border-top:1px solid var(--border); }
+.run-output .loading { animation:pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+.action-row { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.empty-state { padding:60px; text-align:center; color:var(--muted); font-size:14px; }
+
+@media (max-width:1100px) { .col-designer { display:none; } }
+@media (max-width:700px) { .agent-page { flex-direction:column; } .col-sidebar { width:100%; min-width:0; max-height:150px; } .col-config { padding:12px; } }
+</style>
+<script src="/static/js/i18n.js?v=1"></script>
+</head>
+<body>
+<div class="agent-page">
+    <!-- ========== 左栏：Agent 列表 ========== -->
+    <aside class="col-sidebar">
+        <div class="sidehead"><h2>智能体</h2><span id="agentCount" style="font-size:10px;color:var(--muted);font-weight:800;">0</span></div>
+        <div class="agent-list" id="agentList"></div>
+        <button class="add-agent-btn" onclick="createAgent()"><span>+</span> 新建</button>
+    </aside>
+
+    <!-- ========== 中栏：Agent设计器 ========== -->
+    <section class="col-designer" id="designerCol">
+        <div class="designer-head">
+            <h3>Agent设计器</h3>
+            <p>描述你想要的效果，AI 帮你生成系统提示词</p>
+            <div style="display:flex;gap:8px;margin-top:8px;">
+                <select id="desProvider" style="flex:1;height:30px;padding:0 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);font-size:11px;color:var(--text);outline:none;" onchange="updateDesModelDropdown()"></select>
+                <select id="desModel" style="flex:1.5;height:30px;padding:0 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);font-size:11px;color:var(--text);outline:none;"></select>
+            </div>
+        </div>
+        <div class="designer-chat" id="designerChat">
+            <div class="designer-msg assistant" style="color:var(--muted);">选择一个 Agent 开始设计。<br>在此描述你想要的行为，AI 生成系统提示词。<br>可以多轮对话迭代："再简洁一点"、"加上这条规则..."</div>
+        </div>
+        <div class="designer-input-row">
+            <input id="designerInput" type="text" placeholder="描述 Agent 需求或对提示词提出修改意见..." onkeydown="if(event.key==='Enter')designPrompt()">
+            <button onclick="designPrompt()">快速</button>
+            <button onclick="deepDesign()" style="background:var(--accent);color:var(--accent-ink);">深度设计</button>
+        </div>
+    </section>
+
+    <!-- ========== 右栏：Agent 配置 ========== -->
+    <main class="col-config">
+        <div class="empty-state" id="emptyState"><div style="margin-bottom:14px;">选择一个智能体或新建一个开始配置</div><button class="btn btn-primary" onclick="createAgent()">+ 新建智能体</button></div>
+        <div id="configPanels" style="display:none;display:flex;flex-direction:column;gap:14px;">
+
+            <!-- 基本信息 + 模型 -->
+            <div class="cfg-block">
+                <div class="cfg-head"><div class="cfg-title">基本配置</div><div class="action-row"><button class="btn btn-secondary" style="font-size:10px;padding:4px 10px;" onclick="deleteCurrentAgent()">删除</button><button class="btn btn-primary" style="font-size:10px;padding:4px 10px;" onclick="saveCurrentAgent()">保存</button></div></div>
+                <div class="cfg-row">
+                    <div class="field"><label>名称</label><input id="agName" placeholder="智能体名称"></div>
+                    <div class="field"><label>平台</label><select id="agProvider" onchange="updateModelDropdown()"></select></div>
+                    <div class="field"><label>模型</label><select id="agModel"></select></div>
+                    <div class="field" style="max-width:70px;"><label>步数</label><input id="agSteps" type="number" value="10" min="1" max="50"></div>
+                </div>
+            </div>
+
+            <!-- 系统提示词 -->
+            <div class="cfg-block">
+                <div class="cfg-head"><div class="cfg-title">系统提示词</div></div>
+                <textarea id="agPrompt" rows="22" placeholder="定义 Agent 的角色、能力和行为规范..."></textarea>
+            </div>
+
+            <!-- 技能 -->
+            <div class="cfg-block">
+                <div class="cfg-head"><div class="cfg-title">技能 Skills</div></div>
+                <div class="skill-grid" id="skillGrid"></div>
+            </div>
+
+            <!-- 知识库 -->
+            <div class="cfg-block">
+                <div class="cfg-head"><div class="cfg-title">知识库</div></div>
+                <div class="kb-list" id="kbChips"></div>
+            </div>
+
+            <!-- 文件管理 -->
+            <div class="cfg-block">
+                <div class="cfg-head"><div class="cfg-title">文件管理</div></div>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+                    <div><div style="font-size:10px;font-weight:800;color:var(--muted);margin-bottom:3px;">技能 .py</div><div class="file-list" id="skillsFileList"></div><input type="file" id="skillsFileInput" accept=".py" style="display:none" onchange="uploadAgentFile('skills', this)"><button class="btn btn-secondary" style="width:100%;font-size:10px;padding:3px;" onclick="document.getElementById('skillsFileInput').click()">+ 上传</button></div>
+                    <div><div style="font-size:10px;font-weight:800;color:var(--muted);margin-bottom:3px;">知识文档</div><div class="file-list" id="knowledgeFileList"></div><input type="file" id="knowledgeFileInput" accept=".md,.txt,.pdf" style="display:none" onchange="uploadAgentFile('knowledge', this)"><button class="btn btn-secondary" style="width:100%;font-size:10px;padding:3px;" onclick="document.getElementById('knowledgeFileInput').click()">+ 上传</button></div>
+                    <div><div style="font-size:10px;font-weight:800;color:var(--muted);margin-bottom:3px;">.MD 参考</div><div class="file-list" id="docsFileList"></div><input type="file" id="docsFileInput" accept=".md,.txt" style="display:none" onchange="uploadAgentFile('docs', this)"><button class="btn btn-secondary" style="width:100%;font-size:10px;padding:3px;" onclick="document.getElementById('docsFileInput').click()">+ 上传</button></div>
+                </div>
+                <span style="font-size:9.5px;color:var(--muted);">路径: <code id="agentDirPath">—</code></span>
+            </div>
+
+            <!-- 测试运行 -->
+            <div class="cfg-block">
+                <div class="cfg-head"><div class="cfg-title">测试运行</div></div>
+                <div style="display:flex;gap:6px;">
+                    <input id="runInput" type="text" placeholder="输入任务..." style="flex:1;" onkeydown="if(event.key==='Enter')runAgent()">
+                    <input type="file" id="runImageInput" accept="image/*" style="display:none" onchange="previewRunImage(this)">
+                    <button class="btn btn-secondary" style="font-size:10px;white-space:nowrap;" onclick="document.getElementById('runImageInput').click()">+ 图片</button>
+                    <span id="runImagePreview" style="font-size:10px;color:var(--muted);align-self:center;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+                    <button class="btn btn-primary" id="runBtn" onclick="runAgent()" style="white-space:nowrap;">运行</button>
+                </div>
+                <div class="run-output" id="runOutput"><span style="color:var(--muted)">等待输入...</span></div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<script src="/static/js/api.js?v=4"></script>
+<script>
+let agents = [], currentAgentId = null, allSkills = [], allKBs = [], providerData = [], kbSelection = {};
+let runImageDataUrl = '', designerHistory = [];
+
+async function init() {
+    await Promise.all([loadAgents(), loadSkills(), loadKBs(), refreshProviders()]);
+    renderProviderOpts();
+    renderSkillGrid();
+    renderKbChips();
+    if (agents.length > 0) selectAgent(agents[0].id);
+}
+
+async function loadAgents() { try { const d = await apiJson('/api/agents'); agents = d.agents||[]; } catch(e) {} renderAgentList(); }
+async function loadSkills() { try { const d = await apiJson('/api/agents/skills'); allSkills = d.skills||[]; } catch(e) {} }
+async function loadKBs() { try { const d = await apiJson('/api/knowledge-bases'); allKBs = d.knowledge_bases||[]; } catch(e) {} }
+
+function renderAgentList() {
+    document.getElementById('agentCount').textContent = agents.length;
+    document.getElementById('agentList').innerHTML = agents.map(a => {
+        const on = a.id === currentAgentId;
+        return `<div class="agent-item${on?' active':''}" onclick="selectAgent('${a.id}')">
+            <div class="agent-dot">${esc((a.name||'AI').slice(0,2).toUpperCase())}</div>
+            <div class="agent-name">${esc(a.name)}</div>
+        </div>`;
+    }).join('');
+}
+
+function renderProviderOpts() {
+    try { providerData = getCachedProviders(); } catch(e) { providerData = []; }
+    // Agent 配置
+    const provSel = document.getElementById('agProvider');
+    const prevPid = provSel.value;  // 记住当前选中
+    provSel.innerHTML = providerData.filter(p => (p.chat_models||[]).length>0||p.id==='openai').map(p => `<option value="${p.id}">${esc(p.name||p.id)}</option>`).join('') || '<option value="openai">OpenAI</option>';
+    // 恢复之前选中的平台（如果仍在列表中）
+    if (prevPid && [...provSel.options].some(o => o.value === prevPid)) provSel.value = prevPid;
+    updateModelDropdown();
+    // 设计器
+    document.getElementById('desProvider').innerHTML = providerData.filter(p => (p.chat_models||[]).length>0||p.id==='openai').map(p => `<option value="${p.id}">${esc(p.name||p.id)}</option>`).join('') || '<option value="openai">OpenAI</option>';
+    // 恢复保存的选择
+    const savedPid = localStorage.getItem('des_provider');
+    if (savedPid && providerData.some(p => p.id === savedPid)) document.getElementById('desProvider').value = savedPid;
+    updateDesModelDropdown();
+}
+
+function updateDesModelDropdown() {
+    const pid = document.getElementById('desProvider').value;
+    localStorage.setItem('des_provider', pid);
+    const sel = document.getElementById('desModel');
+    const p = providerData.find(x => x.id === pid);
+    const models = [...(p?.chat_models||[])];
+    if (!models.length) models.push('gpt-4o-mini');
+    sel.innerHTML = models.map(m => `<option value="${m}">${m}</option>`).join('');
+    const savedModel = localStorage.getItem('des_model');
+    if (savedModel && models.includes(savedModel)) sel.value = savedModel;
+    sel.onchange = () => localStorage.setItem('des_model', sel.value);
+}
+
+function updateModelDropdown() {
+    const pid = document.getElementById('agProvider').value;
+    const sel = document.getElementById('agModel');
+    const prevModel = sel.value;  // 记住当前选中的模型
+    const p = providerData.find(x => x.id === pid);
+    const models = [...(p?.chat_models||[])];
+    if (!models.length) models.push('gpt-4o-mini');
+    const imgSet = new Set(p?.image_models||[]);
+    const visionKw = ['vision','vl','multimodal','image','flash','gemini','claude','gpt-4o','qwen-vl','glm-4v'];
+    sel.innerHTML = models.map(m => `<option value="${m}">${m}${(imgSet.has(m)||visionKw.some(k=>m.toLowerCase().includes(k)))?' (多模态)':''}</option>`).join('');
+    // 如果之前的模型仍在新列表中，保留选择；否则用 Agent 配置的模型
+    if (prevModel && models.includes(prevModel)) { sel.value = prevModel; }
+    else if (currentAgentId) {
+        const a = agents.find(x => x.id === currentAgentId);
+        const agentModel = a?.model;
+        if (agentModel && models.includes(agentModel)) sel.value = agentModel;
+    }
+}
+
+function renderSkillGrid() {
+    document.getElementById('skillGrid').innerHTML = allSkills.map(s => `<div class="skill-card" onclick="this.classList.toggle('on')"><input type="checkbox"><div><div class="skill-name">${esc(s.name)}</div><div class="skill-desc">${esc(s.description)}</div></div></div>`).join('');
+}
+
+function renderKbChips() {
+    const c = document.getElementById('kbChips');
+    if (!allKBs.length) { c.innerHTML = '<span style="color:var(--muted);font-size:10px;">暂无知识库</span>'; return; }
+    c.innerHTML = allKBs.map(kb => {
+        const on = kbSelection[kb.id];
+        return `<span class="kb-chip${on?' on':''}" onclick="this.classList.toggle('on');kbSelection['${kb.id}']=this.classList.contains('on')">${kb.name}</span>`;
+    }).join('');
+}
+
+function _populateForm(a) {
+    document.getElementById('agName').value = a.name || '';
+    document.getElementById('agSteps').value = a.max_steps || 10;
+    document.getElementById('agPrompt').value = a.system_prompt || '';
+    // 设置平台：若 agent 的 provider 不在下拉列表中则回退到第一项
+    const provSel = document.getElementById('agProvider');
+    const wantedPid = a.provider_id || 'openai';
+    if ([...provSel.options].some(o => o.value === wantedPid)) {
+        provSel.value = wantedPid;
+    } else if (provSel.options.length > 0) {
+        provSel.value = provSel.options[0].value;  // 回退到第一个可用平台
+    }
+    updateModelDropdown();
+    // 设置模型：若 agent 的模型不在当前平台列表中则回退到第一项
+    const mSel = document.getElementById('agModel'), tm = a.model || 'gpt-4o-mini';
+    if (![...mSel.options].some(o => o.value === tm)) {
+        // 如果列表非空，选第一个并更新 agent 数据
+        if (mSel.options.length > 0) {
+            mSel.value = mSel.options[0].value;
+        } else {
+            mSel.innerHTML += `<option value="${tm}">${tm}</option>`;
+            mSel.value = tm;
+        }
+    } else {
+        mSel.value = tm;
+    }
+    // Skills
+    document.querySelectorAll('#skillGrid .skill-card').forEach((card, i) => card.classList.toggle('on', (a.skills||[]).includes(allSkills[i]?.id)));
+    // KBs
+    kbSelection = {};
+    (a.knowledge_bases||[]).forEach(id => { kbSelection[id] = true; });
+    renderKbChips();
+    document.getElementById('runOutput').innerHTML = '<span style="color:var(--muted)">等待输入...</span>';
+    document.getElementById('agentDirPath').textContent = 'agents/' + (a._dir || a.id);
+}
+
+function selectAgent(id) {
+    currentAgentId = id;
+    const a = agents.find(x => x.id === id);
+    if (!a) return;
+    _populateForm(a);
+    document.getElementById('emptyState').style.display = 'none';
+    document.getElementById('configPanels').style.display = 'flex';
+    document.getElementById('designerChat').innerHTML = `<div class="designer-msg assistant" style="color:var(--muted);">当前 Agent: <strong>${esc(a.name)}</strong><br>在此描述你想要的行为，AI 生成系统提示词。<br>可以多轮对话迭代："再简洁一点"、"加上这条规则..."</div>`;
+    desConversation = [];
+    renderAgentList();
+    loadAgentFiles();
+}
+
+async function createAgent() {
+    try { const d = await apiJson('/api/agents',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'新智能体'})}); agents.push(d.agent); renderAgentList(); selectAgent(d.agent.id); if(d.dir) document.getElementById('agentDirPath').textContent='agents/'+d.dir; } catch(e) { showToast('创建失败: '+e.message,'err'); }
+}
+
+async function saveCurrentAgent() {
+    console.log('saveCurrentAgent called, currentAgentId:', currentAgentId);
+    if (!currentAgentId) { showToast('请先选择现有智能体或新建智能体', 'warn'); return; }
+    const a = agents.find(x => x.id === currentAgentId);
+    if (!a) { showToast('Agent 数据丢失', 'err'); return; }
+    const payload = {
+        name: document.getElementById('agName').value.trim() || '未命名',
+        system_prompt: document.getElementById('agPrompt').value,
+        model: document.getElementById('agModel').value || 'gpt-4o-mini',
+        provider_id: document.getElementById('agProvider').value,
+        max_steps: parseInt(document.getElementById('agSteps').value)||10,
+        skills: [], knowledge_bases: []
+    };
+    document.querySelectorAll('#skillGrid .skill-card').forEach((card,i) => { if(card.classList.contains('on')&&allSkills[i]) payload.skills.push(allSkills[i].id); });
+    payload.knowledge_bases = Object.entries(kbSelection).filter(([_,v])=>v).map(([k])=>k);
+    try {
+        console.log('Saving agent:', currentAgentId, payload);
+        const d = await apiJson(`/api/agents/${currentAgentId}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+        Object.assign(a, d.agent); renderAgentList();
+        document.getElementById('agName').style.boxShadow = '0 0 0 3px var(--good)';
+        setTimeout(() => document.getElementById('agName').style.boxShadow = '', 1500);
+    } catch(e) {
+        console.error('Save failed:', e);
+        document.getElementById('agName').style.boxShadow = '0 0 0 3px var(--bad)';
+        setTimeout(() => document.getElementById('agName').style.boxShadow = '', 1500);
+    }
+}
+
+async function deleteCurrentAgent() {
+    if (!currentAgentId || !confirm('确定删除？')) return;
+    try { await apiFetch(`/api/agents/${currentAgentId}`,{method:'DELETE'}); agents = agents.filter(a => a.id !== currentAgentId); currentAgentId = null; renderAgentList(); if(agents.length>0) selectAgent(agents[0].id); else { document.getElementById('configPanels').style.display='none'; document.getElementById('emptyState').style.display=''; } } catch(e) { showToast('删除失败: '+e.message,'err'); }
+}
+
+// ===== 深度设计 =====
+async function deepDesign() {
+    const input = document.getElementById('designerInput').value.trim();
+    if (!input || !currentAgentId) { showToast('请先选择 Agent 并输入描述', 'warn'); return; }
+    document.getElementById('designerInput').value = '';
+    const a = agents.find(x => x.id === currentAgentId);
+
+    desAddMsg('user', esc(input) + ' <span style="font-size:9px;color:var(--accent);">(深度设计)</span>');
+    desAddMsg('assistant', '<span class="loading">Agent 引擎思考中...</span>');
+
+    const skills = [];
+    document.querySelectorAll('#skillGrid .skill-card.on').forEach((c, i) => { if (allSkills[i]) skills.push(allSkills[i].name); });
+    const kbs = Object.entries(kbSelection).filter(([_,v]) => v).map(([k]) => allKBs.find(x => x.id === k)?.name || k);
+
+    try {
+        const d = await apiJson('/api/agents/design', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({
+                user_input: input,
+                agent_config: {
+                    name: a?.name || '', skills: skills, knowledge_bases: kbs,
+                    system_prompt: document.getElementById('agPrompt').value || ''
+                },
+                provider_id: document.getElementById('desProvider').value,
+                model: document.getElementById('desModel').value,
+            })
+        });
+        const msgs = document.getElementById('designerChat').querySelectorAll('.designer-msg.assistant');
+        const last = msgs[msgs.length - 1];
+
+        if (d.success) {
+            // 提取 ```...``` 中的提示词
+            const output = d.final_output || '';
+            const promptMatch = output.match(/```(?:markdown|md)?\s*\n?([\s\S]*?)```/);
+            const extractedPrompt = promptMatch ? promptMatch[1].trim() : output;
+            const stepsInfo = (d.steps||[]).filter(s => s.status==='tool_call').length;
+
+            const promptId = 'deep_' + Date.now();
+            last.innerHTML = `
+                <div style="font-size:10px;color:var(--muted);margin-bottom:6px;">模型: ${esc(d.model_used||'?')} · ${d.total_elapsed_ms}ms · ${stepsInfo}步思考</div>
+                <div class="prompt-block" id="${promptId}">${esc(extractedPrompt)}</div>
+                <div style="font-size:10px;color:var(--muted);margin-top:6px;display:flex;gap:6px;align-items:center;">
+                    <button class="btn btn-primary" style="font-size:10px;padding:3px 10px;" onclick="document.getElementById('agPrompt').value=document.getElementById('${promptId}').textContent;document.getElementById('agPrompt').style.boxShadow='0 0 0 3px var(--good)';setTimeout(()=>document.getElementById('agPrompt').style.boxShadow='',1200);">应用到 Agent</button>
+                    <span style="cursor:pointer;color:var(--accent);" onclick="var s=this.nextElementSibling;s.style.display=s.style.display==='none'?'':'none'">查看过程</span>
+                    <div style="display:none;margin-top:4px;font-size:10px;color:var(--muted);white-space:pre-wrap;">${esc(output)}</div>
+                </div>`;
+        } else {
+            last.innerHTML = `<span style="color:var(--bad);">深度设计失败: ${esc(d.error||'未知错误')}</span>`;
+        }
+        last.classList.remove('loading');
+    } catch(e) {
+        desAddMsg('assistant', `<span style="color:var(--bad);">请求失败: ${esc(e.message)}</span>`);
+    }
+}
+
+// ===== Agent设计器（多轮对话） =====
+let desConversation = []; // [{role, content, prompt}]
+
+function desAddMsg(role, html) {
+    const chat = document.getElementById('designerChat');
+    const cls = role === 'user' ? 'user' : 'assistant';
+    chat.innerHTML += `<div class="designer-msg ${cls}">${html}</div>`;
+    chat.scrollTop = chat.scrollHeight;
+}
+
+async function designPrompt() {
+    const input = document.getElementById('designerInput').value.trim();
+    if (!input || !currentAgentId) { showToast('请先选择 Agent 并输入描述','warn'); return; }
+    document.getElementById('designerInput').value = '';
+
+    const a = agents.find(x => x.id === currentAgentId);
+    desAddMsg('user', esc(input));
+    desAddMsg('assistant', '<span class="loading">思考中...</span>');
+
+    const pid = document.getElementById('desProvider').value;
+    const model = document.getElementById('desModel').value;
+
+    // 构建多轮对话上下文
+    const currentPrompt = document.getElementById('agPrompt').value.trim();
+    const skills = [];
+    document.querySelectorAll('#skillGrid .skill-card.on').forEach((c, i) => { if (allSkills[i]) skills.push(allSkills[i].name); });
+    const kbs = Object.entries(kbSelection).filter(([_,v]) => v).map(([k]) => allKBs.find(x => x.id === k)?.name || k);
+
+    const ctxParts = [
+        `你是一个专业的 Prompt Engineer。你正在帮助用户设计一个 Agent 的系统提示词。`,
+        `Agent 名称: ${a?.name||'未命名'}`,
+        `已勾选的技能: ${skills.join(', ')||'无'}`,
+        `已选知识库: ${kbs.join(', ')||'无'}`,
+        currentPrompt ? `当前系统提示词:\n"""\n${currentPrompt}\n"""` : '当前系统提示词: （空）',
+        ``,
+        `规则:`,
+        `1. 每次回复必须包含一个完整的系统提示词版本，用三个反引号包裹（\`\`\`）`,
+        `2. 根据用户反馈不断迭代改进提示词`,
+        `3. 提示词用中文，定义角色、能力边界、可用技能、行为规范`,
+        `4. 简短解释本次改了什么`,
+    ];
+    // 只在首条消息发送 system_prompt，后续轮次后端会从对话历史加载
+    const sysPrompt = desConversation.length === 0 ? ctxParts.join('\n') : '';
+
+    const messages = [
+        { role: 'system', content: ctxParts.join('\n') }
+    ];
+    // 历史对话
+    for (const m of desConversation) {
+        messages.push({ role: m.role, content: m.content });
+    }
+    messages.push({ role: 'user', content: input });
+    desConversation.push({ role: 'user', content: input });
+
+    try {
+        const data = await apiJson('/api/llm', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ message: input, provider_id: pid, model: model, system_prompt: sysPrompt, conversation_id: '__agent_designer__' })
+        });
+        const result = data.reply || data.text || '生成失败';
+        desConversation.push({ role: 'assistant', content: result });
+
+        // 提取 ```...``` 中的提示词
+        const promptMatch = result.match(/```(?:markdown|md)?\s*\n?([\s\S]*?)```/);
+        const extractedPrompt = promptMatch ? promptMatch[1].trim() : result;
+        const explanation = result.replace(/```[\s\S]*?```/, '').trim();
+
+        // 替换 loading
+        const msgs = document.getElementById('designerChat').querySelectorAll('.designer-msg.assistant');
+        const last = msgs[msgs.length - 1];
+        const promptId = 'prompt_' + Date.now();
+        last.innerHTML = `
+            ${explanation ? `<div style="margin-bottom:8px;">${esc(explanation)}</div>` : ''}
+            <div class="prompt-block" id="${promptId}">${esc(extractedPrompt)}</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:6px;display:flex;gap:6px;align-items:center;">
+                <button class="btn btn-primary" style="font-size:10px;padding:3px 10px;" onclick="document.getElementById('agPrompt').value=document.getElementById('${promptId}').textContent;document.getElementById('agPrompt').style.boxShadow='0 0 0 3px var(--good)';setTimeout(()=>document.getElementById('agPrompt').style.boxShadow='',1200);">应用到 Agent</button>
+            </div>`;
+        last.classList.remove('loading');
+    } catch(e) {
+        desAddMsg('assistant', `<span style="color:var(--bad);">生成失败: ${esc(e.message)}</span>`);
+    }
+}
+
+
+// ===== 文件管理 =====
+async function loadAgentFiles() {
+    if (!currentAgentId) return;
+    for (const sub of ['skills','knowledge','docs']) {
+        try { const d = await apiJson(`/api/agents/${currentAgentId}/files/${sub}`); renderFileList(sub+'FileList', d.files||[], sub); } catch(e) {}
+    }
+}
+function renderFileList(listId, files, sub) {
+    const el = document.getElementById(listId);
+    if (!files.length) { el.innerHTML = '<div style="color:var(--muted);font-size:9px;text-align:center;padding:4px;">暂无</div>'; return; }
+    el.innerHTML = files.map(f => `<div class="file-item"><span class="file-name" title="${esc(f.name)}">${esc(f.name)}</span><span class="file-del" onclick="deleteAgentFile('${sub}','${esc(f.name)}')">×</span></div>`).join('');
+}
+async function uploadAgentFile(sub, input) {
+    if (!currentAgentId || !input.files?.[0]) return;
+    const form = new FormData(); form.append('file', input.files[0]);
+    try { const resp = await fetch(`/api/agents/${currentAgentId}/files/${sub}`,{method:'POST',body:form}); if(!resp.ok) throw new Error((await resp.json()).detail||'上传失败'); showToast('已上传'); loadAgentFiles(); } catch(e) { showToast('上传失败: '+e.message,'err'); }
+    input.value = '';
+}
+async function deleteAgentFile(sub, name) {
+    if (!currentAgentId || !confirm(`删除 ${name}？`)) return;
+    try { await apiFetch(`/api/agents/${currentAgentId}/files/${sub}?name=${encodeURIComponent(name)}`,{method:'DELETE'}); showToast('已删除'); loadAgentFiles(); } catch(e) { showToast('删除失败: '+e.message,'err'); }
+}
+
+// ===== 运行 =====
+function previewRunImage(input) {
+    const file = input.files?.[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function() { runImageDataUrl = reader.result; document.getElementById('runImagePreview').textContent = file.name; };
+    reader.readAsDataURL(file);
+}
+async function runAgent() {
+    const input = document.getElementById('runInput').value.trim(); if (!input) return;
+    const output = document.getElementById('runOutput'), btn = document.getElementById('runBtn');
+    if (!currentAgentId) { output.innerHTML = '<span class="error">请先选择 Agent</span>'; return; }
+    output.innerHTML = '<span class="loading">运行中...</span>'; btn.disabled = true; btn.textContent = '...';
+    try {
+        const body = { user_input: input }; if (runImageDataUrl) body.input_images = [runImageDataUrl];
+        const d = await apiJson(`/api/agents/${currentAgentId}/run`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+        if (d.success) {
+            const stepsHtml = (d.steps||[]).filter(s => s.status==='tool_call').map(s =>
+                `<div class="step">[步${s.step}] <span class="tool">${esc(s.tool)}</span> → ${esc(JSON.stringify(s.result||{}).slice(0,200))}</div>`
+            ).join('');
+            let h = `<div style="font-size:9.5px;color:var(--muted);margin-bottom:6px;">模型: ${esc(d.model_used||'?')} · 平台: ${esc(d.provider_used||'?')} · ${d.total_elapsed_ms}ms`;
+            if (stepsHtml) h += ` · <span style="cursor:pointer;color:var(--accent);" onclick="var s=this.nextElementSibling;s.style.display=s.style.display==='none'?'':'none'">${d.steps.length}步思考</span></div><div style="display:none;margin-bottom:6px;font-size:10px;color:var(--muted);">${stepsHtml}</div>`;
+            else h += '</div>';
+            h += `<div class="final">${esc(d.final_output)}</div>`; output.innerHTML = h;
+        } else output.innerHTML = `<div class="error">${esc(d.error||'未知错误')}</div>`;
+    } catch(e) { output.innerHTML = `<div class="error">${esc(e.message)}</div>`; }
+    btn.disabled = false; btn.textContent = '运行';
+}
+
+function showToast(m,t){ const o=document.querySelector('.toast'); if(o)o.remove(); const d=document.createElement('div'); d.className='toast '+(t||'ok'); d.textContent=m; document.body.appendChild(d); setTimeout(()=>d.remove(),2800); }
+function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+// 确保全局可调用
+window.saveCurrentAgent = saveCurrentAgent;
+window.deleteCurrentAgent = deleteCurrentAgent;
+window.createAgent = createAgent;
+window.runAgent = runAgent;
+window.designPrompt = designPrompt;
+
+(function(){ if(localStorage.theme==='dark') document.documentElement.classList.add('dark'); })();
+init();
+window.addEventListener('message', e => { if (e.data?.type === 'theme') document.documentElement.classList.toggle('dark', e.data.theme === 'dark'); if (e.data?.type === 'refresh') init(); });
+</script>
+</body>
+</html>

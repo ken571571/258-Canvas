@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>无限画布</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 36'><rect width='36' height='36' rx='10' fill='%231a1a1a'/><text x='18' y='25' text-anchor='middle' fill='white' font-size='20' font-weight='bold'>∞</text></svg>">
+<link rel="stylesheet" href="/static/css/style.css?v=5">
+<style>
+.nav-icon { width:20px; height:20px; flex-shrink:0; }
+</style>
+<script src="/static/js/ui-icon.js?v=1"></script>
+<script src="/static/js/ui-nav-btn.js?v=1"></script>
+<script src="/static/js/i18n.js?v=1"></script>
+</head>
+<body>
+<div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+        <ui-nav-btn logo icon="logo" page="about" label="nav.about" fallback="关于" title="关于无限画布"></ui-nav-btn>
+        <ui-nav-btn icon="sparkle" page="generate" label="nav.generate" fallback="API生图"></ui-nav-btn>
+        <ui-nav-btn icon="grid" page="canvas" label="nav.canvas" fallback="无限画布" hidden-initially></ui-nav-btn>
+        <ui-nav-btn icon="grid" page="canvas-gate" label="nav.canvas" fallback="无限画布"></ui-nav-btn>
+        <ui-nav-btn icon="chat" page="chat" label="nav.chat" fallback="Chat 对话"></ui-nav-btn>
+        <ui-nav-btn icon="monitor" page="agents" label="nav.agents" fallback="Agent"></ui-nav-btn>
+        <ui-nav-btn icon="box" page="comfyui" label="nav.comfyui" fallback="ComfyUI"></ui-nav-btn>
+        <ui-nav-btn icon="settings" page="settings" label="nav.settings" fallback="API 设置"></ui-nav-btn>
+        <div class="sidebar-bottom">
+            <div class="monitor">
+                <span class="monitor-row"><span class="monitor-dot"></span><span id="online-count">1</span></span>
+                <span class="monitor-row"><span class="monitor-dot" style="background:var(--warn);box-shadow:0 0 0 3px color-mix(in srgb, var(--warn) 18%, transparent)"></span><span id="queue-count">0</span></span>
+                <span class="monitor-full">ONLINE <strong id="online-count-2">1</strong><span class="monitor-divider"></span>QUEUE <strong id="queue-count-2">0</strong></span>
+            </div>
+            <button class="sidebar-mode-toggle" onclick="cycleSidebarMode()" title="切换侧边栏模式">
+                <span class="mode-icon" id="mode-icon">↔</span>
+                <span class="mode-label" id="mode-label">Auto</span>
+            </button>
+            <button class="side-pill" onclick="toggleTheme()" title="切换主题">
+                <!-- 太阳图标（亮色模式显示） -->
+                <ui-icon name="sun" size="16" class="theme-icon-sun"></ui-icon>
+                <!-- 月亮图标（暗色模式显示） -->
+                <ui-icon name="moon" size="16" class="theme-icon-moon" style="display:none"></ui-icon>
+                <span class="nav-label" style="font-size:11px" data-t="nav.theme">切换主题</span>
+            </button>
+        </div>
+    </aside>
+    <main class="stage">
+        <iframe id="frame-generate" data-src="/static/generate.html" scrolling="yes"></iframe>
+        <iframe id="frame-canvas-gate" data-src="/static/canvas-gate.html" scrolling="yes"></iframe>
+        <iframe id="frame-canvas" data-src="/static/canvas.html?v=15" scrolling="yes"></iframe>
+        <iframe id="frame-chat" data-src="/static/chat.html?v=3" scrolling="yes"></iframe>
+        <iframe id="frame-settings" data-src="/static/settings.html?v=5" scrolling="yes"></iframe>
+        <iframe id="frame-agents" data-src="/static/agents.html" scrolling="yes"></iframe>
+        <iframe id="frame-comfyui" data-src="/static/comfyui.html" scrolling="yes"></iframe>
+        <iframe id="frame-about" data-src="/static/about.html" scrolling="yes"></iframe>
+    </main>
+</div>
+
+<script>
+const CID = localStorage.client_id || (localStorage.client_id = crypto.randomUUID());
+const WS_URL = (location.protocol === 'https:' ? 'wss' : 'ws') + '://' + location.host + '/ws?client_id=' + CID;
+
+function navTo(page, el) {
+    document.querySelectorAll('.nav-btn, .sidebar-logo-btn').forEach(b => b.classList.remove('active'));
+    if(el) el.classList.add('active');
+    document.querySelectorAll('iframe').forEach(f => f.classList.remove('active'));
+    const frame = document.getElementById('frame-' + page);
+    if (!frame) { console.error('Unknown page:', page); return; }
+    frame.classList.add('active');
+    // 只在首次加载时设置 src，后续切换不再重载（避免反复中止加载导致空白）
+    if (frame.dataset.src && !frame._loaded) {
+        frame._loaded = true;
+        frame.src = frame.dataset.src.split('?')[0] + '?v=' + Date.now();
+        frame.onload = () => {
+            try { frame.contentWindow?.postMessage({type:'theme', theme:localStorage.theme||'light'}, '*'); } catch(e){}
+        };
+    } else if (frame.contentWindow) {
+        // 已加载过的页面，同步主题 + 通知刷新数据
+        try { frame.contentWindow.postMessage({type:'theme', theme:localStorage.theme||'light'}, '*'); } catch(e){}
+        try { frame.contentWindow.postMessage({type:'refresh'}, '*'); } catch(e){}
+    }
+    localStorage.activePage = page;
+}
+
+function updateThemeIcon() {
+    const isDark = document.documentElement.classList.contains('dark');
+    const sun = document.querySelector('.theme-icon-sun');
+    const moon = document.querySelector('.theme-icon-moon');
+    if (sun) sun.style.display = isDark ? 'none' : '';
+    if (moon) moon.style.display = isDark ? '' : 'none';
+}
+
+function toggleTheme() {
+    document.documentElement.classList.toggle('dark');
+    localStorage.theme = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+    updateThemeIcon();
+    document.querySelectorAll('iframe').forEach(f => {
+        try { f.contentWindow?.postMessage({type:'theme', theme:localStorage.theme}, '*') } catch(e){}
+    });
+}
+
+// 侧边栏三态切换: auto → narrow → wide → auto
+const SIDEBAR_MODES = ['auto', 'narrow', 'wide'];
+const MODE_META = {
+    auto:   { icon: '↔', label: 'Auto' },
+    narrow: { icon: '🔒', label: '固定窄边' },
+    wide:   { icon: '🔓', label: '固定宽边' },
+};
+function applySidebarMode(mode) {
+    if (!SIDEBAR_MODES.includes(mode)) { mode = 'auto'; }
+    const meta = MODE_META[mode];
+    const sidebar = document.getElementById('sidebar');
+    if (sidebar) sidebar.setAttribute('data-mode', mode);
+    const iconEl = document.getElementById('mode-icon');
+    const labelEl = document.getElementById('mode-label');
+    if (iconEl) iconEl.textContent = meta.icon;
+    if (labelEl) labelEl.textContent = meta.label;
+    localStorage.sidebarMode = mode;
+}
+function cycleSidebarMode() {
+    const current = localStorage.sidebarMode || 'auto';
+    const idx = SIDEBAR_MODES.indexOf(current);
+    const next = SIDEBAR_MODES[(idx + 1) % SIDEBAR_MODES.length];
+    applySidebarMode(next);
+}
+
+// Restore
+(function() {
+    if (localStorage.theme === 'dark') document.documentElement.classList.add('dark');
+    updateThemeIcon();
+    applySidebarMode(localStorage.sidebarMode || 'auto');
+    const page = localStorage.activePage || 'generate';
+    const btn = document.querySelector('[data-page="' + page + '"]');
+    navTo(page, btn);
+})();
+
+// 监听子页面导航请求（画布 Agent 配置按钮等）
+window.addEventListener('message', e => {
+    if (e.data?.type === 'navigate' && e.data.page) {
+        const btn = document.querySelector(`[data-page="${e.data.page}"]`);
+        if (btn) navTo(e.data.page, btn);
+    }
+});
+
+// WS
+let ws;
+function connectWS() {
+    ws = new WebSocket(WS_URL);
+    ws.onmessage = e => {
+        try {
+            const d = JSON.parse(e.data);
+            if (d.type === 'presence') {
+                document.getElementById('online-count').textContent = d.peers;
+                document.getElementById('online-count-2').textContent = d.peers;
+            } else if (d.type === 'board.synced') {
+                document.querySelectorAll('iframe').forEach(f => {
+                    try { f.contentWindow?.postMessage(d, '*') } catch(e){}
+                });
+            } else if (d.type === 'hb.ping') {
+                ws.send('hb.pong');
+            }
+        } catch(_) { /* 非 JSON 消息（如纯文本 hb.pong），忽略 */ }
+    };
+    ws.onclose = () => setTimeout(connectWS, 3000);
+}
+connectWS();
+</script>
+</body>
+</html>
