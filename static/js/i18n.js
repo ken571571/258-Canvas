@@ -116,7 +116,11 @@
       if (e.data.lang !== _currentLang) {
         _currentLang = e.data.lang;
         document.documentElement.lang = _currentLang;
-        if (_loaded) updateDOM();
+        if (_loaded) {
+          updateDOM();
+          // Also dispatch lang-applied so page-level listeners can refresh JS text
+          try { window.dispatchEvent(new CustomEvent('lang-applied', { detail: { lang: _currentLang } })); } catch(ex) {}
+        }
       }
     }
   });

@@ -135,6 +135,6 @@ window.addEventListener('message', e => {
     if (e.data?.type === 'theme') document.documentElement.classList.toggle('dark', e.data.theme === 'dark');
     if (e.data?.type === 'refresh') load();
 });
-</script>
+window.addEventListener('lang-applied',function(){if(window._i18nUpdate)window._i18nUpdate();});</script>
 </body>
 </html>

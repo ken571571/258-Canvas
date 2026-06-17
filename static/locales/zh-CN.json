@@ -57,5 +57,61 @@
   "lightbox": {
     "download": "⬇ 下载", "close": "✕"
   },
-  "auth": { "enterPassword": "请输入访问密码" }
+  "auth": { "enterPassword": "请输入访问密码" },
+  "about": {
+    "title": "关于 — 无限画布",
+    "heroTitle": "无限画布",
+    "tagline": "AI 驱动的无限创作平台",
+    "versionInfo": "📦 版本信息",
+    "checkUpdate": "检查更新",
+    "aboutAuthor": "👤 关于作者",
+    "authorDesc": "全栈开发者 · AI 创作工具探索者",
+    "intro1": "无限画布是一个聚合多 AI 平台的创作工具，支持 OpenAI、DeepSeek、Gemini、火山方舟、ModelScope 等主流 API，提供文生图、图生图、视频生成、LLM 对话、Agent 智能体等完整的 AI 创作工作流。更多功能持续迭代中 🚀",
+    "techStack": "🛠 技术栈",
+    "footer": "用 ❤️ 和 AI 构建 · 无限画布",
+    "checking": "检测中…",
+    "newVersion": "发现新版本: v",
+    "updateHint": "，可前往设置页执行更新",
+    "checkFailed": "检查失败: ",
+    "upToDate": "已是最新版本 ✓",
+    "networkError": "网络错误，请稍后重试"
+  },
+  "generate": {
+    "subtitle": "选择模型、尺寸和提示词，生成结果会保存在本地素材输出目录。",
+    "params": "生成参数",
+    "promptLabel": "提示词 Prompt",
+    "promptPlaceholder": "描述你想要的画面...",
+    "platform": "API 平台",
+    "model": "模型",
+    "size": "尺寸",
+    "generateBtn": "生成图片",
+    "result": "结果预览",
+    "waiting": "等待生成结果",
+    "generating": "生成中...",
+    "requesting": "正在请求 API...",
+    "success": "生成成功",
+    "failed": "生成失败: ",
+    "requestFailed": "请求失败: ",
+    "enterPrompt": "请输入提示词",
+    "selectModel": "请选择模型",
+    "noModels": "该平台无可用模型",
+    "noPlatforms": "无可用平台",
+    "addModels": "请在 API 设置中添加生图模型"
+  },
+  "size": {
+    "square": "1:1 方形",
+    "wide": "16:9 横版",
+    "tall": "9:16 竖版",
+    "43w": "4:3 横版",
+    "34t": "3:4 竖版",
+    "ultrawide": "21:9 宽屏",
+    "x2": "x2 放大",
+    "x3": "x3 放大",
+    "custom": "自定义最长边 →",
+    "followInput": "📎 跟随输入图",
+    "auto": "📎 自动",
+    "width": "宽",
+    "height": "高",
+    "sq": "1:1"
+  }
 }

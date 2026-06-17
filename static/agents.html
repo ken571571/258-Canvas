@@ -556,6 +556,6 @@ window.designPrompt = designPrompt;
 (function(){ if(localStorage.theme==='dark') document.documentElement.classList.add('dark'); })();
 init();
 window.addEventListener('message', e => { if (e.data?.type === 'theme') document.documentElement.classList.toggle('dark', e.data.theme === 'dark'); if (e.data?.type === 'refresh') init(); });
-</script>
+window.addEventListener('lang-applied',function(){if(window._i18nUpdate)window._i18nUpdate();});</script>
 </body>
 </html>

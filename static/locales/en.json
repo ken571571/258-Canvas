@@ -57,5 +57,61 @@
   "lightbox": {
     "download": "⬇ Download", "close": "✕"
   },
-  "auth": { "enterPassword": "Enter access password" }
+  "auth": { "enterPassword": "Enter access password" },
+  "about": {
+    "title": "About — Infinite Canvas",
+    "heroTitle": "Infinite Canvas",
+    "tagline": "AI-Powered Infinite Creation Platform",
+    "versionInfo": "📦 Version Info",
+    "checkUpdate": "Check Update",
+    "aboutAuthor": "👤 About Author",
+    "authorDesc": "Full-stack Developer · AI Tool Explorer",
+    "intro1": "Infinite Canvas is an AI creation tool aggregating multiple AI platforms, supporting OpenAI, DeepSeek, Gemini, Volcengine, ModelScope and more. Provides text-to-image, image-to-image, video generation, LLM chat, Agent workflows and other complete AI creation pipelines. More features coming soon 🚀",
+    "techStack": "🛠 Tech Stack",
+    "footer": "Built with ❤️ and AI · Infinite Canvas",
+    "checking": "Checking...",
+    "newVersion": "New version: v",
+    "updateHint": ", update in Settings",
+    "checkFailed": "Check failed: ",
+    "upToDate": "Up to date ✓",
+    "networkError": "Network error, please retry"
+  },
+  "generate": {
+    "subtitle": "Select model, size and prompt. Results are saved to local output directory.",
+    "params": "Generation Parameters",
+    "promptLabel": "Prompt",
+    "promptPlaceholder": "Describe what you want to see...",
+    "platform": "API Platform",
+    "model": "Model",
+    "size": "Size",
+    "generateBtn": "Generate Image",
+    "result": "Result Preview",
+    "waiting": "Waiting for result",
+    "generating": "Generating...",
+    "requesting": "Requesting API...",
+    "success": "Generation successful",
+    "failed": "Generation failed: ",
+    "requestFailed": "Request failed: ",
+    "enterPrompt": "Please enter a prompt",
+    "selectModel": "Please select a model",
+    "noModels": "No models available for this platform",
+    "noPlatforms": "No platforms available",
+    "addModels": "Please add image models in API Settings"
+  },
+  "size": {
+    "square": "1:1 Square",
+    "wide": "16:9 Widescreen",
+    "tall": "9:16 Portrait",
+    "43w": "4:3 Landscape",
+    "34t": "3:4 Portrait",
+    "ultrawide": "21:9 Ultrawide",
+    "x2": "x2 Upscale",
+    "x3": "x3 Upscale",
+    "custom": "Custom long edge →",
+    "followInput": "📎 Follow Input",
+    "auto": "📎 Auto",
+    "width": "W",
+    "height": "H",
+    "sq": "1:1"
+  }
 }

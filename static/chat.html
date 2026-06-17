@@ -254,6 +254,6 @@ function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;'
     input.focus();  // 自动聚焦输入框，用户可直接输入
 })();
 window.addEventListener('message', e => { if (e.data?.type === 'theme') document.documentElement.classList.toggle('dark', e.data.theme === 'dark'); if (e.data?.type === 'refresh') { refreshProviders().then(() => loadProviders()); } });
-</script>
+window.addEventListener('lang-applied',function(){if(window._i18nUpdate)window._i18nUpdate();});</script>
 </body>
 </html>

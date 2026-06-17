@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>关于 — 无限画布</title>
+<title data-t="about.title">关于 — 无限画布</title>
 <link rel="stylesheet" href="/static/css/style.css?v=5">
 <style>
 body { overflow-y: auto; background: var(--bg); }
@@ -28,19 +28,19 @@ body { overflow-y: auto; background: var(--bg); }
     <!-- Hero -->
     <div class="about-hero">
         <div class="about-logo">∞</div>
-        <h1 data-t="nav.canvas">无限画布</h1>
+        <h1 data-t="about.heroTitle">无限画布</h1>
         <p class="about-tagline" data-t="about.tagline">AI 驱动的无限创作平台</p>
     </div>
 
     <!-- 版本信息 -->
     <div class="about-section">
-        <h3>📦 版本信息</h3>
+        <h3 data-t="about.versionInfo">📦 版本信息</h3>
         <div class="version-row">
             <span class="version-badge">
                 <span class="dot"></span>
                 <span id="current-version">v1.0.0</span>
             </span>
-            <button class="btn btn-secondary" id="check-update-btn" onclick="checkUpdate()">
+            <button class="btn btn-secondary" id="check-update-btn" onclick="checkUpdate()" data-t="about.checkUpdate">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="margin-right:6px;vertical-align:-3px">
                     <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
                 </svg>
@@ -52,15 +52,15 @@ body { overflow-y: auto; background: var(--bg); }
 
     <!-- 作者介绍 -->
     <div class="about-section">
-        <h3>👤 关于作者</h3>
+        <h3 data-t="about.aboutAuthor">👤 关于作者</h3>
         <div class="about-author">
             <div class="about-avatar">K</div>
             <div class="about-author-info">
                 <strong>ken571571</strong>
-                <p style="color:var(--muted);margin-top:2px">全栈开发者 · AI 创作工具探索者</p>
+                <p style="color:var(--muted);margin-top:2px" data-t="about.authorDesc">全栈开发者 · AI 创作工具探索者</p>
             </div>
         </div>
-        <p class="about-intro" style="margin-top:14px">
+        <p class="about-intro" style="margin-top:14px" data-t="about.intro1">
             无限画布是一个<strong>聚合多 AI 平台</strong>的创作工具，支持
             OpenAI、DeepSeek、Gemini、火山方舟、ModelScope 等主流 API，
             提供<strong>文生图、图生图、视频生成、LLM 对话、Agent 智能体</strong>
@@ -70,7 +70,7 @@ body { overflow-y: auto; background: var(--bg); }
 
     <!-- 技术栈 -->
     <div class="about-section">
-        <h3>🛠 技术栈</h3>
+        <h3 data-t="about.techStack">🛠 技术栈</h3>
         <div class="about-meta">
             <span class="about-tag">Python / FastAPI</span>
             <span class="about-tag">WebSocket</span>
@@ -83,22 +83,46 @@ body { overflow-y: auto; background: var(--bg); }
     </div>
 
     <!-- Footer -->
-    <div class="about-footer">
+    <div class="about-footer" data-t="about.footer">
         用 ❤️ 和 <span>AI</span> 构建 · 无限画布
     </div>
 </div>
 
 <script>
+// —— 翻译辅助函数 ——
+function t(key, fallback) {
+    return (typeof _t === 'function') ? _t(key, fallback) : fallback;
+}
+
+// —— 刷新页面中所有 data-t 和 JS 生成的文本 ——
+function refreshI18n() {
+    if (typeof _i18nUpdate === 'function') _i18nUpdate();
+    // 更新 title
+    var titleEl = document.querySelector('title');
+    if (titleEl) {
+        var titleKey = titleEl.getAttribute('data-t');
+        if (titleKey) titleEl.textContent = t(titleKey, titleEl.textContent);
+    }
+    // 更新按钮文本（data-t 覆盖 button 的 textContent）
+    var btn = document.getElementById('check-update-btn');
+    if (btn && btn.disabled === false) {
+        // 恢复按钮默认文本
+        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="margin-right:6px;vertical-align:-3px"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>' + t('about.checkUpdate','检查更新');
+    }
+}
+
 // 主题跟随父窗口
 window.addEventListener('message', function(e) {
     if (e.data && e.data.type === 'theme') {
-        if (e.data.theme === 'dark') {
-            document.documentElement.classList.add('dark');
-        } else {
-            document.documentElement.classList.remove('dark');
-        }
+        document.documentElement.classList.toggle('dark', e.data.theme === 'dark');
+    }
+    // 语言切换消息（从父窗口 postMessage 来）
+    if (e.data && e.data.type === 'lang' && e.data.lang) {
+        document.documentElement.lang = e.data.lang;
+        refreshI18n();
     }
 });
+
 // 初始主题同步
 if (window.parent !== window) {
     try {
@@ -106,6 +130,18 @@ if (window.parent !== window) {
         if (theme === 'dark') document.documentElement.classList.add('dark');
     } catch(e) {}
 }
+
+// 页面加载完做首次翻译（等待 i18n 资源加载完成）
+(function retryI18n() {
+    if (typeof _i18nLoaded === 'function' && _i18nLoaded()) {
+        refreshI18n();
+    } else {
+        setTimeout(retryI18n, 50);
+    }
+})();
+
+// 监听 i18n 的 lang-applied 事件（由本页 i18n.js init 完成或语言切换时触发）
+window.addEventListener('lang-applied', function() { refreshI18n(); });
 
 // 初始加载版本号
 (async function() {
@@ -121,7 +157,7 @@ async function checkUpdate() {
     var btn = document.getElementById('check-update-btn');
     var status = document.getElementById('update-status');
     btn.disabled = true;
-    btn.textContent = _t('about.checking','检测中…');
+    btn.textContent = t('about.checking','检测中…');
     status.textContent = '';
     status.className = 'update-status';
 
@@ -129,23 +165,20 @@ async function checkUpdate() {
         var resp = await fetch('/api/check-update');
         var data = await resp.json();
         if (data.update_available) {
-            status.textContent = _t('about.newVersion','发现新版本: v') + data.latest.version + _t('about.updateHint','，可前往设置页执行更新');
+            status.textContent = t('about.newVersion','发现新版本: v') + data.latest.version + t('about.updateHint','，可前往设置页执行更新');
             status.className = 'update-status has-update';
         } else if (data.error) {
-            status.textContent = _t('about.checkFailed','检查失败: ') + data.error;
+            status.textContent = t('about.checkFailed','检查失败: ') + data.error;
         } else {
-            status.textContent = _t('about.upToDate','已是最新版本 ✓');
+            status.textContent = t('about.upToDate','已是最新版本 ✓');
         }
     } catch(e) {
-        status.textContent = _t('about.networkError','网络错误，请稍后重试');
+        status.textContent = t('about.networkError','网络错误，请稍后重试');
     } finally {
         btn.disabled = false;
-        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="margin-right:6px;vertical-align:-3px"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>' + _t('about.checkUpdate','检查更新');
+        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="margin-right:6px;vertical-align:-3px"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>' + t('about.checkUpdate','检查更新');
     }
 }
-
-// 语言切换时刷新翻译
-window.addEventListener('lang-applied', function() { if(window._i18nUpdate) window._i18nUpdate(); });
 </script>
 </body>
 </html>
