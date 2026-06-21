@@ -1,0 +1,48 @@
+{
+  "id": "5ae7cafee4ca43c1",
+  "title": "默认画布",
+  "created_at": 1782014405086,
+  "updated_at": 1782014426955,
+  "nodes": [
+    {
+      "id": "image_gen_u0yx2s",
+      "type": "image_gen",
+      "x": 206,
+      "y": 174,
+      "w": 260,
+      "h": 216,
+      "label": "图片生成",
+      "desc": "",
+      "text": "",
+      "url": "",
+      "model": "Tongyi-MAI/Z-Image-Turbo",
+      "systemPrompt": "",
+      "outputText": "",
+      "lastResult": "",
+      "images": [],
+      "agentId": "",
+      "comfyWorkflow": "",
+      "loopCount": 3,
+      "loopMode": "serial",
+      "loopImageInput": true,
+      "loopStart": 1,
+      "hasConfig": false,
+      "knowledgeBases": [],
+      "skills": [],
+      "userInput": "",
+      "runState": "idle",
+      "runMessage": ""
+    }
+  ],
+  "connections": [],
+  "groups": [],
+  "viewport": {
+    "x": 0,
+    "y": 0,
+    "scale": 1
+  },
+  "icon": "layers",
+  "kind": "default",
+  "logs": [],
+  "settings": {}
+}
