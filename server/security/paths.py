@@ -22,7 +22,7 @@ def safe_join(root: str, *parts: str) -> str:
     Raises:
         ValueError: 路径包含盘符/绝对路径/..逃逸到 root 外
     """
-    root_abs = os.path.abspath(root)
+    root_abs = os.path.realpath(root)
     clean_parts = []
     for part in parts:
         value = str(part or "")
@@ -34,7 +34,21 @@ def safe_join(root: str, *parts: str) -> str:
             raise ValueError("absolute path is not allowed")
         clean_parts.append(value)
 
-    path = os.path.abspath(os.path.join(root_abs, *clean_parts))
+    path = os.path.join(root_abs, *clean_parts)
+
+    # 解析符号链接（防止通过符号链接逃逸 root）
+    # realpath 要求路径存在，对不存在的路径逐级向上解析
+    try:
+        path = os.path.realpath(path)
+    except (FileNotFoundError, OSError):
+        # 路径尚不存在（写入操作），向上找到最近的已存在父目录解析
+        parent = os.path.dirname(path)
+        try:
+            parent = os.path.realpath(parent)
+        except (FileNotFoundError, OSError):
+            pass
+        path = os.path.join(parent, os.path.basename(path))
+
     try:
         common = os.path.commonpath([root_abs, path])
     except ValueError as exc:

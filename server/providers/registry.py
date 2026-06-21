@@ -25,11 +25,11 @@ class ProviderRegistry:
             mod_name = fn[:-3]
             try:
                 mod = importlib.import_module(f"{__package__}.{mod_name}")
-                # 找模块中第一个 BaseProvider 子类
                 for attr in dir(mod):
                     obj = getattr(mod, attr)
                     if (isinstance(obj, type) and issubclass(obj, BaseProvider)
-                            and obj is not BaseProvider):
+                            and obj is not BaseProvider
+                            and obj.__module__ == mod.__name__):   # 跳过从其他模块 import 的类
                         inst = obj()
                         if inst.provider_id:
                             self._providers[inst.provider_id] = inst
@@ -42,10 +42,6 @@ class ProviderRegistry:
 
     def list_all(self) -> List[BaseProvider]:
         return list(self._providers.values())
-
-    def list_enabled(self) -> List[BaseProvider]:
-        # 所有注册的都是可用的（后续可从配置文件读取启/禁用）
-        return self.list_all()
 
 
 # 全局单例

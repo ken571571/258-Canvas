@@ -50,40 +50,40 @@
 .model-row { display:flex; gap:6px; padding:6px 0; }
 .model-row select { flex:1; height:30px; padding:0 8px; border-radius:6px; border:1px solid var(--border); background:var(--bg); color:var(--text); font-size:11px; outline:none; }
 </style>
-<script src="/static/js/i18n.js?v=1"></script>
+<script src="/static/js/i18n.js?v=2"></script>
 </head>
 <body>
 <div class="chat-page">
     <aside class="chat-sidebar">
-        <div class="chat-sidehead"><h2>对话历史</h2><span style="font-size:10px;color:var(--muted);font-weight:800;" id="convCount">0</span></div>
+        <div class="chat-sidehead"><h2 data-t="chat.history">对话历史</h2><span style="font-size:10px;color:var(--muted);font-weight:800;" id="convCount">0</span></div>
         <div class="model-row">
             <select id="providerSelect" onchange="updateModelSelect()"></select>
             <select id="modelSelect" onchange="currentModel=this.value;localStorage.setItem('chat_model',this.value)"></select>
         </div>
-        <button class="add-conv-btn" onclick="newConv()"><span>+</span> 新对话</button>
+        <button class="add-conv-btn" onclick="newConv()"><span>+</span> <span data-t="chat.newChat">新对话</span></button>
         <div class="conv-list" id="convList"></div>
     </aside>
     <main class="chat-main">
         <div class="chat-log" id="chat-log">
-            <div class="welcome">输入消息开始对话，Enter 发送</div>
+            <div class="welcome" data-t="chat.welcome">输入消息开始对话，Enter 发送</div>
         </div>
         <div class="chat-input-row">
             <button class="stream-toggle active" id="stream-btn" onclick="toggleStream()" title="流式输出">⚡</button>
-            <textarea id="chat-input" rows="1" placeholder="输入消息... (Enter 发送, Shift+Enter 换行)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();send()}"></textarea>
-            <button class="btn btn-primary" onclick="send()">发送</button>
+            <textarea id="chat-input" rows="1" data-t-placeholder="chat.typeMessage" placeholder="输入消息... (Enter 发送, Shift+Enter 换行)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();send()}"></textarea>
+            <button class="btn btn-primary" data-t="chat.send" onclick="send()">发送</button>
         </div>
     </main>
 </div>
 
-<script src="/static/js/api.js?v=4"></script>
+<script src="/static/js/api.js?v=5"></script>
 <script>
 const log = document.getElementById('chat-log');
 const input = document.getElementById('chat-input');
 const convList = document.getElementById('convList');
 let currentConvId = '';
 let useStream = true;
-let currentModel = 'gpt-4o-mini';
-let currentProvider = 'openai';
+let currentModel = '';
+let currentProvider = '';
 
 function initTheme() { if(localStorage.theme==='dark') document.documentElement.classList.add('dark'); }
 initTheme();
@@ -94,13 +94,13 @@ function loadProviders() {
     try {
         const data = getCachedProviders();
         const withChat = data.filter(p => (p.chat_models||[]).length > 0);
-        sel.innerHTML = withChat.map(p => `<option value="${p.id}">${esc(p.name||p.id)}</option>`).join('') || '<option value="openai">OpenAI</option>';
+        sel.innerHTML = withChat.map(p => `<option value="${p.id}">${esc(p.name||p.id)}</option>`).join('');
         // 恢复上次选择
-        const savedPid = localStorage.getItem('chat_provider') || (withChat[0]?.id || 'openai');
+        const savedPid = localStorage.getItem('chat_provider') || (withChat[0]?.id || '');
         if (withChat.some(p => p.id === savedPid)) sel.value = savedPid;
         currentProvider = sel.value;
         updateModelSelect(true);
-    } catch(e) { sel.innerHTML = '<option value="openai">OpenAI</option>'; }
+    } catch(e) { sel.innerHTML = ''; }
 }
 function updateModelSelect(restoring = false) {
     const sel = document.getElementById('modelSelect');
@@ -110,12 +110,12 @@ function updateModelSelect(restoring = false) {
     try {
         const data = getCachedProviders();
         const p = data.find(x => x.id === pid);
-        const models = (p?.chat_models||[]).length ? p.chat_models : ['gpt-4o-mini'];
-        sel.innerHTML = models.map(m => `<option value="${m}">${m}</option>`).join('');
+        const models = p?.chat_models || [];
+        sel.innerHTML = models.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('');
         const savedModel = localStorage.getItem('chat_model');
         if (restoring && savedModel && models.includes(savedModel)) { sel.value = savedModel; currentModel = savedModel; }
         else { currentModel = models[0]; }
-    } catch(e) { sel.innerHTML = '<option value="gpt-4o-mini">gpt-4o-mini</option>'; }
+    } catch(e) { sel.innerHTML = ''; }
 }
 
 // ===== 对话历史 =====
@@ -127,12 +127,12 @@ async function loadConversations() {
         document.getElementById('convCount').textContent = convs.length;
         convList.innerHTML = convs.map(c => {
             const active = c.id === currentConvId ? ' active' : '';
-            return `<div class="conv-item${active}" onclick="switchConv('${c.id}')">
-                <span class="conv-title" title="${esc(c.title||c.id)}">${esc(c.title||'对话')}</span>
+            return `<div class="conv-item${active}" onclick="switchConv('${escJs(c.id)}')">
+                <span class="conv-title" title="${esc(c.title||c.id)}">${esc(c.title||_t('chat.newChat','对话'))}</span>
                 <span style="font-size:9px;color:var(--muted);flex-shrink:0;">${c.message_count||0}</span>
-                <button class="conv-del" onclick="event.stopPropagation();deleteConv('${c.id}')" title="删除">×</button>
+                <button class="conv-del" onclick="event.stopPropagation();deleteConv('${escJs(c.id)}')" title="删除">×</button>
             </div>`;
-        }).join('') || '<div style="color:var(--muted);font-size:11px;text-align:center;padding:12px;">暂无对话</div>';
+        }).join('') || '<div style="color:var(--muted);font-size:11px;text-align:center;padding:12px;">' + _t('chat.emptyList','暂无对话') + '</div>';
         // Keep current selection in sync
         if (currentConvId && !convs.find(c => c.id === currentConvId)) {
             convList.querySelector('.active')?.classList.remove('active');
@@ -142,7 +142,7 @@ async function loadConversations() {
 
 function newConv() {
     currentConvId = '';
-    log.innerHTML = '<div class="welcome">输入消息开始对话，Enter 发送</div>';
+    log.innerHTML = '<div class="welcome">' + _t('chat.welcome','输入消息开始对话，Enter 发送') + '</div>';
     convList.querySelectorAll('.conv-item').forEach(el => el.classList.remove('active'));
     input.focus();
 }
@@ -158,19 +158,19 @@ async function switchConv(id) {
         (d.messages || []).forEach(m => {
             if (m.role === 'user' || m.role === 'assistant') addMsg(m.role, m.content);
         });
-        if (!d.messages?.length) log.innerHTML = '<div class="welcome">对话已加载。</div>';
-    } catch (e) { log.innerHTML = '<div class="welcome">加载失败。</div>'; }
+        if (!d.messages?.length) log.innerHTML = '<div class="welcome">' + _t('chat.loaded','对话已加载。') + '</div>';
+    } catch (e) { log.innerHTML = '<div class="welcome">' + _t('chat.loadFailed','加载失败。') + '</div>'; }
     log.scrollTop = log.scrollHeight;
     loadConversations();
 }
 
 async function deleteConv(id) {
-    if (!confirm('确定删除此对话？')) return;
+    if (!confirm(_t('chat.deleteConfirm','确定删除此对话？'))) return;
     try {
         await apiFetch('/api/threads/' + id, { method: 'DELETE' });
         if (currentConvId === id) newConv();
         loadConversations();
-    } catch (e) { alert('删除失败: '+e.message); }
+    } catch (e) { alert(_t('chat.deleteFailed','删除失败: ')+e.message); }
 }
 
 // ===== 消息 =====
@@ -208,9 +208,9 @@ async function sendNormal(text) {
             body: JSON.stringify({ message: text, provider_id: currentProvider, model: currentModel, conversation_id: currentConvId })
         });
         const data = await resp.json();
-        addMsg('assistant', data.reply || '无回复');
+        addMsg('assistant', data.reply || _t('chat.noReply','无回复'));
         if (data.conversation_id) { currentConvId = data.conversation_id; loadConversations(); }
-    } catch (e) { addMsg('assistant', '错误: '+e.message); }
+    } catch (e) { addMsg('assistant', _t('chat.error','错误: ')+e.message); }
 }
 
 async function sendStream(text) {
@@ -245,15 +245,20 @@ async function sendStream(text) {
 }
 
 function toggleStream() { useStream = !useStream; document.getElementById('stream-btn').classList.toggle('active', useStream); }
-function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'); }
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function escJs(s) { return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
 
 (async function() {
-    await refreshProviders();
+    try {
+        await refreshProviders();
+    } catch(e) {
+        console.error('Provider 加载失败，使用默认配置:', e);
+    }
     loadConversations();
     loadProviders();
-    input.focus();  // 自动聚焦输入框，用户可直接输入
+    try { input.focus(); } catch(e) { /* 输入框可能不存在 */ }
 })();
-window.addEventListener('message', e => { if (e.data?.type === 'theme') document.documentElement.classList.toggle('dark', e.data.theme === 'dark'); if (e.data?.type === 'refresh') { refreshProviders().then(() => loadProviders()); } });
+window.addEventListener('message', e => { if (e.origin !== location.origin) return; if (e.data?.type === 'theme') document.documentElement.classList.toggle('dark', e.data.theme === 'dark'); if (e.data?.type === 'refresh') { refreshProviders().then(() => loadProviders()); } });
 window.addEventListener('lang-applied',function(){if(window._i18nUpdate)window._i18nUpdate();});</script>
 </body>
 </html>

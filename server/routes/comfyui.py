@@ -10,10 +10,15 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from .. import config
 from ..logging_config import get_logger
+from ..security.network import BLOCKED_NETWORKS, is_blocked_host
 
 log = get_logger("comfyui")
 
 router = APIRouter(prefix="/api", tags=["comfyui"])
+
+# ——— 本地别名：保持模块内原有引用名兼容 ———
+_BLOCKED_NETWORKS = BLOCKED_NETWORKS
+_is_blocked_host = is_blocked_host
 
 
 class ComfyGenerateReq(BaseModel):
@@ -89,13 +94,16 @@ async def save_instances(payload: dict):
         host, _, port = s.rpartition(":")
         if not host or not port.isdigit():
             raise HTTPException(status_code=400, detail=f"地址不合法: {item}")
+        # SSRF 防护：检查主机是否在云 metadata 黑名单（允许内网地址用于多机部署）
+        if _is_blocked_host(host, allow_lan=True):
+            raise HTTPException(status_code=400, detail=f"不允许注册受保护地址: {host}")
         if s not in cleaned:
             cleaned.append(s)
 
     if not cleaned:
         raise HTTPException(status_code=400, detail="至少保留一个 ComfyUI 后端地址")
 
-    # 写入 .env（现在用 threading.Lock，异步调用也安全）
+    # 写入 .env（使用 asyncio.Lock，异步调用安全）
     from ..routes.providers_cfg import _write_env
     await _write_env({"COMFYUI_INSTANCES": ",".join(cleaned)})
 
@@ -155,11 +163,13 @@ async def _poll_comfyui_task(addr: str, prompt_id: str, timeout_seconds: int = 3
     视频/GIF 会下载到本地 output/videos/ 目录。
     """
     import asyncio as _asyncio
+    consecutive_errors = 0
     async with httpx.AsyncClient(timeout=5) as cli:
         for _ in range(timeout_seconds):
             try:
                 resp = await cli.get(f"http://{addr}/history/{prompt_id}")
                 hist = resp.json()
+                consecutive_errors = 0  # 成功响应后重置
                 if prompt_id in hist:
                     outputs = hist[prompt_id].get("outputs", {})
                     images = []
@@ -180,7 +190,9 @@ async def _poll_comfyui_task(addr: str, prompt_id: str, timeout_seconds: int = 3
                                 local_url = await _download_comfyui_media(addr, fn, sub or "gifs")
                                 videos.append(local_url or f"http://{addr}/view?filename={fn}&type=output&subfolder={sub}" if sub else f"http://{addr}/view?filename={fn}&type=output")
                             else:
-                                images.append(f"http://{addr}/view?filename={fn}&type=output")
+                                # 图片也下载到本地，避免局域网客户端无法直连 ComfyUI
+                                local_url = await _download_comfyui_media(addr, fn, sub or "", "images")
+                                images.append(local_url or f"http://{addr}/view?filename={fn}&type=output")
                         # 视频输出 —— 兼容多种 key（videos / gifs / animated）
                         for video_key in ("videos", "gifs"):
                             for item in (node_out.get(video_key) or []):
@@ -192,15 +204,23 @@ async def _poll_comfyui_task(addr: str, prompt_id: str, timeout_seconds: int = 3
                                 videos.append(local_url or video_url)
                     log.info(f"ComfyUI 轮询完成: {len(images)} 图片, {len(videos)} 视频")
                     return {"images": images, "videos": videos, "prompt_id": prompt_id, "backend": addr}
-            except Exception:
-                pass
+            except Exception as e:
+                consecutive_errors += 1
+                if consecutive_errors <= 3 or consecutive_errors % 10 == 0:
+                    log.warning(f"ComfyUI 轮询瞬断 ({consecutive_errors} 次): {addr} — {e}")
+                if consecutive_errors >= 30:
+                    raise HTTPException(status_code=502, detail=f"ComfyUI 后端连续 {consecutive_errors} 次无响应: {addr}")
             await _asyncio.sleep(1)
 
     raise HTTPException(status_code=504, detail="ComfyUI 渲染超时")
 
 
-async def _download_comfyui_media(addr: str, filename: str, subfolder: str) -> str:
-    """从 ComfyUI 下载视频/GIF 到本地 output/videos/，返回本地 URL。"""
+async def _download_comfyui_media(addr: str, filename: str, subfolder: str, output_subdir: str = "videos") -> str:
+    """从 ComfyUI 下载媒体文件到本地 output/ 目录，返回本地 URL。
+
+    Args:
+        output_subdir: 输出子目录名，如 "videos" 或 "images"
+    """
     import os as _os
     import hashlib as _hashlib
     from .. import config
@@ -213,14 +233,15 @@ async def _download_comfyui_media(addr: str, filename: str, subfolder: str) -> s
             if dl.status_code == 200 and len(dl.content) > 1000:
                 h = _hashlib.md5(dl.content).hexdigest()[:12]
                 ts = int(time.time())
-                ext = _os.path.splitext(filename)[1] or ".mp4"
+                ext = _os.path.splitext(filename)[1] or (".mp4" if output_subdir == "videos" else ".png")
                 out_name = f"comfy_{ts}_{h}{ext}"
-                path = _os.path.join(config.OUTPUT_VIDEOS_DIR, out_name)
+                out_dir = config.OUTPUT_VIDEOS_DIR if output_subdir == "videos" else config.OUTPUT_IMAGES_DIR
+                path = _os.path.join(out_dir, out_name)
                 _os.makedirs(_os.path.dirname(path), exist_ok=True)
                 with open(path, "wb") as f:
                     f.write(dl.content)
                 log.info(f"ComfyUI 媒体已保存: {out_name} ({len(dl.content)} bytes)")
-                return f"/output/videos/{out_name}"
+                return f"/output/{output_subdir}/{out_name}"
             else:
                 log.warning(f"ComfyUI 下载异常: HTTP {dl.status_code}, size={len(dl.content)}")
     except Exception as e:

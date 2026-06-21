@@ -6,7 +6,8 @@ CanvasEngine.prototype._toggleAssetPanel = function() {
 };
 
 CanvasEngine.prototype._loadAssets = async function(dir) {
-    document.querySelectorAll('.asset-tab').forEach(t => t.classList.toggle('active', t.textContent.trim() === (dir === 'input' ? '输入' : '输出')));
+    const expectedText = dir === 'input' ? _t('assets.input','输入') : _t('assets.output','输出');
+    document.querySelectorAll('.asset-tab').forEach(t => t.classList.toggle('active', t.textContent.trim() === expectedText));
     try {
         const resp = await apiFetch(`/api/assets/list?dir=${dir}`);
         const data = await resp.json();
@@ -37,11 +38,11 @@ CanvasEngine.prototype._renderAssetGrid = function() {
             ondragstart="window._canvas._onAssetDragStart(event)"
             ondragend="window._canvas._onAssetDragEnd(event)"
             onclick="window._canvas._onAssetClick(event)">
-            ${isImg ? `<img src="${this._esc(f.url)}" alt="${this._esc(f.name)}" onerror="this.parentElement.innerHTML='📁'">` : '📁'}
+            ${isImg ? `<img src="${this._esc(f.url)}" alt="${this._esc(f.name)}" onerror="this.style.display='none'">` : '📁'}
             <span class="asset-name">${this._esc(f.name)}</span>
-            <button class="asset-del" onclick="event.stopPropagation();event.preventDefault();window._canvas._deleteAsset('${this._esc(f.url)}')" title="删除">×</button>
+            <button class="asset-del" onclick="event.stopPropagation();event.preventDefault();window._canvas._deleteAsset('${this._escJs(f.url)}')" title="${_t('node.delete','删除')}">×</button>
         </div>`;
-    }).join('') || '<div style="grid-column:1/-1;text-align:center;padding:30px;color:var(--muted);font-size:12px;">暂无媒体文件</div>';
+    }).join('') || '<div style="grid-column:1/-1;text-align:center;padding:30px;color:var(--muted);font-size:12px;">' + _t('assets.empty','暂无媒体文件') + '</div>';
 };
 
 CanvasEngine.prototype._onAssetDragStart = function(event) {
@@ -62,13 +63,21 @@ CanvasEngine.prototype._onAssetDragStart = function(event) {
 };
 
 CanvasEngine.prototype._deleteAsset = async function(url) {
-    if (!confirm('确定删除此文件？')) return;
+    if (!confirm(_t('assets.deleteConfirm','确定删除此文件？'))) return;
+    var deletedItem = (this._assetFiles || []).find(function(f) { return f.url === url; });
     try {
         await apiFetch(`/api/assets/delete?url=${encodeURIComponent(url)}`, { method: 'DELETE' });
         // 从缓存中移除
-        this._assetFiles = (this._assetFiles || []).filter(f => f.url !== url);
+        this._assetFiles = (this._assetFiles || []).filter(function(f) { return f.url !== url; });
         this._renderAssetGrid();
-    } catch(e) { /* ignore */ }
+    } catch(e) {
+        console.warn('删除资产失败:', url, e);
+        // 恢复缓存，避免 UI 与实际状态不一致
+        if (deletedItem && this._assetFiles && !this._assetFiles.some(function(f) { return f.url === url; })) {
+            this._assetFiles.push(deletedItem);
+            this._renderAssetGrid();
+        }
+    }
 };
 
 CanvasEngine.prototype._onAssetDragEnd = function() {

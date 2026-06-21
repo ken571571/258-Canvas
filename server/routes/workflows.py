@@ -11,6 +11,7 @@ import httpx
 
 from .. import config
 from ..logging_config import get_logger
+from ..security.paths import safe_join
 
 log = get_logger("workflows")
 
@@ -287,10 +288,14 @@ async def run_workflow(name: str, payload: dict):
                             log.warning(f"Data URL 解码失败: {e}")
                             continue
 
-                    # 2) 远程 URL
+                    # 2) 远程 URL（SSRF 防护：检查目标主机）
                     elif val.startswith("http://") or val.startswith("https://"):
+                        from ..security.network import validate_safe_url
+                        if not validate_safe_url(val):
+                            log.warning(f"SSRF 拦截 — 禁止访问内网地址: {val[:80]}")
+                            continue
                         try:
-                            r = await cli.get(val, follow_redirects=True)
+                            r = await cli.get(val, follow_redirects=False)
                             r.raise_for_status()
                             file_data = r.content
                             mime = r.headers.get("content-type", "image/png").split(";")[0]
@@ -302,7 +307,7 @@ async def run_workflow(name: str, payload: dict):
 
                     # 3) 本地服务器路径
                     else:
-                        local_path = os.path.join(config.BASE_DIR, val.lstrip("/").replace("/", os.sep))
+                        local_path = safe_join(config.BASE_DIR, val.lstrip("/"))
                         # 也尝试子目录
                         if not os.path.isfile(local_path):
                             for sub in ["output/images", "output/videos", "input"]:

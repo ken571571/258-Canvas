@@ -1,13 +1,15 @@
 """Agent 执行引擎：ReAct 循环（完整实现）"""
 
 import json
+import logging
+import os
 import time
 from typing import List, Dict, Any
-import httpx
-
 from .skills import get_skill_registry
 from .. import config
 from ..providers.base import BaseProvider
+
+_log = logging.getLogger("canvas571")
 
 
 async def run_agent(
@@ -16,6 +18,8 @@ async def run_agent(
     input_images: List[str],
     provider: BaseProvider,
     docs_dir: str = "",
+    agent_dir: str = "",
+    fingerprint: str = "",
 ) -> dict:
     """执行 Agent 任务，返回 {success, steps, final_output, output_images, error}"""
     started = time.time()
@@ -45,15 +49,15 @@ async def run_agent(
     if tools:
         sys_content += "\n\n你可以使用提供的工具函数来完成任务。调用工具后等待结果再继续。"
 
-    # 自动加载 docs/ 下的 .md 参考文档
+    # 自动加载 docs/ 下的 .md 参考文档（异步，不阻塞事件循环）
     if docs_dir:
-        docs_ctx = _load_docs(docs_dir)
+        docs_ctx = await _load_docs(docs_dir, fingerprint)
         if docs_ctx:
             sys_content += f"\n\n## 参考文档\n{docs_ctx}"
 
     # 注入知识库上下文
     if kb_ids and user_input:
-        kb_ctx = await _search_kb(kb_ids, user_input)
+        kb_ctx = await _search_kb(kb_ids, user_input, agent_dir, fingerprint)
         if kb_ctx:
             sys_content += f"\n\n## 知识库参考\n{kb_ctx}"
 
@@ -71,85 +75,84 @@ async def run_agent(
 
     final_output = ""
     try:
-        async with httpx.AsyncClient(timeout=config.AI_REQUEST_TIMEOUT, follow_redirects=True) as cli:
-            for step_idx in range(max_steps):
-                # 调用 LLM
-                try:
-                    chat_result = await provider.chat(
-                        messages=messages,
-                        model=model,
-                        tools=tools if tools else None,
-                    )
-                except Exception as e:
-                    steps.append({"step": step_idx + 1, "status": "error", "error": str(e)})
-                    break
-
-                # 如果有 tool_calls，执行工具
-                if chat_result.tool_calls and tools:
-                    tool_calls = chat_result.tool_calls
-                    # 记录 assistant 消息（含 tool_calls）
-                    assistant_msg: dict = {
-                        "role": "assistant",
-                        "content": chat_result.content or "",
-                        "tool_calls": [
-                            {
-                                "id": tc["id"],
-                                "type": "function",
-                                "function": {
-                                    "name": tc["name"],
-                                    "arguments": json.dumps(tc["arguments"], ensure_ascii=False),
-                                },
-                            }
-                            for tc in tool_calls
-                        ],
-                    }
-                    messages.append(assistant_msg)
-
-                    # 执行每个工具调用
-                    for tc in tool_calls:
-                        tool_name = tc.get("name", "")
-                        tool_args = tc.get("arguments", {})
-                        call_id = tc.get("id", "")
-
-                        result = await skill_reg.execute(tool_name, tool_args)
-                        result_str = json.dumps(result, ensure_ascii=False)
-
-                        messages.append({
-                            "role": "tool",
-                            "tool_call_id": call_id,
-                            "content": result_str,
-                        })
-
-                        steps.append({
-                            "step": step_idx + 1,
-                            "status": "tool_call",
-                            "tool": tool_name,
-                            "arguments": tool_args,
-                            "result": result,
-                        })
-
-                    # 继续循环，让 LLM 处理工具结果
-                    continue
-
-                # 无 tool_calls → 任务完成
-                final_output = chat_result.content or ""
-                steps.append({"step": step_idx + 1, "status": "done", "output": final_output})
+        for step_idx in range(max_steps):
+            # 调用 LLM
+            try:
+                chat_result = await provider.chat(
+                    messages=messages,
+                    model=model,
+                    tools=tools if tools else None,
+                )
+            except Exception as e:
+                steps.append({"step": step_idx + 1, "status": "error", "error": str(e)})
                 break
 
-            # 循环结束仍未完成
-            if not final_output:
-                # 尝试让 LLM 做最终总结
-                messages.append({"role": "user", "content": "请基于以上工具执行结果，给出最终总结。"})
-                try:
-                    final = await provider.chat(messages=messages, model=model)
-                    if final.content:
-                        final_output = final.content
-                        steps.append({"step": "final", "status": "done", "output": final_output})
-                except Exception:
-                    pass
+            # 如果有 tool_calls，执行工具
+            if chat_result.tool_calls and tools:
+                tool_calls = chat_result.tool_calls
+                # 记录 assistant 消息（含 tool_calls）
+                assistant_msg: dict = {
+                    "role": "assistant",
+                    "content": chat_result.content or "",
+                    "tool_calls": [
+                        {
+                            "id": tc["id"],
+                            "type": "function",
+                            "function": {
+                                "name": tc["name"],
+                                "arguments": json.dumps(tc["arguments"], ensure_ascii=False),
+                            },
+                        }
+                        for tc in tool_calls
+                    ],
+                }
+                messages.append(assistant_msg)
 
-            if not final_output:
-                final_output = "任务已执行但未获得最终输出。"
+                # 执行每个工具调用
+                for tc in tool_calls:
+                    tool_name = tc.get("name", "")
+                    tool_args = tc.get("arguments", {})
+                    call_id = tc.get("id", "")
+
+                    result = await skill_reg.execute(tool_name, tool_args)
+                    result_str = json.dumps(result, ensure_ascii=False)
+
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": call_id,
+                        "content": result_str,
+                    })
+
+                    steps.append({
+                        "step": step_idx + 1,
+                        "status": "tool_call",
+                        "tool": tool_name,
+                        "arguments": tool_args,
+                        "result": result,
+                    })
+
+                # 继续循环，让 LLM 处理工具结果
+                continue
+
+            # 无 tool_calls → 任务完成
+            final_output = chat_result.content or ""
+            steps.append({"step": step_idx + 1, "status": "done", "output": final_output})
+            break
+
+        # 循环结束仍未完成
+        if not final_output:
+            # 尝试让 LLM 做最终总结
+            messages.append({"role": "user", "content": "请基于以上工具执行结果，给出最终总结。"})
+            try:
+                final = await provider.chat(messages=messages, model=model)
+                if final.content:
+                    final_output = final.content
+                    steps.append({"step": "final", "status": "done", "output": final_output})
+            except Exception as e:
+                _log.warning("Agent final summary failed: %s", e)
+
+        if not final_output:
+            final_output = "任务已执行但未获得最终输出。"
 
         elapsed = int((time.time() - started) * 1000)
         return {
@@ -162,7 +165,7 @@ async def run_agent(
             "provider_used": agent_config.get("provider_id", "openai"),
         }
 
-    except httpx.ConnectError:
+    except (ConnectionError, OSError):
         elapsed = int((time.time() - started) * 1000)
         return {"success": False, "steps": steps, "final_output": "", "error": "无法连接 API 服务器", "total_elapsed_ms": elapsed,
                 "model_used": model, "provider_used": agent_config.get("provider_id", "openai")}
@@ -172,8 +175,11 @@ async def run_agent(
                 "model_used": model, "provider_used": agent_config.get("provider_id", "openai")}
 
 
-def _load_docs(docs_dir: str) -> str:
-    """扫描 docs/ 目录下所有 .md 和 .txt 文件，拼接为上下文。"""
+def _load_docs_sync(docs_dir: str, fingerprint: str = "") -> str:
+    """扫描 docs/ 目录下所有 .md 和 .txt 文件，拼接为上下文（同步实现）。
+
+    protected agent 的文件已加密，需要 fingerprint 解密到内存。
+    """
     import os as _os
     if not _os.path.isdir(docs_dir):
         return ""
@@ -188,8 +194,18 @@ def _load_docs(docs_dir: str) -> str:
         if ext not in (".md", ".txt", ".markdown"):
             continue
         try:
-            with open(path, "r", encoding="utf-8") as f:
-                content = f.read()
+            with open(path, "rb") as f:
+                raw = f.read()
+            # 检测加密文件
+            from ..security.agent_crypto import is_encrypted, decrypt_bytes
+            import hashlib as _hashlib
+            if is_encrypted(raw):
+                if not fingerprint:
+                    continue  # 无指纹，跳过加密文件
+                fkey = _hashlib.sha256(("agent_fingerprint:" + fingerprint).encode()).digest()
+                content = decrypt_bytes(raw, fkey).decode("utf-8", errors="replace")
+            else:
+                content = raw.decode("utf-8")
             if content.strip():
                 parts.append(f"### {fn}\n{content}")
         except Exception:
@@ -197,10 +213,44 @@ def _load_docs(docs_dir: str) -> str:
     return "\n\n---\n\n".join(parts) if parts else ""
 
 
-async def _search_kb(kb_ids: List[str], query: str) -> str:
-    """从知识库中检索相关片段。"""
-    from ..routes.knowledge import search_kb_chunks
+async def _load_docs(docs_dir: str, fingerprint: str = "") -> str:
+    """异步版 _load_docs：在线程池中执行同步 I/O，不阻塞事件循环。"""
+    import asyncio
+    return await asyncio.get_running_loop().run_in_executor(None, _load_docs_sync, docs_dir, fingerprint)
 
+
+async def _search_kb(kb_ids: List[str], query: str, agent_dir: str = "", fingerprint: str = "") -> str:
+    """从知识库中检索相关片段。
+
+    优先级：
+    1. Agent 自带的 _kb_snapshot.json（跨实例拷贝后仍可用）
+    2. 实时知识库索引（当前实例的 data/knowledge_bases/_index.json）
+    """
+    # 优先：从 agent 目录的快照中检索（跨实例可移植）
+    if agent_dir:
+        snapshot_path = os.path.join(agent_dir, "_kb_snapshot.json")
+        if os.path.exists(snapshot_path):
+            try:
+                with open(snapshot_path, "rb") as f:
+                    raw = f.read()
+                from ..security.agent_crypto import is_encrypted, decrypt_bytes
+                import hashlib as _hashlib
+                if is_encrypted(raw):
+                    if not fingerprint:
+                        raw = b"{}"  # 不能解密，跳过
+                    else:
+                        fkey = _hashlib.sha256(("agent_fingerprint:" + fingerprint).encode()).digest()
+                        raw = decrypt_bytes(raw, fkey)
+                snapshot = json.loads(raw if not is_encrypted(raw) else "{}")
+                from ..services.knowledge_service import search_from_snapshot
+                top = search_from_snapshot(snapshot, kb_ids, query, 3)
+                if top:
+                    return "\n---\n".join(f"【{c['filename']}】\n{c['text']}" for c in top)
+            except Exception:
+                pass  # 快照损坏时回退到实时检索
+
+    # 回退：实时知识库检索（向后兼容）
+    from ..routes.knowledge import search_kb_chunks
     top = search_kb_chunks(kb_ids, query, 3)
     if not top:
         return ""

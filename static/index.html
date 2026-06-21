@@ -42,7 +42,7 @@
 </style>
 <script src="/static/js/ui-icon.js?v=1"></script>
 <script src="/static/js/ui-nav-btn.js?v=1"></script>
-<script src="/static/js/i18n.js?v=1"></script>
+<script src="/static/js/i18n.js?v=2"></script>
 </head>
 <body>
 <div class="app-shell">
@@ -98,7 +98,14 @@
 </div>
 
 <script>
-const CID = localStorage.client_id || (localStorage.client_id = crypto.randomUUID());
+function _genUUID() {
+    try { return crypto.randomUUID(); } catch(e) {}
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
+}
+const CID = localStorage.client_id || (localStorage.client_id = _genUUID());
 const WS_URL = (location.protocol === 'https:' ? 'wss' : 'ws') + '://' + location.host + '/ws?client_id=' + CID;
 
 function navTo(page, el) {
@@ -113,12 +120,12 @@ function navTo(page, el) {
         frame._loaded = true;
         frame.src = frame.dataset.src.split('?')[0] + '?v=' + Date.now();
         frame.onload = () => {
-            try { frame.contentWindow?.postMessage({type:'theme', theme:localStorage.theme||'light'}, '*'); } catch(e){}
+            try { frame.contentWindow?.postMessage({type:'theme', theme:localStorage.theme||'light'}, location.origin); } catch(e){}
         };
     } else if (frame.contentWindow) {
         // 已加载过的页面，同步主题 + 通知刷新数据
-        try { frame.contentWindow.postMessage({type:'theme', theme:localStorage.theme||'light'}, '*'); } catch(e){}
-        try { frame.contentWindow.postMessage({type:'refresh'}, '*'); } catch(e){}
+        try { frame.contentWindow.postMessage({type:'theme', theme:localStorage.theme||'light'}, location.origin); } catch(e){}
+        try { frame.contentWindow.postMessage({type:'refresh'}, location.origin); } catch(e){}
     }
     localStorage.activePage = page;
 }
@@ -136,7 +143,7 @@ function toggleTheme() {
     localStorage.theme = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
     updateThemeIcon();
     document.querySelectorAll('iframe').forEach(f => {
-        try { f.contentWindow?.postMessage({type:'theme', theme:localStorage.theme}, '*') } catch(e){}
+        try { f.contentWindow?.postMessage({type:'theme', theme:localStorage.theme}, location.origin) } catch(e){}
     });
 }
 
@@ -213,11 +220,24 @@ document.addEventListener('click', function(e) {
     navTo(page, btn);
 })();
 
-// 监听子页面导航请求（画布 Agent 配置按钮等）
+// 监听子页面消息
 window.addEventListener('message', e => {
+    if (e.origin !== location.origin) return;
     if (e.data?.type === 'navigate' && e.data.page) {
         const btn = document.querySelector(`[data-page="${e.data.page}"]`);
         if (btn) navTo(e.data.page, btn);
+    }
+    // 任一页面密码通过 → 通知所有页面刷新数据
+    if (e.data?.type === 'auth-ready') {
+        document.querySelectorAll('iframe').forEach(f => {
+            try { f.contentWindow?.postMessage({type:'refresh'}, location.origin); } catch(_) {}
+        });
+    }
+    // 设置页保存/删除平台后通知所有页面刷新
+    if (e.data?.type === 'refresh' || e.data?.type === 'agents-changed') {
+        document.querySelectorAll('iframe').forEach(f => {
+            try { f.contentWindow?.postMessage(e.data, location.origin); } catch(_) {}
+        });
     }
 });
 
@@ -233,14 +253,19 @@ function connectWS() {
                 document.getElementById('online-count-2').textContent = d.peers;
             } else if (d.type === 'board.synced') {
                 document.querySelectorAll('iframe').forEach(f => {
-                    try { f.contentWindow?.postMessage(d, '*') } catch(e){}
+                    try { f.contentWindow?.postMessage(d, location.origin) } catch(e){}
                 });
             } else if (d.type === 'hb.ping') {
                 ws.send('hb.pong');
             }
         } catch(_) { /* 非 JSON 消息（如纯文本 hb.pong），忽略 */ }
     };
-    ws.onclose = () => setTimeout(connectWS, 3000);
+    ws.onclose = () => {
+        const delay = Math.min(30000, 1000 * Math.pow(2, (ws._reconnectAttempts || 0)));
+        ws._reconnectAttempts = (ws._reconnectAttempts || 0) + 1;
+        setTimeout(connectWS, delay);
+    };
+    ws.onopen = () => { ws._reconnectAttempts = 0; };
 }
 connectWS();
 </script>

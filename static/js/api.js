@@ -1,15 +1,15 @@
 const APP_API_KEY_STORAGE = "canvas571_api_key";
 
 function getStoredApiKey() {
-    return sessionStorage.getItem(APP_API_KEY_STORAGE) || "";
+    return localStorage.getItem(APP_API_KEY_STORAGE) || "";
 }
 
 function setStoredApiKey(value) {
     const key = String(value || "").trim();
     if (key) {
-        sessionStorage.setItem(APP_API_KEY_STORAGE, key);
+        localStorage.setItem(APP_API_KEY_STORAGE, key);
     } else {
-        sessionStorage.removeItem(APP_API_KEY_STORAGE);
+        localStorage.removeItem(APP_API_KEY_STORAGE);
     }
 }
 
@@ -31,13 +31,37 @@ async function apiFetch(url, options = {}, retrying = false) {
         return response;
     }
 
-    const key = prompt(_t('auth.enterPassword','请输入访问密码'));
+    // 使用密码遮罩的自定义对话框（替代明文 prompt）
+    const key = await (new Promise(function(resolve) {
+        const overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99999;display:flex;align-items:center;justify-content:center;';
+        overlay.innerHTML = '<div style="background:var(--bg,#fff);border-radius:12px;padding:24px;box-shadow:0 16px 48px rgba(0,0,0,.3);min-width:320px;max-width:90vw;">' +
+            '<div style="margin-bottom:12px;font-size:14px;font-weight:600;color:var(--text,#202124);">' + (_t('auth.enterPassword','请输入访问密码') || '请输入访问密码') + '</div>' +
+            '<input type="password" style="width:100%;padding:8px 12px;border:1px solid var(--border,#ddd);border-radius:8px;font-size:14px;margin-bottom:12px;outline:none;" autofocus>' +
+            '<div style="display:flex;gap:8px;justify-content:flex-end;">' +
+            '<button style="padding:6px 16px;border:1px solid var(--border,#ccc);border-radius:8px;background:var(--surface-2,#f3f4f1);cursor:pointer;font-size:13px;">' + (_t('common.cancel','取消') || '取消') + '</button>' +
+            '<button style="padding:6px 16px;border:none;border-radius:8px;background:var(--accent,#2563eb);color:var(--accent-ink,#fff);cursor:pointer;font-size:13px;">' + (_t('common.confirm','确认') || '确认') + '</button>' +
+            '</div></div>';
+        document.body.appendChild(overlay);
+        var input = overlay.querySelector('input');
+        var btns = overlay.querySelectorAll('button');
+        function done(val) { overlay.remove(); resolve(val); }
+        btns[0].onclick = function() { done(''); };
+        btns[1].onclick = function() { done(input.value); };
+        input.onkeydown = function(e) { if (e.key === 'Enter') done(input.value); if (e.key === 'Escape') done(''); };
+        input.focus();
+    }));
     if (!key) {
         return response;
     }
 
     setStoredApiKey(key);
-    return apiFetch(url, options, true);
+    const retryResponse = await apiFetch(url, options, true);
+    // 密码验证成功后通知父窗口刷新所有 iframe
+    if (retryResponse.status !== 401) {
+        try { window.parent.postMessage({type: 'auth-ready'}, location.origin); } catch(e) {}
+    }
+    return retryResponse;
 }
 
 async function apiJson(url, options = {}) {

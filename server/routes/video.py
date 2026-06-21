@@ -1,12 +1,12 @@
 """API 路由：视频生成 —— 薄路由层，业务逻辑委托给 services/video_service.py"""
 
-import asyncio
 from fastapi import APIRouter, HTTPException
 from ..models import VideoGenerateRequest
 from ..providers.registry import get_provider_registry
 from ..routes.providers_cfg import resolve_provider
 from ..tasks.manager import task_manager
 from .. import config
+from ..utils import launch_background_task
 from ..services.video_service import (
     build_video_result_meta,
     run_video_task,
@@ -56,18 +56,21 @@ async def generate_video_async(req: VideoGenerateRequest):
     if not prov:
         raise HTTPException(status_code=400, detail=f"未找到 API 平台: {req.provider_id}")
 
+    # 模型名校验：确保请求的 model 在 provider 支持的视频模型列表中
+    if req.model:
+        valid_models = prov.list_video_models()
+        if valid_models and not any(m.lower() == req.model.lower() for m in valid_models):
+            raise HTTPException(
+                status_code=400,
+                detail=f"平台 {prov.provider_name} 不支持视频模型: {req.model}。支持的视频模型: {', '.join(valid_models)}"
+            )
+
     # 创建任务，写入初始元数据
     tid = task_manager.create_task("video_generation")
-    task_manager.update_task(
-        tid,
-        status="running",
-        progress=5,
-        progress_message="正在提交视频生成请求…",
-        result=build_video_result_meta(req.provider_id, req.model),
-    )
 
     # 后台执行（委托给 service 层）
-    asyncio.create_task(run_video_task(
+    # 注意：update_task("running") 放在后台任务内部，避免启动失败时任务永久卡在 running
+    launch_background_task(run_video_task(
         tid=tid,
         prov=prov,
         provider_id=req.provider_id,
@@ -110,7 +113,7 @@ async def get_video_status(task_id: str):
 @router.get("/video/providers")
 def list_video_providers():
     """列出支持视频生成的所有 Provider。"""
-    provs = get_provider_registry().list_enabled()
+    provs = get_provider_registry().list_all()
     video_providers = []
     for p in provs:
         models = p.list_video_models()

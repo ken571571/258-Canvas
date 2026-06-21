@@ -5,54 +5,14 @@
 // Class-level data fields
 // ============================================================
 
-CanvasEngine.prototype._videoDurations = {
-    'sora-2': [4, 8, 12],
-    'sora-2-pro': [4, 8, 12],
-    'veo-3.1-generate-preview': [4, 6, 8],
-    'veo-3.1-fast-generate-preview': [4, 6, 8],
-    'veo-3.0-generate-preview': [4, 6, 8],
-    'veo-2.0-generate-001': [5, 6, 7, 8],
-    'wan2.6-t2v': [2, 4, 5, 6, 8, 10, 12, 15],
-    'wan2.6-i2v': [2, 4, 5, 6, 8, 10, 12, 15],
-    'wan2.5-t2v-preview': [5, 10],
-    'wan2.5-i2v-preview': [5, 10],
-    'wan2.2-t2v-plus': [5],
-    'wan2.2-i2v-plus': [5],
-    'doubao-seedance-2-0-260128': [4, 5, 6, 8, 10, 12, 15],
-    'doubao-seedance-2-0-fast-260128': [4, 5, 6, 8, 10, 12, 15],
-    'doubao-seedance-1-0-pro-fast-251015': [4, 5, 6, 8, 10, 12, 15],
-    'doubao-seedance-1-0-pro': [4, 5, 6, 8, 10, 12, 15],
-};
+CanvasEngine.prototype._activePipelineAbort = null;
+CanvasEngine.prototype._activeVideoAbort = null;
 
-CanvasEngine.prototype._videoResolutions = {
-    'sora-2':               [{v:'720x1280',l:'9:16 竖版'},{v:'1280x720',l:'16:9 横版'},{v:'1024x1792',l:'9:16 高清'},{v:'1792x1024',l:'16:9 高清'}],
-    'sora-2-pro':           [{v:'720x1280',l:'9:16 竖版'},{v:'1280x720',l:'16:9 横版'},{v:'1024x1792',l:'9:16 高清'},{v:'1792x1024',l:'16:9 高清'}],
-    'veo-3.1-generate-preview':      [{v:'720p',l:'720p'},{v:'1080p',l:'1080p'},{v:'4k',l:'4K'},{v:'1280x720',l:'1280x720'},{v:'1920x1080',l:'1920x1080'}],
-    'veo-3.1-fast-generate-preview': [{v:'720p',l:'720p'},{v:'1080p',l:'1080p'},{v:'4k',l:'4K'},{v:'1280x720',l:'1280x720'},{v:'1920x1080',l:'1920x1080'}],
-    'veo-3.0-generate-preview':      [{v:'720p',l:'720p'},{v:'1080p',l:'1080p'},{v:'4k',l:'4K'},{v:'1280x720',l:'1280x720'},{v:'1920x1080',l:'1920x1080'}],
-    'veo-2.0-generate-001':          [{v:'720p',l:'720p'},{v:'1080p',l:'1080p'},{v:'1280x720',l:'1280x720'},{v:'1920x1080',l:'1920x1080'}],
-    // 通义万相 wan2.6：仅 720P/1080P
-    'wan2.6-t2v': [
-        {v:'1280x720',l:'720P 横版'},{v:'720x1280',l:'720P 竖版'},{v:'960x960',l:'720P 方形'},
-        {v:'1088x832',l:'720P 4:3'},{v:'832x1088',l:'720P 3:4'},
-        {v:'1920x1080',l:'1080P 横版'},{v:'1080x1920',l:'1080P 竖版'},{v:'1440x1440',l:'1080P 方形'},
-        {v:'1632x1248',l:'1080P 4:3'},{v:'1248x1632',l:'1080P 3:4'},
-    ],
-    'wan2.6-i2v': [
-        {v:'1280x720',l:'720P 横版'},{v:'720x1280',l:'720P 竖版'},{v:'960x960',l:'720P 方形'},
-        {v:'1088x832',l:'720P 4:3'},{v:'832x1088',l:'720P 3:4'},
-        {v:'1920x1080',l:'1080P 横版'},{v:'1080x1920',l:'1080P 竖版'},{v:'1440x1440',l:'1080P 方形'},
-        {v:'1632x1248',l:'1080P 4:3'},{v:'1248x1632',l:'1080P 3:4'},
-    ],
-    'wan2.5-t2v-preview':[{v:'832x480',l:'480P'},{v:'1280x720',l:'720P'},{v:'1920x1080',l:'1080P'}],
-    'wan2.5-i2v-preview':[{v:'832x480',l:'480P'},{v:'1280x720',l:'720P'},{v:'1920x1080',l:'1080P'}],
-    'wan2.2-t2v-plus':   [{v:'832x480',l:'480P'},{v:'1920x1080',l:'1080P'}],
-    'wan2.2-i2v-plus':   [{v:'832x480',l:'480P'},{v:'1920x1080',l:'1080P'}],
-    'doubao-seedance-2-0-260128':      [{v:'720p',l:'720p'},{v:'480p',l:'480p'},{v:'adaptive',l:'📎 自适应'},{v:'16:9',l:'16:9'},{v:'9:16',l:'9:16'},{v:'1:1',l:'1:1'},{v:'4:3',l:'4:3'},{v:'3:4',l:'3:4'},{v:'21:9',l:'21:9'}],
-    'doubao-seedance-2-0-fast-260128': [{v:'720p',l:'720p'},{v:'480p',l:'480p'},{v:'adaptive',l:'📎 自适应'},{v:'16:9',l:'16:9'},{v:'9:16',l:'9:16'},{v:'1:1',l:'1:1'},{v:'4:3',l:'4:3'},{v:'3:4',l:'3:4'},{v:'21:9',l:'21:9'}],
-    'doubao-seedance-1-0-pro-fast-251015': [{v:'720p',l:'720p'},{v:'480p',l:'480p'},{v:'adaptive',l:'📎 自适应'},{v:'16:9',l:'16:9'},{v:'9:16',l:'9:16'},{v:'1:1',l:'1:1'},{v:'4:3',l:'4:3'},{v:'3:4',l:'3:4'},{v:'21:9',l:'21:9'}],
-    'doubao-seedance-1-0-pro': [{v:'720p',l:'720p'},{v:'480p',l:'480p'},{v:'adaptive',l:'📎 自适应'},{v:'16:9',l:'16:9'},{v:'9:16',l:'9:16'},{v:'1:1',l:'1:1'},{v:'4:3',l:'4:3'},{v:'3:4',l:'3:4'},{v:'21:9',l:'21:9'}],
-};
+// 视频模型时长和分辨率参数 —— 运行时由 _loadVideoModelParams() 从 GET /api/video/model-params 填充
+CanvasEngine.prototype._videoDurations = {};
+CanvasEngine.prototype._videoResolutions = {};
+CanvasEngine.prototype._videoPollMaxRetries = 75;
+CanvasEngine.prototype._videoPollIntervalMs = 8000;
 
 // ============================================================
 // Pipeline / execution methods
@@ -100,6 +60,11 @@ CanvasEngine.prototype._collectInputs = function(nodeId) {
                 const u = from.url;
                 if (/\.(mp4|webm|mov|m4v)$/i.test(u)) videos.push(tag ? tag+'::'+u : u);
                 else images.push(tag ? tag+'::'+u : u);
+            }
+            if (from.type === 'loop' && from._queue && from._queue.length) {
+                from._queue.forEach(item => {
+                    if (item.url) images.push(tag ? tag+'::'+item.url : item.url);
+                });
             }
         });
 
@@ -222,48 +187,6 @@ CanvasEngine.prototype._reorderLoopQueue = function(nodeId, e) {
     this._renderAll();
 };
 
-CanvasEngine.prototype._parseLoopText = function(text) {
-    if (!text) return [];
-    const dashParts = text.split(/----+/).map(s => s.trim()).filter(Boolean);
-    if (dashParts.length > 1) return dashParts;
-    const numParts = text.split(/\n(?=\d+[\.\、\)]\s)/).map(s => s.replace(/^\d+[\.\、\)]\s*/, '').trim()).filter(Boolean);
-    return numParts.length > 1 ? numParts : [text.trim()];
-};
-
-CanvasEngine.prototype._runLoop = async function(nodeId) {
-    const loop = this.nodes.find(n => n.id === nodeId);
-    if (!loop) return;
-    const inputs = this._collectInputs(nodeId);
-    // 优先用 _queue 排序，否则用原始 images
-    const queue = loop._queue && loop._queue.length ? loop._queue : inputs.images.map((url, i) => ({ url, id: `q_${i}` }));
-    const images = queue.map(q => q.url);
-    const textParts = this._parseLoopText(inputs.texts.join('\n') || (loop.text || ''));
-    const count = Math.max(images.length, textParts.length);
-    if (!count) { this._setNodeRunState(loop, 'error', '无输入（请连接图片或输入文本）'); return; }
-
-    this._setNodeRunState(loop, 'running', `0/${count}`);
-    for (let i = 0; i < count; i++) {
-        const img = images[i] || images[0] || null;
-        const txt = textParts[i] || textParts[0] || '';
-        this._setNodeRunState(loop, 'running', `${i+1}/${count}`);
-        try {
-            const resp = await apiFetch('/api/generate', {
-                method: 'POST', headers: {'Content-Type':'application/json'},
-                body: JSON.stringify({
-                    prompt: txt || 'generate', provider_id: this._getProviderId(),
-                    model: loop.model || 'dall-e-3', size: img ? '' : '1024x1024',
-                    reference_images: img ? [img] : [],
-                }),
-            });
-            const data = await resp.json();
-            if (data.url) this._upsertOutputFromNode(nodeId, { images: [{ url: data.url, name: `loop_${i+1}` }], text: '' });
-        } catch(e) { /* skip */ }
-        await new Promise(r => setTimeout(r, 600));
-    }
-    this._setNodeRunState(loop, 'success', `完成 ${count} 次`);
-    this._renderAll(); this._markDirty();
-};
-
 CanvasEngine.prototype._findDownstream = function(nodeId, visited = new Set()) {
     if (visited.has(nodeId)) return [];
     visited.add(nodeId);
@@ -349,23 +272,48 @@ CanvasEngine.prototype._runComfyUI = async function(nodeId) {
     this._renderAll();this._markDirty();
 };
 
-CanvasEngine.prototype._runPipeline = async function(generatorId) {
-    const gen = this.nodes.find(n => n.id === generatorId);
-    if (!gen) return;
+CanvasEngine.prototype._runPipeline = async function(nodeId) {
+    // 取消之前的 pipeline（如果有）
+    if (this._activePipelineAbort) {
+        this._activePipelineAbort.abort();
+    }
+    this._activePipelineAbort = new AbortController();
+    var signal = this._activePipelineAbort.signal;
 
-    // 1. 按拓扑顺序依次执行上游 Agent 节点
-    const upstreamIds = this._upstreamOrder(generatorId);
-    for (const uid of upstreamIds) {
-        const node = this.nodes.find(n => n.id === uid);
-        if (!node) continue;
-        if (node.type === 'agent') {
-            this._setNodeRunState(node, 'running', '管线执行中...');
-            await this._runAgent(uid);
+    try {
+        const gen = this.nodes.find(n => n.id === nodeId);
+        if (!gen) return;
+
+        // 1. 按拓扑顺序依次执行上游 Agent 节点
+        const upstreamIds = this._upstreamOrder(nodeId);
+        for (const uid of upstreamIds) {
+            if (signal.aborted) return;
+            const node = this.nodes.find(n => n.id === uid);
+            if (!node) continue;
+            if (node.type === 'agent') {
+                this._setNodeRunState(node, 'running', '管线执行中...');
+                await this._runAgent(uid);
+            }
+        }
+
+        // 2. 执行生图
+        if (!signal.aborted) {
+            await this._runGenerator(nodeId);
+        }
+    } finally {
+        if (this._activePipelineAbort === signal) {
+            this._activePipelineAbort = null;
         }
     }
+};
 
-    // 2. 执行生图
-    await this._runGenerator(generatorId);
+CanvasEngine.prototype.cancelPipeline = function() {
+    if (this._activePipelineAbort) {
+        this._activePipelineAbort.abort();
+    }
+    if (this._activeVideoAbort) {
+        this._activeVideoAbort.abort();
+    }
 };
 
 CanvasEngine.prototype._runGenerator = async function(id) {
@@ -375,14 +323,24 @@ CanvasEngine.prototype._runGenerator = async function(id) {
     const inputs = this._collectInputs(id);
     const provs = getCachedProviders();
     const provider = provs.find(x => x.id === (node.provider_id || this._getProviderId()));
-    // video_gen 节点优先回退到视频模型，image_gen/generator 优先图片模型
+    if (!provider) {
+        this._setNodeRunState(node, 'error', '未找到可用的 API 平台，请先在设置中配置 API Key');
+        this._renderAll();
+        return;
+    }
+    // video_gen 节点优先回退到视频模型，image_gen 优先图片模型
     const preferVideo = node.type === 'video_gen';
     const model = node.model
-        || (preferVideo ? provider?.video_models?.[0] : null)
-        || provider?.image_models?.[0]
-        || provider?.video_models?.[0]
-        || 'dall-e-3';
-    const isVideoModel = (provider?.video_models||[]).includes(model);
+        || (preferVideo ? provider.video_models?.[0] : null)
+        || provider.image_models?.[0]
+        || provider.video_models?.[0]
+        || '';
+    if (!model) {
+        this._setNodeRunState(node, 'error', '该平台未配置可用模型，请在设置中添加模型');
+        this._renderAll();
+        return;
+    }
+    const isVideoModel = (provider.video_models||[]).some(m => m.toLowerCase() === model.toLowerCase());
 
     if (isVideoModel) {
         // 视频生成：异步提交 → 轮询
@@ -403,7 +361,7 @@ CanvasEngine.prototype._runImageGenerator = async function(node, inputs, provide
                 prompt: inputs.texts.join('\n') || 'a beautiful image',
                 provider_id: node.provider_id || this._getProviderId(),
                 model: model,
-                size: inputs.images.length ? (node.size === 'custom' ? '' : (node.size || '')) : (node.size || '1024x1024'),
+                size: inputs.images.length ? ((node.size||'').startsWith('custom') ? '' : (node.size || '')) : (node.size || '1024x1024'),
                 reference_images: inputs.images,
             }),
         });
@@ -421,13 +379,27 @@ CanvasEngine.prototype._runImageGenerator = async function(node, inputs, provide
     } catch (error) {
         const msg = error.message || String(error);
         this._setNodeRunState(node, 'error', msg.slice(0, 200));
-        console.error('generator failed', error);
+        console.error('image generation failed', error);
         this._renderAll();
         this._markDirty();
     }
 };
 
 CanvasEngine.prototype._runVideoGenerator = async function(node, inputs, provider, model) {
+    // 取消之前的视频任务（如果有）
+    if (this._activeVideoAbort) {
+        this._activeVideoAbort.abort();
+    }
+    this._activeVideoAbort = new AbortController();
+    var signal = this._activeVideoAbort.signal;
+
+    // 检查管线级中止信号
+    function _isCancelled(self) {
+        if (signal.aborted) return true;
+        if (self._activePipelineAbort && self._activePipelineAbort.signal.aborted) return true;
+        return false;
+    }
+
     this._setNodeRunState(node, 'running', '正在提交视频生成...');
     try {
         // 1. 提交异步视频任务
@@ -439,7 +411,7 @@ CanvasEngine.prototype._runVideoGenerator = async function(node, inputs, provide
                 provider_id: node.provider_id || this._getProviderId(),
                 model: model,
                 duration: node.duration || 5,
-                resolution: node.resolution || (inputs.images.length ? 'auto' : '1280x720'),
+                resolution: node.resolution || (inputs.images.length ? 'auto' : '720p'),
                 reference_images: inputs.images,
                 generate_audio: node.generate_audio !== false,
             }),
@@ -448,8 +420,20 @@ CanvasEngine.prototype._runVideoGenerator = async function(node, inputs, provide
         if (!submitData.task_id) throw new Error('视频任务提交失败: ' + JSON.stringify(submitData));
 
         // 2. 轮询任务状态
-        for (let i = 0; i < 75; i++) {
-            await new Promise(r => setTimeout(r, 8000));  // 每 8 秒查一次（AIHubMix 建议 15s）
+        for (let i = 0; i < this._videoPollMaxRetries; i++) {
+            if (_isCancelled(this)) {
+                this._setNodeRunState(node, 'cancelled', '视频生成已取消');
+                this._renderAll();
+                this._markDirty();
+                return;
+            }
+            await new Promise(r => setTimeout(r, this._videoPollIntervalMs));  // 每 8 秒查一次（AIHubMix 建议 15s）
+            if (_isCancelled(this)) {
+                this._setNodeRunState(node, 'cancelled', '视频生成已取消');
+                this._renderAll();
+                this._markDirty();
+                return;
+            }
             const pollResp = await apiFetch('/api/tasks/' + submitData.task_id);
             const pollData = await pollResp.json();
             if (pollData.status === 'succeeded') {
@@ -468,15 +452,25 @@ CanvasEngine.prototype._runVideoGenerator = async function(node, inputs, provide
             if (pollData.status === 'failed') {
                 throw new Error(pollData.error || _t('pipeline.videoFailed','视频生成失败'));
             }
-            this._setNodeRunState(node, 'running', `视频生成中 (${pollData.progress || i * 3}s)...`);
+            if (!_isCancelled(this)) {
+                this._setNodeRunState(node, 'running', '视频生成中 (' + (pollData.progress || i * 3) + 's)...');
+            }
         }
         throw new Error(_t('pipeline.videoTimeout','视频生成超时'));
     } catch (error) {
-        const msg = error.message || String(error);
-        this._setNodeRunState(node, 'error', msg.slice(0, 200));
-        console.error('video generator failed', error);
+        if (signal.aborted) {
+            this._setNodeRunState(node, 'cancelled', '视频生成已取消');
+        } else {
+            const msg = error.message || String(error);
+            this._setNodeRunState(node, 'error', msg.slice(0, 200));
+        }
+        console.error('video generation failed', error);
         this._renderAll();
         this._markDirty();
+    } finally {
+        if (this._activeVideoAbort === signal) {
+            this._activeVideoAbort = null;
+        }
     }
 };
 
@@ -527,5 +521,5 @@ CanvasEngine.prototype._configAgent = function(id) {
     const node = this.nodes.find(item => item.id === id);
     if (!node) return;
     // 通知父窗口跳转到 Agent 页面
-    window.parent.postMessage({ type: 'navigate', page: 'agents' }, '*');
+    window.parent.postMessage({ type: 'navigate', page: 'agents' }, location.origin);
 };

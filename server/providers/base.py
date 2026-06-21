@@ -9,6 +9,7 @@ from typing import List, Dict, Any, Optional, AsyncGenerator
 from dataclasses import dataclass, field
 import httpx
 from ..logging_config import get_logger
+from ..security.network import validate_safe_url
 
 log = get_logger("provider")
 
@@ -144,7 +145,7 @@ class BaseProvider(ABC):
         try:
             # 默认发一个简单的 models 请求
             url = self.build_url("models")
-            async with httpx.AsyncClient(timeout=15) as cli:
+            async with httpx.AsyncClient(timeout=15, follow_redirects=False) as cli:
                 resp = await cli.get(url, headers=self.build_headers())
             elapsed = int((_time.time() - started) * 1000)
             if 200 <= resp.status_code < 300:
@@ -163,7 +164,7 @@ class BaseProvider(ABC):
         fetched = False
         try:
             url = self.build_url("models")
-            async with httpx.AsyncClient(timeout=30) as cli:
+            async with httpx.AsyncClient(timeout=30, follow_redirects=False) as cli:
                 resp = await cli.get(url, headers=self.build_headers())
             if resp.status_code == 200:
                 data = resp.json()
@@ -198,8 +199,8 @@ class BaseProvider(ABC):
 
     # ——— 通用辅助方法 ———
 
-    def _load_image_b64(self, url: str, download_remote: bool = True) -> str:
-        """将本地路径或 http URL 转为 base64 data URL。
+    async def _load_image_b64(self, url: str, download_remote: bool = True) -> str:
+        """将本地路径或 http URL 转为 base64 data URL（异步）。
 
         Args:
             url: 图片路径或 URL
@@ -211,11 +212,30 @@ class BaseProvider(ABC):
         if url.startswith("http://") or url.startswith("https://"):
             if not download_remote:
                 return url
-            # 下载远程图片并转为 base64（部分 API 不接受直接传 URL）
+            # SSRF 防护：检查目标主机是否安全
+            if not validate_safe_url(url):
+                log.warning(f"SSRF 拦截 — 禁止访问内网地址: {url[:80]}")
+                raise ValueError(f"安全拦截：禁止访问内网地址")
+            # 下载远程图片并转为 base64（异步，不阻塞事件循环）
+            # SSRF 纵深防御：禁用自动重定向跟随，手动校验每一跳
             try:
                 import httpx as _httpx
-                with _httpx.Client(timeout=30, follow_redirects=True) as _cli:
-                    r = _cli.get(url)
+                async with _httpx.AsyncClient(timeout=30, follow_redirects=False) as _cli:
+                    r = await _cli.get(url)
+                    # 手动处理重定向，每跳都做 SSRF 校验
+                    redirect_count = 0
+                    while r.is_redirect and redirect_count < 5:
+                        redirect_count += 1
+                        next_url = r.headers.get("location", "")
+                        if not next_url:
+                            break
+                        if next_url.startswith("/"):
+                            from urllib.parse import urljoin
+                            next_url = urljoin(url, next_url)
+                        if not validate_safe_url(next_url):
+                            log.warning(f"SSRF 拦截（重定向目标）: {next_url[:80]}")
+                            raise ValueError(f"安全拦截：重定向目标指向内网地址")
+                        r = await _cli.get(next_url)
                     r.raise_for_status()
                     raw = r.content
                     mime = r.headers.get("content-type", "image/png")
@@ -227,11 +247,16 @@ class BaseProvider(ABC):
                 return url  # 回退：返回原始 URL
         # 本地路径
         from .. import config
-        if url.startswith("/assets/") or url.startswith("/output/") or url.startswith("/input/"):
-            local = os.path.join(config.BASE_DIR, url.lstrip("/").replace("/", os.sep))
+        from ..security.paths import safe_join
+        if url.startswith("/output/"):
+            local = safe_join(config.OUTPUT_DIR, url[len("/output/"):].lstrip("/"))
+        elif url.startswith("/input/"):
+            local = safe_join(config.INPUT_DIR, url[len("/input/"):].lstrip("/"))
+        elif url.startswith("/assets/"):
+            local = safe_join(config.ASSETS_DIR, url[len("/assets/"):].lstrip("/"))
         else:
-            local = url
-        if os.path.isfile(local):
+            local = safe_join(config.BASE_DIR, url.lstrip("/"))
+        if os.path.isfile(local) and local.startswith(str(config.BASE_DIR)):
             with open(local, "rb") as f:
                 raw = f.read()
             ext = os.path.splitext(local)[1].lower()
@@ -300,3 +325,25 @@ class BaseProvider(ABC):
         raw = _os.getenv(key, "")
         items = [s.strip() for s in raw.split(",") if s.strip()]
         return items or fallback
+
+    @staticmethod
+    def _parse_tool_calls(msg: dict) -> List[dict]:
+        """从 OpenAI 协议的 Chat Completion 消息中解析 tool_calls。
+
+        所有 OpenAI 兼容协议的子类共享此逻辑，避免重复实现。
+        """
+        import json as _json
+        tool_calls: List[dict] = []
+        for tc in (msg.get("tool_calls") or []):
+            func = tc.get("function", {})
+            args_str = func.get("arguments", "{}")
+            try:
+                arguments = _json.loads(args_str) if isinstance(args_str, str) else args_str
+            except _json.JSONDecodeError:
+                arguments = {}
+            tool_calls.append({
+                "id": tc.get("id", ""),
+                "name": func.get("name", ""),
+                "arguments": arguments,
+            })
+        return tool_calls

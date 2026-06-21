@@ -1,0 +1,54 @@
+{
+  "id": "f426b98f233c4687",
+  "title": "Store 测试",
+  "created_at": 1781970069021,
+  "updated_at": 1781970069039,
+  "nodes": [
+    {
+      "id": "n1",
+      "type": "image",
+      "x": 0,
+      "y": 0,
+      "w": 260,
+      "h": 100,
+      "label": "src"
+    },
+    {
+      "id": "n2",
+      "type": "prompt",
+      "x": 300,
+      "y": 0,
+      "w": 260,
+      "h": 100,
+      "label": "dst"
+    }
+  ],
+  "connections": [
+    {
+      "id": "c1",
+      "from": "n1",
+      "to": "n2"
+    }
+  ],
+  "groups": [
+    {
+      "id": "g1",
+      "label": "test",
+      "childIds": [
+        "n1",
+        "n2"
+      ],
+      "collapsed": false
+    }
+  ],
+  "viewport": {
+    "x": 0,
+    "y": 0,
+    "scale": 1
+  },
+  "icon": "layers",
+  "kind": "default",
+  "logs": [],
+  "settings": {},
+  "deleted_at": 1781970069038
+}

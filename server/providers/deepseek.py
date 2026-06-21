@@ -26,11 +26,15 @@ class DeepSeekProvider(OpenAIProvider):
 
     @property
     def _api_key(self) -> str:
+        temp = self._temp_key("DEEPSEEK_API_KEY")
+        if temp: return temp
         val = os.getenv("DEEPSEEK_API_KEY", "")
         return val.strip().strip('"').strip("'")
 
     @property
     def _base_url(self) -> str:
+        temp = self._temp_url(self._DEFAULT_BASE)
+        if temp != self._DEFAULT_BASE: return temp.rstrip("/")
         return os.getenv("DEEPSEEK_BASE_URL", self._DEFAULT_BASE).rstrip("/")
 
     def list_chat_models(self) -> List[str]:

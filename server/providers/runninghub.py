@@ -17,6 +17,7 @@ import httpx
 
 from .base import BaseProvider, ImageResult, VideoResult, ChatResult
 from .. import config
+from ..security.network import validate_safe_url
 
 
 class RunningHubProvider(BaseProvider):
@@ -70,6 +71,8 @@ class RunningHubProvider(BaseProvider):
 
     @property
     def _base_url(self) -> str:
+        temp = self._temp_url(self._DEFAULT_BASE)
+        if temp != self._DEFAULT_BASE: return temp.rstrip("/")
         val = os.getenv("RUNNINGHUB_BASE_URL", "")
         return val.rstrip("/") if val else self._DEFAULT_BASE
 
@@ -124,7 +127,7 @@ class RunningHubProvider(BaseProvider):
         }]
         if refs:
             for i, ref in enumerate(refs[:3]):
-                img_data = self._load_image_b64(ref)
+                img_data = await self._load_image_b64(ref)
                 node_info_list.append({
                     "nodeId": "101" if i > 0 else "100",
                     "fieldName": "image",
@@ -138,7 +141,7 @@ class RunningHubProvider(BaseProvider):
         }
 
         url = self.build_url("/task/openapi/ai-app/run")
-        async with httpx.AsyncClient(timeout=config.AI_REQUEST_TIMEOUT) as cli:
+        async with httpx.AsyncClient(timeout=config.AI_REQUEST_TIMEOUT, follow_redirects=False) as cli:
             resp = await cli.post(url, headers=self.build_headers(use_wallet), json=body)
             if resp.status_code != 200:
                 raise RuntimeError(f"RunningHub 生图失败 ({resp.status_code}): {resp.text[:500]}")
@@ -159,7 +162,7 @@ class RunningHubProvider(BaseProvider):
         api_key = self._resolve_key(use_wallet)
         body = {"apiKey": api_key, "taskId": task_id}
 
-        async with httpx.AsyncClient(timeout=30) as cli:
+        async with httpx.AsyncClient(timeout=30, follow_redirects=False) as cli:
             for _ in range(max_wait // 3):
                 await asyncio.sleep(3)
                 resp = await cli.post(url, headers=self.build_headers(use_wallet), json=body)
@@ -178,13 +181,16 @@ class RunningHubProvider(BaseProvider):
                             if images:
                                 img_url = images[0].get("url", "")
                                 if img_url:
+                                    # SSRF 防护：验证所有 URL 的下载地址安全
+                                    if not validate_safe_url(img_url):
+                                        raise RuntimeError(f"RunningHub 返回了不安全的图片地址（内网/云metadata），已拦截")
                                     try:
-                                        dl_resp = await cli.get(img_url)
+                                        dl_resp = await cli.get(img_url, follow_redirects=False)
                                         if dl_resp.status_code == 200:
                                             path = self._save_image(dl_resp.content, f"rh_{task_id[:8]}_")
                                             return ImageResult(url=path, raw=data)
-                                    except Exception:
-                                        pass
+                                    except Exception as e:
+                                        log.warning(f"RunningHub 图片下载失败: {e}")
                                     return ImageResult(url=img_url, raw=data)
                     raise RuntimeError("RunningHub 任务完成但无图片输出")
                 elif status.upper() in ("FAILED", "FAIL", "ERROR", "CANCELED"):
@@ -216,7 +222,7 @@ class RunningHubProvider(BaseProvider):
         started = _time.time()
         try:
             url = self.build_url("/api/user/info")
-            async with httpx.AsyncClient(timeout=15) as cli:
+            async with httpx.AsyncClient(timeout=15, follow_redirects=False) as cli:
                 resp = await cli.get(url, headers=self.build_headers())
             elapsed = int((_time.time() - started) * 1000)
 

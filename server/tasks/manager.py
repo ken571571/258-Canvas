@@ -13,9 +13,11 @@ import time
 import asyncio
 from typing import Dict, Optional
 
+from .. import config
+
 TASK_TYPES = ("image_generation", "video_generation", "comfyui", "llm", "general")
-TASK_STATUSES = ("queued", "running", "succeeded", "failed")
-TASK_EXPIRE_SECONDS = 3600  # 任务结果保留 1 小时
+TASK_STATUSES = ("queued", "running", "succeeded", "failed", "cancelled")
+TASK_EXPIRE_SECONDS = config.TASK_EXPIRE_SECONDS
 
 
 class TaskManager:
@@ -29,6 +31,7 @@ class TaskManager:
 
     def __init__(self):
         self._tasks: Dict[str, dict] = {}
+        self._cancel_events: Dict[str, asyncio.Event] = {}
         self._cleanup_task: Optional[asyncio.Task] = None
         # 持久化目录
         from .. import config
@@ -66,7 +69,7 @@ class TaskManager:
                 with open(path, "r", encoding="utf-8") as f:
                     task = json.load(f)
                 tid = task.get("id", fn[:-5])
-                age = now - task.get("created_at", now)
+                age = now - task.get("updated_at", task.get("created_at", now))
                 # 跳过已过期或已完成的任务
                 if age > TASK_EXPIRE_SECONDS * 1000:
                     try:
@@ -161,7 +164,7 @@ class TaskManager:
             now = int(time.time() * 1000)
             expired = []
             for tid, task in self._tasks.items():
-                age = now - task.get("created_at", now)
+                age = now - task.get("updated_at", task.get("created_at", now))
                 if age > TASK_EXPIRE_SECONDS * 1000:
                     expired.append(tid)
             for tid in expired:
@@ -180,6 +183,55 @@ class TaskManager:
     def active_count(self) -> int:
         """正在运行的任务数。"""
         return sum(1 for t in self._tasks.values() if t.get("status") in ("queued", "running"))
+
+    # ——— 重试与取消 ———
+
+    def cancel_task(self, task_id: str) -> bool:
+        """发送取消信号。运行中的任务需检查 `is_cancelled()` 并自行停止。"""
+        task = self._tasks.get(task_id)
+        if task is None:
+            return False
+        if task.get("status") in ("queued", "running"):
+            task["status"] = "cancelled"
+            task["updated_at"] = int(time.time() * 1000)
+            self._persist(task_id)
+            # 向 _cancel_events 发送取消信号
+            ev = self._cancel_events.get(task_id)
+            if ev is not None:
+                ev.set()
+            return True
+        return False
+
+    def retry_task(self, task_id: str) -> bool:
+        """重置失败的任务为 queued，等待重新执行。"""
+        task = self._tasks.get(task_id)
+        if task is None:
+            return False
+        if task.get("status") == "failed":
+            task["status"] = "queued"
+            task["error"] = None
+            task["progress"] = 0
+            task["progress_message"] = ""
+            task["retry_count"] = task.get("retry_count", 0) + 1
+            task["updated_at"] = int(time.time() * 1000)
+            self._persist(task_id)
+            return True
+        return False
+
+    def is_cancelled(self, task_id: str) -> bool:
+        """检查任务是否已被取消（运行中的任务应定期检查此标志）。"""
+        task = self._tasks.get(task_id)
+        if task is None:
+            return True
+        return task.get("status") == "cancelled"
+
+    def _cancel_event(self, task_id: str) -> asyncio.Event:
+        """获取或创建任务的取消事件（供长耗时任务使用）。"""
+        if not hasattr(self, '_cancel_events'):
+            self._cancel_events = {}
+        if task_id not in self._cancel_events:
+            self._cancel_events[task_id] = asyncio.Event()
+        return self._cancel_events[task_id]
 
 
 # 全局单例

@@ -1,5 +1,6 @@
 import unittest
 import sys
+import io
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -54,8 +55,7 @@ class KnowledgeTests(unittest.TestCase):
 
     def test_delete_nonexistent_kb(self):
         resp = client.delete("/api/knowledge-bases/nonexistent_kb_99999")
-        # 可能 404 也可能 200（取决于是否软删除）
-        self.assertIn(resp.status_code, (200, 404))
+        self.assertEqual(resp.status_code, 404)
 
     def test_add_document_to_kb(self):
         if not self.__class__.kb_id:
@@ -84,6 +84,31 @@ class KnowledgeTests(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertIn("results", data)
+
+    def test_upload_rejects_path_traversal_filename(self):
+        """上传文件名包含 ../ 应返回 200（os.path.basename 已净化）。"""
+        if not self.__class__.kb_id:
+            self.skipTest("知识库创建失败，跳过")
+        resp = client.post(
+            f"/api/knowledge-bases/{self.__class__.kb_id}/documents/upload",
+            files={"file": ("../../../etc/passwd.txt", io.BytesIO(b"malicious content"), "text/plain")},
+        )
+        # basename 净化后文件名变为 passwd.txt，上传应成功
+        self.assertEqual(resp.status_code, 200)
+        # 验证返回的 filename 已净化
+        data = resp.json()
+        self.assertIn("document", data)
+        self.assertEqual(data["document"]["filename"], "passwd.txt")
+
+    def test_search_empty_query_ok(self):
+        """空查询应正常返回（不崩溃）。"""
+        resp = client.post("/api/knowledge-bases/search", json={
+            "query": "",
+            "kb_ids": [],
+            "top_k": 5,
+        })
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("results", resp.json())
 
 
 if __name__ == "__main__":

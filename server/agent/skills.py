@@ -59,7 +59,7 @@ class SkillRegistry:
             return {"error": str(e)}
 
     async def _skill_generate_image(self, arguments: dict) -> dict:
-        from ..providers.registry import get_provider_registry
+        from ..routes.providers_cfg import resolve_provider
 
         prompt = str(arguments.get("prompt") or "").strip()
         if not prompt:
@@ -70,7 +70,7 @@ class SkillRegistry:
         size = str(arguments.get("size") or "1024x1024")
         reference_images = arguments.get("reference_images") or []
 
-        prov = get_provider_registry().get(provider_id)
+        prov = resolve_provider(provider_id)
         if not prov:
             return {"error": f"未找到 API 平台: {provider_id}"}
 
@@ -126,7 +126,7 @@ class SkillRegistry:
             return {"error": f"搜索失败: {e}", "results": []}
 
     async def _skill_chat(self, arguments: dict) -> dict:
-        from ..providers.registry import get_provider_registry
+        from ..routes.providers_cfg import resolve_provider
 
         message = str(arguments.get("message") or "").strip()
         if not message:
@@ -138,7 +138,7 @@ class SkillRegistry:
         model = str(arguments.get("model") or agent_cfg.get("model") or "gpt-4o-mini")
         system_prompt = str(arguments.get("system_prompt") or "")
 
-        prov = get_provider_registry().get(provider_id)
+        prov = resolve_provider(provider_id)
         if not prov:
             return {"error": f"未找到 API 平台: {provider_id}"}
 
@@ -219,8 +219,8 @@ class SkillRegistry:
         ))
 
     # ——— 外部技能热加载 ———
-    def _load_external(self):
-        # 1. 旧的 skills/ 全局目录
+    def _load_external(self, fingerprint: str = ""):
+        # 1. 旧的 skills/ 全局目录（永不明文加密）
         if os.path.isdir(config.SKILLS_DIR):
             self._scan_skills_dir(config.SKILLS_DIR)
 
@@ -231,9 +231,9 @@ class SkillRegistry:
                     continue
                 agent_skills = os.path.join(config.AGENTS_ROOT, name, "skills")
                 if os.path.isdir(agent_skills):
-                    self._scan_skills_dir(agent_skills, prefix=f"{name}/")
+                    self._scan_skills_dir(agent_skills, prefix=f"{name}/", fingerprint=fingerprint)
 
-    def _scan_skills_dir(self, directory: str, prefix: str = ""):
+    def _scan_skills_dir(self, directory: str, prefix: str = "", fingerprint: str = ""):
         # 安全校验：目录必须在授权白名单内
         from .. import config as _cfg
         dir_real = os.path.realpath(directory)
@@ -246,6 +246,7 @@ class SkillRegistry:
             log.warning(f"技能目录未授权，跳过: {directory}")
             return
 
+        import tempfile
         for fn in sorted(os.listdir(directory)):
             if not fn.endswith(".py") or fn.startswith("_"):
                 continue
@@ -254,9 +255,37 @@ class SkillRegistry:
             if not os.path.realpath(path).startswith(dir_real + os.sep):
                 log.warning(f"技能文件路径异常（符号链接攻击？），跳过: {path}")
                 continue
+
+            import_path = path  # 默认直接加载
+            tmp_file = None
+
+            # 检测加密文件：AGP1 魔数
+            try:
+                with open(path, "rb") as f:
+                    header = f.read(4)
+                if header == b"AGP1":
+                    if not fingerprint:
+                        log.warning(f"加密技能缺少指纹，跳过: {fn}")
+                        continue
+                    from ..security.agent_crypto import decrypt_bytes
+                    import hashlib as _hashlib
+                    fkey = _hashlib.sha256(("agent_fingerprint:" + fingerprint).encode()).digest()
+                    with open(path, "rb") as f:
+                        raw = f.read()
+                    plain = decrypt_bytes(raw, fkey)
+                    tmp_file = tempfile.NamedTemporaryFile(
+                        mode="wb", suffix=".py", prefix="dec_skill_", delete=False
+                    )
+                    tmp_file.write(plain)
+                    tmp_file.close()
+                    import_path = tmp_file.name
+            except Exception as e:
+                log.warning(f"检测加密状态失败 {fn}: {e}")
+                continue
+
             try:
                 mod_name = f"skill_{prefix}{fn[:-3]}".replace("/", "_").replace("\\", "_")
-                spec = importlib.util.spec_from_file_location(mod_name, path)
+                spec = importlib.util.spec_from_file_location(mod_name, import_path)
                 if spec is None or spec.loader is None:
                     continue
                 mod = importlib.util.module_from_spec(spec)
@@ -277,6 +306,13 @@ class SkillRegistry:
                 log.info(f"已加载: {sid} ({fn})")
             except Exception as e:
                 log.warning(f"加载 {fn} 失败: {e}")
+            finally:
+                # 清理临时解密文件
+                if tmp_file:
+                    try:
+                        os.unlink(import_path)
+                    except Exception:
+                        pass
 
 
 _registry: Optional[SkillRegistry] = None

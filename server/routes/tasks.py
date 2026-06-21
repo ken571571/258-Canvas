@@ -8,6 +8,8 @@ from ..services.task_service import (
     delete_task as svc_delete_task,
     list_tasks as svc_list_tasks,
     get_stats as svc_get_stats,
+    cancel_task as svc_cancel_task,
+    retry_task as svc_retry_task,
 )
 
 router = APIRouter(prefix="/api", tags=["tasks"])
@@ -50,3 +52,19 @@ def delete_task(task_id: str):
     """手动删除任务（释放内存）。"""
     svc_delete_task(task_id)
     return {"ok": True}
+
+
+@router.post("/tasks/{task_id}/cancel")
+def cancel_task(task_id: str):
+    """取消运行中或排队中的任务。"""
+    if not svc_cancel_task(task_id):
+        raise HTTPException(status_code=404, detail="任务不存在或无法取消（仅 queued/running 状态可取消）")
+    return {"ok": True, "task_id": task_id}
+
+
+@router.post("/tasks/{task_id}/retry")
+def retry_task(task_id: str):
+    """重试失败的任务。"""
+    if not svc_retry_task(task_id):
+        raise HTTPException(status_code=404, detail="任务不存在或不在 failed 状态")
+    return {"ok": True, "task_id": task_id}

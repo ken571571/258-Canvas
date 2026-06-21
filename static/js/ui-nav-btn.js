@@ -19,14 +19,26 @@ class UINavBtn extends HTMLElement {
     const cls = isLogo ? 'sidebar-logo-btn' : 'nav-btn';
     const iconSize = isLogo ? '20' : '20';
 
-    this.innerHTML = '' +
-      '<button class="' + cls + '" data-page="' + page + '"' +
-      ' onclick="navTo(\'' + page + '\', this)"' +
-      (title ? ' title="' + title + '"' : '') +
-      (hidden ? ' style="display:none"' : '') + '>' +
-      '<ui-icon name="' + icon + '" size="' + iconSize + '"></ui-icon>' +
-      '<span class="nav-label" data-t="' + label + '">' + fallback + '</span>' +
-      '</button>';
+    // 使用 DOM API 构建，避免字符串拼接 XSS
+    const btn = document.createElement('button');
+    btn.className = cls;
+    btn.setAttribute('data-page', page);
+    btn.onclick = function() { navTo(page, this); };
+    if (title) btn.setAttribute('title', title);
+    if (hidden) btn.style.display = 'none';
+
+    const iconEl = document.createElement('ui-icon');
+    iconEl.setAttribute('name', icon);
+    iconEl.setAttribute('size', iconSize);
+    btn.appendChild(iconEl);
+
+    const span = document.createElement('span');
+    span.className = 'nav-label';
+    span.setAttribute('data-t', label);
+    span.textContent = fallback;
+    btn.appendChild(span);
+
+    this.appendChild(btn);
   }
 }
 customElements.define('ui-nav-btn', UINavBtn);

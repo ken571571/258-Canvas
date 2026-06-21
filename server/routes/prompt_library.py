@@ -4,17 +4,15 @@
 """
 
 import os
-import json
 import uuid
 import time
-import asyncio
 from fastapi import APIRouter, HTTPException
 from .. import config
+from ..storage.json_store import store
 
 router = APIRouter(prefix="/api", tags=["prompts"])
 
 PROMPT_LIBRARY_FILE = os.path.join(config.DATA_DIR, "prompt_libraries.json")
-_write_lock = asyncio.Lock()
 
 
 def _now():
@@ -22,18 +20,14 @@ def _now():
 
 
 def _load() -> dict:
-    if not os.path.exists(PROMPT_LIBRARY_FILE):
-        return {"libraries": [{"id": "system", "name": "系统提示词库", "type": "prompt", "categories": [], "items": [], "created_at": _now()}], "active_library_id": "system"}
-    with open(PROMPT_LIBRARY_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+    data = store.read(PROMPT_LIBRARY_FILE, default=None)
+    if data is not None and isinstance(data, dict) and "libraries" in data:
+        return data
+    return {"libraries": [{"id": "system", "name": "系统提示词库", "type": "prompt", "categories": [], "items": [], "created_at": _now()}], "active_library_id": "system"}
 
 
 async def _save(data: dict):
-    async with _write_lock:
-        tmp = PROMPT_LIBRARY_FILE + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        os.replace(tmp, PROMPT_LIBRARY_FILE)
+    await store.write(PROMPT_LIBRARY_FILE, data)
 
 
 def _find_library(data: dict, library_id: str) -> dict:
@@ -121,8 +115,8 @@ async def update_item(item_id: str, payload: dict):
     for library in data.get("libraries", []):
         for i, item in enumerate(library.get("items", [])):
             if item["id"] == item_id:
-                if payload.get("positive"):
-                    item["positive"] = str(payload["positive"])
+                if "positive" in payload:
+                    item["positive"] = str(payload["positive"] or "")
                 item["negative"] = str(payload.get("negative", item.get("negative", "")))
                 item["name"] = str(payload.get("name", item.get("name", "")))[:100]
                 item["scene"] = str(payload.get("scene", item.get("scene", "")))

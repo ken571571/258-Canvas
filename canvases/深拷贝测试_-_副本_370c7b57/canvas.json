@@ -1,0 +1,30 @@
+{
+  "id": "370c7b571ea24803",
+  "title": "深拷贝测试 - 副本",
+  "created_at": 1781974762758,
+  "updated_at": 1781974762887,
+  "nodes": [
+    {
+      "id": "n1",
+      "type": "image",
+      "x": 10,
+      "y": 20,
+      "w": 260,
+      "h": 100,
+      "label": "test",
+      "url": "/output/images/test.png"
+    }
+  ],
+  "connections": [],
+  "groups": [],
+  "viewport": {
+    "x": 0,
+    "y": 0,
+    "scale": 1
+  },
+  "icon": "layers",
+  "kind": "default",
+  "logs": [],
+  "settings": {},
+  "deleted_at": 1781974762842
+}

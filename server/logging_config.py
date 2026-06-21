@@ -9,10 +9,26 @@
 import os
 import logging
 import sys
+import contextvars
 from logging.handlers import RotatingFileHandler
 
-_log_format = "%(asctime)s [%(levelname)-5s] %(name)s: %(message)s"
+_log_format = "%(asctime)s [%(levelname)-5s] [%(request_id)-12s] %(name)s: %(message)s"
 _date_format = "%H:%M:%S"
+
+# 请求 ID 上下文变量（线程安全，替代全局 logRecordFactory）
+request_id_var: contextvars.ContextVar[str] = contextvars.ContextVar("request_id", default="-")
+
+
+class _RequestIDFilter(logging.Filter):
+    """从 contextvars 读取 request_id，注入到每条日志记录。
+
+    并发安全：每个 asyncio task 有独立的 contextvars 上下文，
+    不会像全局 logRecordFactory 那样出现竞态。
+    """
+    def filter(self, record):
+        record.request_id = request_id_var.get()
+        return True
+
 
 _initialized = False
 
@@ -31,10 +47,14 @@ def setup_logging(level: int = logging.INFO, log_dir: str = ""):
     root = logging.getLogger("canvas571")
     root.setLevel(level)
 
+    # 通过 contextvars 注入 request_id（并发安全）
+    root.addFilter(_RequestIDFilter())
+
     # 控制台输出
     console = logging.StreamHandler(sys.stdout)
     console.setFormatter(logging.Formatter(_log_format, _date_format))
     console.setLevel(level)
+    console.addFilter(_RequestIDFilter())  # handler 级过滤：确保外部库日志也有 request_id
     root.addHandler(console)
 
     # 文件输出（滚动日志，最多 5MB × 3 个文件）
@@ -48,6 +68,7 @@ def setup_logging(level: int = logging.INFO, log_dir: str = ""):
         "%Y-%m-%d %H:%M:%S",
     ))
     file_handler.setLevel(logging.DEBUG)  # 文件记录所有级别，包括 DEBUG
+    file_handler.addFilter(_RequestIDFilter())  # handler 级过滤
     root.addHandler(file_handler)
 
     root.propagate = False

@@ -2,18 +2,10 @@
   "title": "266-LTX23-文生视频Q3",
   "fields": [
     {
-      "id": "f_17815080306450.33227997382034413",
-      "node": "50:51",
-      "input": "negative",
-      "name": "负面提示词",
-      "type": "text",
-      "default": "text, subtitles, caption, watermark, logo, signage, letter, word, character,"
-    },
-    {
-      "id": "f_17815080306450.7556938081092639",
+      "id": "f_17819282816270.315013971299575",
       "node": "50:53",
       "input": "positive",
-      "name": "正面提示词",
+      "name": "positive",
       "type": "text",
       "default": "一只卡通小猫和一只卡通小狗坐在沙发上用中文吐槽它们的主人喜欢吹牛。"
     }

@@ -94,7 +94,7 @@ def resolve_gen_size(size: str, reference_images: list) -> str:
         elif ref_url.startswith(("http://", "https://")):
             return size  # 远程图片暂不处理
         else:
-            local = os.path.join(config.BASE_DIR, ref_url.lstrip("/").replace("/", os.sep))
+            local = safe_join(config.BASE_DIR, ref_url.lstrip("/"))
             with open(local, "rb") as f:
                 img_bytes = f.read()
         from PIL import Image as PILImage
@@ -114,7 +114,10 @@ def resolve_gen_size(size: str, reference_images: list) -> str:
     elif size_lower == "x5":
         w, h = w * 5, h * 5
     elif size_lower.startswith("custom:"):
-        max_edge = int(size_lower.split(":")[1]) if ":" in size_lower else 2048
+        try:
+            max_edge = int(size_lower.split(":")[1]) if ":" in size_lower else 2048
+        except (ValueError, IndexError):
+            max_edge = 2048
         scale = max_edge / max(w, h)
         w, h = int(w * scale), int(h * scale)
     # 对齐到 16 的倍数
@@ -129,3 +132,20 @@ def resolve_gen_size(size: str, reference_images: list) -> str:
         )
     _log.info(f"倍率解析: {size or '跟随'} 原图{orig_w}x{orig_h} → {w}x{h}")
     return f"{w}x{h}"
+
+
+# ——— 后台任务管理 ———
+
+# 后台任务引用集合（防止 GC 回收导致异常静默丢失）
+_bg_tasks: set = set()
+
+
+def launch_background_task(coro) -> asyncio.Task:
+    """创建后台任务并保存引用，任务完成后自动清理。
+
+    用于 generation.py / video.py 等模块的异步长期任务。
+    """
+    task = asyncio.create_task(coro)
+    _bg_tasks.add(task)
+    task.add_done_callback(_bg_tasks.discard)
+    return task

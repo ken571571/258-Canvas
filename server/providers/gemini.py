@@ -161,7 +161,7 @@ class GeminiProvider(BaseProvider):
             body["systemInstruction"] = {"parts": system_parts}
 
         url = self.build_url(f"models/{model}:generateContent")
-        async with httpx.AsyncClient(timeout=config.AI_REQUEST_TIMEOUT) as cli:
+        async with httpx.AsyncClient(timeout=config.AI_REQUEST_TIMEOUT, follow_redirects=False) as cli:
             resp = await cli.post(url, headers=self.build_headers(), json=body)
             if resp.status_code != 200:
                 raise RuntimeError(f"Gemini 对话失败 ({resp.status_code}): {resp.text[:500]}")
@@ -200,7 +200,7 @@ class GeminiProvider(BaseProvider):
         parts = [{"text": f"Generate an image based on this description: {prompt}"}]
         if refs:
             for ref in refs[:3]:
-                b64_url = self._load_image_b64(ref)
+                b64_url = await self._load_image_b64(ref)
                 if b64_url.startswith("data:"):
                     header, b64_data = b64_url.split(",", 1)
                     mime_type = header.split(":")[1].split(";")[0]
@@ -215,7 +215,7 @@ class GeminiProvider(BaseProvider):
         }
 
         url = self.build_url(f"models/{model}:generateContent")
-        async with httpx.AsyncClient(timeout=config.AI_REQUEST_TIMEOUT) as cli:
+        async with httpx.AsyncClient(timeout=config.AI_REQUEST_TIMEOUT, follow_redirects=False) as cli:
             resp = await cli.post(url, headers=self.build_headers(), json=body)
             if resp.status_code != 200:
                 raise RuntimeError(f"Gemini 生图失败 ({resp.status_code}): {resp.text[:500]}")
@@ -251,7 +251,7 @@ class GeminiProvider(BaseProvider):
         try:
             # Gemini 用 models 列表检测连通性
             url = self.build_url("models")
-            async with httpx.AsyncClient(timeout=15) as cli:
+            async with httpx.AsyncClient(timeout=15, follow_redirects=False) as cli:
                 resp = await cli.get(url, headers=self.build_headers())
             elapsed = int((_time.time() - started) * 1000)
             if 200 <= resp.status_code < 300:
@@ -265,7 +265,7 @@ class GeminiProvider(BaseProvider):
         """Gemini models 列表格式不同，覆盖默认实现。"""
         try:
             url = self.build_url("models")
-            async with httpx.AsyncClient(timeout=30) as cli:
+            async with httpx.AsyncClient(timeout=30, follow_redirects=False) as cli:
                 resp = await cli.get(url, headers=self.build_headers())
             if resp.status_code != 200:
                 return []

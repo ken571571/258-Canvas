@@ -35,50 +35,50 @@
 
 .run-output { min-height:100px; max-height:300px; overflow-y:auto; background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); padding:12px; font-family:ui-monospace,monospace; font-size:11px; white-space:pre-wrap; color:var(--text); }
 </style>
-<script src="/static/js/i18n.js?v=1"></script>
+<script src="/static/js/i18n.js?v=2"></script>
 </head>
 <body>
 <div class="comfy-page">
     <aside class="comfy-sidebar">
-        <div class="comfy-sidehead"><h2>工作流列表</h2><span style="font-size:10px;color:var(--muted);" id="wfCount">0</span></div>
+        <div class="comfy-sidehead"><h2 data-t="comfyuiPage.workflowList">工作流列表</h2><span style="font-size:10px;color:var(--muted);" id="wfCount">0</span></div>
         <div class="wf-list" id="wfList"></div>
         <label class="upload-area">
-            <div>+ 上传工作流 JSON</div>
+            <div data-t="comfyuiPage.uploadJson">+ 上传工作流 JSON</div>
             <input type="file" accept=".json" id="wfUpload" onchange="uploadWorkflow(this)">
         </label>
     </aside>
 
     <main class="comfy-main">
-        <div style="padding:60px;text-align:center;color:var(--muted);" id="emptyState">选择一个工作流开始配置</div>
+        <div style="padding:60px;text-align:center;color:var(--muted);" id="emptyState" data-t="comfyuiPage.selectHint">选择一个工作流开始配置</div>
         <div id="detailPanel" style="display:none;flex-direction:column;gap:16px;">
             <div class="block">
                 <div class="block-head">
-                    <div class="block-title" id="wfTitle">工作流配置</div>
+                    <div class="block-title" id="wfTitle" data-t="comfyuiPage.workflowConfig">工作流配置</div>
                     <div style="display:flex;gap:6px;">
-                        <button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="deleteWorkflow()">删除</button>
-                        <button class="btn btn-primary" style="font-size:11px;padding:4px 10px;" onclick="saveConfig()">保存配置</button>
+                        <button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" data-t="comfyuiPage.delete" onclick="deleteWorkflow()">删除</button>
+                        <button class="btn btn-primary" style="font-size:11px;padding:4px 10px;" data-t="comfyuiPage.saveConfig" onclick="saveConfig()">保存配置</button>
                     </div>
                 </div>
-                <div class="field"><label>工作流名称</label><input id="cfgTitle" placeholder="工作流名称" oninput="autoSave()"></div>
+                <div class="field"><label data-t="comfyuiPage.wfName">工作流名称</label><input id="cfgTitle" data-t-placeholder="comfyuiPage.wfNamePlaceholder" placeholder="工作流名称" oninput="autoSave()"></div>
             </div>
 
             <div class="block">
-                <div class="block-head"><div class="block-title">节点参数映射</div><span style="font-size:10px;color:var(--muted);">暴露 ComfyUI 节点参数为画布输入</span></div>
+                <div class="block-head"><div class="block-title" data-t="comfyuiPage.paramMapping">节点参数映射</div><span style="font-size:10px;color:var(--muted);" data-t="comfyuiPage.mappingDesc">暴露 ComfyUI 节点参数为画布输入</span></div>
                 <div id="mappingTable"></div>
-                <button class="btn btn-secondary" style="font-size:11px;align-self:flex-start;" onclick="autoDetectMapping()">自动检测参数</button>
+                <button class="btn btn-secondary" style="font-size:11px;align-self:flex-start;" data-t="comfyuiPage.autoDetect" onclick="autoDetectMapping()">自动检测参数</button>
             </div>
 
             <div class="block">
-                <div class="block-head"><div class="block-title">测试运行</div></div>
+                <div class="block-head"><div class="block-title" data-t="comfyuiPage.testRun">测试运行</div></div>
                 <div id="testFields"></div>
-                <button class="btn btn-primary" style="width:120px;" onclick="testRun()">测试运行</button>
-                <div class="run-output" id="runOutput" style="display:none;">等待运行...</div>
+                <button class="btn btn-primary" style="width:120px;" data-t="comfyuiPage.testRun" onclick="testRun()">测试运行</button>
+                <div class="run-output" id="runOutput" style="display:none;" data-t="comfyuiPage.waitingRun">等待运行...</div>
             </div>
         </div>
     </main>
 </div>
 
-<script src="/static/js/api.js?v=4"></script>
+<script src="/static/js/api.js?v=5"></script>
 <script>
 let workflows=[],currentWf='',currentWfData=null;
 function initTheme(){ if(localStorage.theme==='dark') document.documentElement.classList.add('dark'); }
@@ -86,7 +86,7 @@ initTheme();
 
 async function loadWorkflows(){
     try{const d=await apiJson('/api/comfyui/workflows');workflows=d.workflows||[];document.getElementById('wfCount').textContent=workflows.length;
-    document.getElementById('wfList').innerHTML=workflows.map(w=>`<div class="wf-item${w.name===currentWf?' active':''}" onclick="selectWorkflow('${w.name}')"><div>${esc(w.title||w.name)}</div><div class="wf-meta">${w.field_count||0}参数 · ${w.builtin?'内置':'自定义'}</div></div>`).join('')||'<div style="color:var(--muted);font-size:11px;padding:8px;">暂无工作流</div>';}catch(e){}
+    document.getElementById('wfList').innerHTML=workflows.map(w=>'<div class="wf-item'+(w.name===currentWf?' active':'')+'" onclick="selectWorkflow(\''+escJs(w.name)+'\')"><div>'+esc(w.title||w.name)+'</div><div class="wf-meta">'+(w.field_count||0)+_t('comfyuiPage.params','参数')+' · '+(w.builtin?_t('comfyuiPage.builtin','内置'):_t('comfyuiPage.custom','自定义'))+'</div></div>').join('')||'<div style="color:var(--muted);font-size:11px;padding:8px;">'+_t('comfyuiPage.noWorkflows','暂无工作流')+'</div>';}catch(e){}
 }
 
 async function selectWorkflow(name){
@@ -102,11 +102,10 @@ async function selectWorkflow(name){
 
 function renderMapping(fields){
     const tbl=document.getElementById('mappingTable');
-    if(!fields.length){tbl.innerHTML='<div style="color:var(--muted);font-size:11px;padding:12px;">点击"自动检测参数"或手动添加</div>';return;}
-    tbl.innerHTML=fields.map((f,i)=>`<div class="mapping-row"><span class="mapping-node">${esc(f.node||'')}::${esc(f.input||'')}</span><input value="${esc(f.name||'')}" placeholder="显示名称" onchange="currentCfg.fields[${i}].name=this.value"><select onchange="currentCfg.fields[${i}].type=this.value"><option value="text" ${f.type==='text'?'selected':''}>文本</option><option value="number" ${f.type==='number'?'selected':''}>数字</option><option value="image" ${f.type==='image'?'selected':''}>图片</option></select><button class="btn btn-secondary" style="font-size:10px;padding:2px 6px;" onclick="removeField(${i})">×</button></div>`).join('');
-    // Show test fields
-    const tf=document.getElementById('testFields');
-    tf.innerHTML=fields.map(f=>`<div class="field" style="margin-bottom:6px;"><label>${esc(f.name||f.node+'::'+f.input)}</label>${f.type==='image'?'<input type="text" placeholder="图片URL" id="tf_'+f.id+'">':'<input type="text" placeholder="输入值" id="tf_'+f.id+'">'}</div>`).join('');
+    if(!fields.length){tbl.innerHTML='<div style="color:var(--muted);font-size:11px;padding:12px;">'+_t('comfyuiPage.detectHint','点击"自动检测参数"或手动添加')+'</div>';return;}
+    tbl.innerHTML=fields.map(function(f,i){ return '<div class="mapping-row"><span class="mapping-node">'+esc(f.node||'')+'::'+esc(f.input||'')+'</span><input value="'+esc(f.name||'')+'" placeholder="'+_t('comfyuiPage.displayName','显示名称')+'" onchange="currentCfg.fields['+i+'].name=this.value"><select onchange="currentCfg.fields['+i+'].type=this.value"><option value="text" '+(f.type==='text'?'selected':'')+'>'+_t('comfyuiPage.text','文本')+'</option><option value="number" '+(f.type==='number'?'selected':'')+'>'+_t('comfyuiPage.number','数字')+'</option><option value="image" '+(f.type==='image'?'selected':'')+'>'+_t('comfyuiPage.image','图片')+'</option></select><button class="btn btn-secondary" style="font-size:10px;padding:2px 6px;" onclick="removeField('+i+')">×</button></div>'; }).join('');
+    var tf=document.getElementById('testFields');
+    tf.innerHTML=fields.map(function(f){ return '<div class="field" style="margin-bottom:6px;"><label>'+esc(f.name||f.node+'::'+f.input)+'</label>'+(f.type==='image'?'<input type="text" placeholder="'+_t('comfyuiPage.imageUrl','图片URL')+'" id="tf_'+f.id+'">':'<input type="text" placeholder="'+_t('comfyuiPage.inputValue','输入值')+'" id="tf_'+f.id+'">')+'</div>'; }).join('');
 }
 
 function autoDetectMapping(){
@@ -131,7 +130,7 @@ function autoSave(){if(window.currentCfg)window.currentCfg.title=document.getEle
 async function saveConfig(){
     if(!currentWf||!window.currentCfg) return;
     window.currentCfg.title=document.getElementById('cfgTitle').value;
-    try{await apiFetch('/api/comfyui/workflows/'+encodeURIComponent(currentWf)+'/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(window.currentCfg)});showToast('保存成功');loadWorkflows();}catch(e){showToast('保存失败: '+e.message,'err');}
+    try{await apiFetch('/api/comfyui/workflows/'+encodeURIComponent(currentWf)+'/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(window.currentCfg)});showToast(_t('comfyuiPage.saved','保存成功'));loadWorkflows();}catch(e){showToast(_t('comfyuiPage.saveFailed','保存失败: ')+e.message,'err');}
 }
 
 async function uploadWorkflow(input){
@@ -139,13 +138,13 @@ async function uploadWorkflow(input){
     try{const json=JSON.parse(await file.text());
     const name=file.name.replace('.json','');
     await apiFetch('/api/comfyui/workflows',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name,workflow:json})});
-    showToast('上传成功');loadWorkflows();selectWorkflow('custom/'+name+'.json');
-    }catch(e){showToast('上传失败: '+e.message,'err');}input.value='';
+    showToast(_t('comfyuiPage.uploaded','上传成功'));loadWorkflows();selectWorkflow('custom/'+name+'.json');
+    }catch(e){showToast(_t('comfyuiPage.uploadFailed','上传失败: ')+e.message,'err');}input.value='';
 }
 
 async function deleteWorkflow(){
-    if(!currentWf||!confirm('删除此工作流？')) return;
-    try{await apiFetch('/api/comfyui/workflows/'+encodeURIComponent(currentWf),{method:'DELETE'});currentWf='';loadWorkflows();document.getElementById('detailPanel').style.display='none';document.getElementById('emptyState').style.display='';}catch(e){showToast('删除失败: '+e.message,'err');}
+    if(!currentWf||!confirm(_t('comfyuiPage.deleteConfirm','删除此工作流？'))) return;
+    try{await apiFetch('/api/comfyui/workflows/'+encodeURIComponent(currentWf),{method:'DELETE'});currentWf='';loadWorkflows();document.getElementById('detailPanel').style.display='none';document.getElementById('emptyState').style.display='';}catch(e){showToast(_t('comfyuiPage.deleteFailed','删除失败: ')+e.message,'err');}
 }
 
 async function testRun(){
@@ -154,16 +153,17 @@ async function testRun(){
     (window.currentCfg.fields||[]).forEach(f=>{
         const el=document.getElementById('tf_'+f.id);if(el) fields[f.node+'::'+f.input]=el.value;
     });
-    document.getElementById('runOutput').style.display='';document.getElementById('runOutput').textContent='运行中...';
+    document.getElementById('runOutput').style.display='';document.getElementById('runOutput').textContent=_t('comfyuiPage.running','运行中...');
     try{const d=await apiJson('/api/comfyui/workflows/'+encodeURIComponent(currentWf)+'/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fields:fields,client_id:'comfyui-page'})});
     document.getElementById('runOutput').textContent=JSON.stringify(d,null,2);
-    }catch(e){document.getElementById('runOutput').textContent='运行失败: '+e.message;}
+    }catch(e){document.getElementById('runOutput').textContent=_t('comfyuiPage.runFailed','运行失败: ')+e.message;}
 }
 
 function showToast(m,t){const o=document.querySelector('.toast');if(o)o.remove();const d=document.createElement('div');d.className='toast '+(t||'ok');d.textContent=m;document.body.appendChild(d);setTimeout(()=>d.remove(),2800);}
-function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');}
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+function escJs(s){return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/\\/g,'\\\\').replace(/'/g,"\\'");}
 loadWorkflows();
-window.addEventListener('message',e=>{if(e.data?.type==='theme')document.documentElement.classList.toggle('dark',e.data.theme==='dark');if(e.data?.type==='refresh')loadWorkflows();});
+window.addEventListener('message',e=>{if(e.origin!==location.origin)return;if(e.data?.type==='theme')document.documentElement.classList.toggle('dark',e.data.theme==='dark');if(e.data?.type==='refresh')loadWorkflows();});
 window.addEventListener('lang-applied',function(){if(window._i18nUpdate)window._i18nUpdate();});</script>
 </body>
 </html>

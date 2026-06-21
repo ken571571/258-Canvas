@@ -15,8 +15,10 @@ from ..logging_config import get_logger
 
 log = get_logger("video_service")
 
-VIDEO_POLL_TIMEOUT = 600   # 视频轮询总超时（秒）
-VIDEO_POLL_INTERVAL = 8    # 轮询间隔（秒）
+from .. import config
+
+VIDEO_POLL_TIMEOUT = config.VIDEO_POLL_TIMEOUT
+VIDEO_POLL_INTERVAL = config.VIDEO_POLL_INTERVAL
 
 
 def build_video_result_meta(
@@ -60,6 +62,12 @@ async def run_video_task(
     3. 否则轮询 Provider 的 query_video_task 直到完成或超时
     """
     try:
+        # 0. 标记任务开始执行
+        task_manager.update_task(
+            tid, status="running", progress=5,
+            progress_message="正在提交视频生成请求…",
+            result=build_video_result_meta(provider_id, model),
+        )
         # 1. 提交视频任务
         try:
             result = await prov.generate_video(
@@ -94,16 +102,23 @@ async def run_video_task(
                 result=build_video_result_meta(provider_id, model, upstream_task_id=result.task_id),
             )
 
+            consecutive_errors = 0
             for i in range(VIDEO_POLL_TIMEOUT // VIDEO_POLL_INTERVAL):
                 await asyncio.sleep(VIDEO_POLL_INTERVAL)
                 try:
                     poll_result = await prov.query_video_task(result.task_id)
+                    consecutive_errors = 0  # 成功后重置错误计数
                 except NotImplementedError:
                     task_manager.update_task(tid, status="failed", error="Provider 不支持视频任务轮询")
                     return
                 except Exception as e:
-                    task_manager.update_task(tid, status="failed", error=str(e))
-                    return
+                    consecutive_errors += 1
+                    # 瞬断容忍：连续 3 次失败才放弃（对齐 ComfyUI 的瞬断重试策略）
+                    if consecutive_errors >= 3:
+                        task_manager.update_task(tid, status="failed", error=f"连续 {consecutive_errors} 次轮询失败: {e}")
+                        return
+                    log.warning(f"视频轮询瞬断 ({consecutive_errors}/3)，继续重试: {e}")
+                    continue
 
                 if poll_result.url:
                     task_manager.update_task(

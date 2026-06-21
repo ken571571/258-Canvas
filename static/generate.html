@@ -28,7 +28,7 @@
 .lightbox-zoom button:hover{background:rgba(255,255,255,.18)}
 .lightbox-zoom .zoom-pct{color:rgba(255,255,255,.7);font-size:11px;font-weight:800;min-width:44px;text-align:center;font-family:ui-monospace,monospace}
 </style>
-<script src="/static/js/i18n.js?v=1"></script>
+<script src="/static/js/i18n.js?v=2"></script>
 </head>
 <body>
 <div class="page">
@@ -38,29 +38,23 @@
         <section class="panel">
             <div class="panel-title" data-t='generate.params'>生成参数</div>
             <div class="form-group">
-                <label>提示词 Prompt</label>
-                <textarea id="prompt" rows="4" placeholder="描述你想要的画面..."></textarea>
+                <label data-t="generate.promptLabel">提示词 Prompt</label>
+                <textarea id="prompt" rows="4" data-t-placeholder="generate.promptPlaceholder" placeholder="描述你想要的画面..."></textarea>
             </div>
             <div class="form-group">
-                <label>API 平台</label>
+                <label data-t="generate.platform">API 平台</label>
                 <select id="provider-select" onchange="onProviderChangeForGenerate()"><option>加载中...</option></select>
             </div>
             <div class="form-group">
-                <label>模型</label>
+                <label data-t="generate.model">模型</label>
                 <select id="model-select" onchange="localStorage.setItem('gen_model',this.value)"><option>加载中...</option></select>
             </div>
             <div class="form-group">
-                <label>尺寸</label>
-                <select id="size-select">
-                    <option value="1024x1024">1024x1024 (方形 1:1)</option>
-                    <option value="1792x1024">1792x1024 (横版 16:9)</option>
-                    <option value="1024x1792">1024x1792 (竖版 9:16)</option>
-                    <option value="1536x1024">1536x1024 (横版 3:2)</option>
-                    <option value="1024x1536">1024x1536 (竖版 2:3)</option>
-                </select>
+                <label data-t="generate.size">尺寸</label>
+                <select id="size-select"><option>加载中...</option></select>
             </div>
             <div class="actions">
-                <button class="btn btn-primary" id="generate-btn" onclick="generate()">生成图片</button>
+                <button class="btn btn-primary" id="generate-btn" data-t="generate.generateBtn" onclick="generate()">生成图片</button>
                 <div class="status" id="status"></div>
             </div>
         </section>
@@ -75,27 +69,52 @@
 
 <!-- 全图灯箱 -->
 <div class="lightbox" id="lightbox" onclick="closeLightbox()">
-    <button class="lightbox-close" onclick="closeLightbox()" title="关闭">×</button>
-    <a class="lightbox-dl" id="lightboxDl" href="#" download target="_blank">⬇ 下载</a>
+    <button class="lightbox-close" onclick="closeLightbox()" data-t-title="lightbox.close" title="关闭">×</button>
+    <a class="lightbox-dl" id="lightboxDl" href="#" download target="_blank" data-t="lightbox.download">⬇ 下载</a>
     <img id="lightboxImg" src="" alt="预览" onclick="event.stopPropagation()" draggable="false">
     <div class="lightbox-zoom" onclick="event.stopPropagation()">
-        <button onclick="lightboxZoom(-1)" title="缩小">−</button>
+        <button onclick="lightboxZoom(-1)" data-t-title="lightbox.zoomOut" title="缩小">−</button>
         <span class="zoom-pct" id="zoomPct">100%</span>
-        <button onclick="lightboxZoom(1)" title="放大">+</button>
-        <button onclick="lightboxZoom(0)" title="重置">⟲</button>
+        <button onclick="lightboxZoom(1)" data-t-title="lightbox.zoomIn" title="放大">+</button>
+        <button onclick="lightboxZoom(0)" data-t-title="lightbox.reset" title="重置">⟲</button>
     </div>
 </div>
 
-<script src="/static/js/api.js?v=3"></script>
+<script src="/static/js/api.js?v=5"></script>
 <script>
+// HTML 转义：防止 XSS
+function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function escJs(s){ return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
+// 主题初始化（与其他 iframe 页面一致）
+(function(){ if(localStorage.theme==='dark') document.documentElement.classList.add('dark'); })();
 // 存储所有 provider 的完整数据
 let allProviders = [];
 let currentGenerateProvider = '';
 
+// 尺寸选项列表（label 使用 _t() 翻译）
+function getSizeOptions() {
+    return [
+        {v:'1024x1024', l:_t('size.square','1:1 方形')},
+        {v:'1792x1024', l:_t('size.wide','16:9 横版')},
+        {v:'1024x1792', l:_t('size.tall','9:16 竖版')},
+        {v:'1536x1024', l:_t('size.43w','4:3 横版')},
+        {v:'1024x1536', l:_t('size.34t','3:4 竖版')},
+    ];
+}
+
+function buildSizeSelect() {
+    var sel = document.getElementById('size-select');
+    var savedSize = localStorage.getItem('gen_size');
+    sel.innerHTML = getSizeOptions().map(function(o) {
+        return '<option value="' + o.v + '"' + (savedSize === o.v ? ' selected' : '') + '>' + o.v + ' (' + o.l + ')</option>';
+    }).join('');
+    sel.onchange = function() { localStorage.setItem('gen_size', this.value); };
+}
+
 async function loadModels() {
     const sel = document.getElementById('model-select');
     const providerSel = document.getElementById('provider-select');
-    sel.innerHTML = '<option>' + _t('common.loading','加载中...') + '</option>';
+    sel.innerHTML = '<option>' + _t('generate.loading','加载中...') + '</option>';
     allProviders = [];
 
     // 从后端获取 Provider 列表（内存缓存，多次调用不重复请求）
@@ -116,7 +135,7 @@ async function loadModels() {
     }
 
     allProviders.forEach(p => {
-        providerSel.innerHTML += `<option value="${p.id}">${p.name || p.id} (${p.image_models.length} 个)</option>`;
+        providerSel.innerHTML += '<option value="' + esc(p.id) + '">' + esc(p.name || p.id) + ' (' + p.image_models.length + ')</option>';
     });
 
     // 恢复上次选择
@@ -129,6 +148,7 @@ async function loadModels() {
         providerSel.value = allProviders[0].id;
         currentGenerateProvider = allProviders[0].id;
     }
+    buildSizeSelect();
     onProviderChangeForGenerate();
     // 恢复上次模型
     if (savedModel) {
@@ -150,7 +170,7 @@ function onProviderChangeForGenerate() {
         return;
     }
     p.image_models.forEach(m => {
-        sel.innerHTML += `<option value="${m}">${m}</option>`;
+        sel.innerHTML += `<option value="${esc(m)}">${esc(m)}</option>`;
     });
 }
 
@@ -184,12 +204,14 @@ async function generate() {
         const data = await resp.json();
         if (resp.ok && data.url) {
             const imgUrl = data.url;
+            const safeUrl = esc(imgUrl);      // HTML 属性上下文（img src）
+            const safeJsUrl = escJs(imgUrl);  // JS 字符串上下文（onclick）
             document.getElementById('preview').innerHTML = `
                 <div class="result-wrap">
-                    <img src="${imgUrl}" alt="result" onclick="openLightbox('${imgUrl}')" title="点击放大">
+                    <img src="${safeUrl}" alt="result" onclick="openLightbox('${safeJsUrl}')" title="点击放大">
                     <div class="result-actions">
-                        <button onclick="event.stopPropagation();downloadImage('${imgUrl}')" title="下载">⬇</button>
-                        <button onclick="event.stopPropagation();openLightbox('${imgUrl}')" title="放大">⛶</button>
+                        <button onclick="event.stopPropagation();downloadImage('${safeJsUrl}')" title="下载">⬇</button>
+                        <button onclick="event.stopPropagation();openLightbox('${safeJsUrl}')" title="放大">⛶</button>
                     </div>
                 </div>`;
             status.textContent = _t('generate.success','生成成功');
@@ -275,12 +297,27 @@ function downloadImage(url) {
 }
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox(); });
 
-// 监听主题切换
+// 监听主题切换 & 语言切换
 window.addEventListener('message', e => {
+    if (e.origin !== location.origin) return;
     if (e.data?.type === 'theme') {
         document.documentElement.classList.toggle('dark', e.data.theme === 'dark');
     }
     if (e.data?.type === 'refresh') loadModels();
+});
+// 语言切换后重建动态下拉框（尺寸标签、平台数量等依赖翻译）
+window.addEventListener('lang-applied', function() {
+    buildSizeSelect();
+    // 刷新平台下拉（更新模型数量后缀）
+    if (allProviders.length) {
+        var providerSel = document.getElementById('provider-select');
+        var currentVal = providerSel.value;
+        providerSel.innerHTML = '';
+        allProviders.forEach(function(p) {
+            providerSel.innerHTML += '<option value="' + esc(p.id) + '">' + esc(p.name || p.id) + ' (' + p.image_models.length + ')</option>';
+        });
+        providerSel.value = currentVal;
+    }
 });
 </script>
 </body>

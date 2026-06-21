@@ -1,8 +1,33 @@
 """环境变量加载和查找"""
 
 import os
+import warnings
 from .paths import API_ENV_FILE, SKILLS_DIR, AGENTS_ROOT
 from .constants import LOCAL_IMAGE_IMPORT_MAX_BYTES, LOCAL_IMAGE_IMPORT_EXTS
+
+
+# ——— 安全类型转换（防环境变量坏值导致启动崩溃） ———
+
+def _safe_float(env_key: str, default: float) -> float:
+    raw = os.getenv(env_key, "")
+    if not raw:
+        return default
+    try:
+        return float(raw)
+    except (ValueError, TypeError):
+        warnings.warn(f"Invalid value for {env_key}='{raw}', using default {default}")
+        return default
+
+
+def _safe_int(env_key: str, default: int) -> int:
+    raw = os.getenv(env_key, "")
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except (ValueError, TypeError):
+        warnings.warn(f"Invalid value for {env_key}='{raw}', using default {default}")
+        return default
 
 
 def load_env(override: bool = False):
@@ -34,15 +59,15 @@ def get_cors_origins() -> list:
 
 
 def get_ai_request_timeout() -> float:
-    return float(os.getenv("REQUEST_TIMEOUT", "300"))
+    return _safe_float("AI_REQUEST_TIMEOUT", 300.0)
 
 
 def get_image_poll_interval() -> float:
-    return float(os.getenv("IMAGE_POLL_INTERVAL", "3"))
+    return _safe_float("IMAGE_POLL_INTERVAL", 3.0)
 
 
 def get_max_history_messages() -> int:
-    return int(os.getenv("MAX_HISTORY_MESSAGES", "30"))
+    return _safe_int("MAX_HISTORY_MESSAGES", 30)
 
 
 def get_comfyui_instances() -> list:
@@ -54,19 +79,33 @@ def get_public_base_url() -> str:
 
 
 def get_rate_limit_enabled() -> bool:
+    # 自动检测测试环境：unittest discover 运行时默认关闭限流
+    import sys as _sys
+    if any("unittest" in a for a in _sys.argv):
+        return os.getenv("RATE_LIMIT_ENABLED", "0").lower() in ("1", "true", "yes")
     return os.getenv("RATE_LIMIT_ENABLED", "1").lower() in ("1", "true", "yes")
 
 
 def get_rate_limit_requests() -> int:
-    return int(os.getenv("RATE_LIMIT_REQUESTS", "60"))
+    return _safe_int("RATE_LIMIT_REQUESTS", 60)
 
 
 def get_rate_limit_window() -> int:
-    return int(os.getenv("RATE_LIMIT_WINDOW", "60"))
+    return _safe_int("RATE_LIMIT_WINDOW", 60)
+
+
+def get_canvas_env() -> str:
+    """运行环境: development | production。控制日志级别、CORS、调试开关。"""
+    env = os.getenv("CANVAS_ENV", "production").lower().strip()
+    return env if env in ("development", "production") else "production"
+
+
+def is_development() -> bool:
+    return get_canvas_env() == "development"
 
 
 def get_local_image_import_max_bytes() -> int:
-    return int(os.getenv("LOCAL_IMAGE_IMPORT_MAX_BYTES", str(LOCAL_IMAGE_IMPORT_MAX_BYTES)))
+    return _safe_int("LOCAL_IMAGE_IMPORT_MAX_BYTES", LOCAL_IMAGE_IMPORT_MAX_BYTES)
 
 
 def get_skill_authorized_dirs() -> list:

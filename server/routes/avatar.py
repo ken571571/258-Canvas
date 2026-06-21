@@ -4,18 +4,16 @@
 """
 
 import os
-import json
 import uuid
 import time
-import asyncio
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from .. import config
+from ..storage.json_store import store
 
 router = APIRouter(prefix="/api", tags=["avatar"])
 
 AVATAR_FILE = os.path.join(config.DATA_DIR, "avatars.json")
 AVATAR_IMAGE_DIR = os.path.join(config.ASSETS_DIR, "avatars")
-_write_lock = asyncio.Lock()
 
 
 def _now():
@@ -23,18 +21,11 @@ def _now():
 
 
 def _load() -> dict:
-    if not os.path.exists(AVATAR_FILE):
-        return {"avatars": []}
-    with open(AVATAR_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+    return store.read(AVATAR_FILE, default={"avatars": []})
 
 
 async def _save(data: dict):
-    async with _write_lock:
-        tmp = AVATAR_FILE + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        os.replace(tmp, AVATAR_FILE)
+    await store.write(AVATAR_FILE, data)
 
 
 # ——— Avatar CRUD ———
@@ -123,6 +114,8 @@ async def upload_avatar_image(avatar_id: str, file: UploadFile = File(...)):
         raise HTTPException(status_code=404, detail="角色不存在")
 
     raw = await file.read()
+    if len(raw) > 50 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="文件过大（最大 50MB）")
     ext = os.path.splitext(file.filename or ".png")[1].lower()
     if ext not in (".png", ".jpg", ".jpeg", ".webp"):
         raise HTTPException(status_code=400, detail="不支持的图片格式")

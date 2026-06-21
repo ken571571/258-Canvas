@@ -84,6 +84,7 @@ CanvasEngine.prototype._showLightbox = function(url, type) {
         wrapper.style.cssText = 'display:flex;align-items:center;justify-content:center;max-width:90vw;max-height:90vh;overflow:hidden;';
         const img = document.createElement('img');
         img.src = url;
+        img.alt = url.split('/').pop() || 'image';
         img.style.cssText = 'max-width:94vw;max-height:94vh;object-fit:contain;border-radius:6px;cursor:grab;user-select:none;transition:transform .15s ease;';
         img.onclick = (e) => e.stopPropagation();
         // 滚轮缩放
@@ -124,12 +125,15 @@ CanvasEngine.prototype._showLightbox = function(url, type) {
         });
         window.addEventListener('mousemove', onDragMove);
         window.addEventListener('mouseup', onDragUp);
-        // 关闭时清理
+        // ESC 关闭（统一清理，对图片和视频路径均生效）
+        const onKey = (e) => { if (e.key === 'Escape') { overlay.remove(); } };
+        document.addEventListener('keydown', onKey);
+        // 关闭时清理所有监听器
         const origRemove = overlay.remove.bind(overlay);
         overlay.remove = () => {
             window.removeEventListener('mousemove', onDragMove);
             window.removeEventListener('mouseup', onDragUp);
-            window.removeEventListener('keydown', onKey);
+            document.removeEventListener('keydown', onKey);  // 修复: 与 addEventListener 目标一致
             origRemove();
         };
         wrapper.appendChild(img);
@@ -158,8 +162,5 @@ CanvasEngine.prototype._showLightbox = function(url, type) {
         overlay.appendChild(zoomBar);
     }
     document.body.appendChild(overlay);
-    // ESC 关闭
-    const onKey = (e) => { if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', onKey); } };
-    document.addEventListener('keydown', onKey);
 };
 

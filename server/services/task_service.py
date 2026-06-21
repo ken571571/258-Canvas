@@ -36,6 +36,16 @@ def list_tasks(task_type: str = "", status: str = "") -> list:
     return task_manager.list_tasks(task_type=task_type, status=status)
 
 
+def cancel_task(task_id: str) -> bool:
+    """取消运行中或排队中的任务。"""
+    return task_manager.cancel_task(task_id)
+
+
+def retry_task(task_id: str) -> bool:
+    """重试失败的任务。"""
+    return task_manager.retry_task(task_id)
+
+
 def get_stats() -> dict:
     """获取任务统计信息。"""
     return {

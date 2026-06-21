@@ -1,0 +1,19 @@
+{
+  "id": "bf0fda7971fb4c20",
+  "title": "v1",
+  "created_at": 1782012512982,
+  "updated_at": 1782012513180,
+  "nodes": [],
+  "connections": [],
+  "groups": [],
+  "viewport": {
+    "x": 0,
+    "y": 0,
+    "scale": 1
+  },
+  "icon": "layers",
+  "kind": "default",
+  "logs": [],
+  "settings": {},
+  "deleted_at": 1782012513154
+}

@@ -7,21 +7,17 @@
 """
 
 import os
-import json
 import uuid
 import time
-import asyncio
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
 from .. import config
+from ..storage.json_store import store
 
 router = APIRouter(prefix="/api", tags=["assets"])
 
 LIBRARY_FILE = os.path.join(config.DATA_DIR, "asset_library.json")
-
-# 写锁
-_write_lock = asyncio.Lock()
 
 
 def _now():
@@ -29,23 +25,15 @@ def _now():
 
 
 def _load_lib() -> dict:
-    if not os.path.exists(LIBRARY_FILE):
-        return _default_library()
-    try:
-        with open(LIBRARY_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return data if isinstance(data, dict) else _default_library()
-    except Exception:
-        return _default_library()
+    data = store.read(LIBRARY_FILE, default=None)
+    if data is not None and isinstance(data, dict) and "libraries" in data:
+        return data
+    return _default_library()
 
 
 async def _save_lib(data: dict):
     data["updated_at"] = _now()
-    async with _write_lock:
-        tmp = LIBRARY_FILE + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        os.replace(tmp, LIBRARY_FILE)
+    await store.write(LIBRARY_FILE, data)
 
 
 def _default_library() -> dict:

@@ -11,8 +11,11 @@ import os
 import json
 import time
 import base64
-from typing import List, Dict, Any
+import hashlib
+import re
+from typing import List, Dict, Any, Optional
 import httpx
+from ..security.network import validate_safe_url
 
 from .base import BaseProvider, ImageResult, VideoResult, ChatResult
 from .. import config
@@ -78,8 +81,8 @@ class APIMartProvider(BaseProvider):
     def build_url(self, endpoint: str) -> str:
         endpoint = endpoint.lstrip("/")
         base = self._base_url
-        # APIMart base URL 通常已包含完整路径，不自动加 /v1
-        if not base.endswith("/v1") and not base.endswith("/v2"):
+        # 仅在 URL 不含 /v{N} 版本段时追加 /v1
+        if not re.search(r'/v\d+$', base):
             base += "/v1"
         return f"{base}/{endpoint}"
 
@@ -121,15 +124,18 @@ class APIMartProvider(BaseProvider):
         if refs:
             # APIMart 图生图使用 images/generations 端点（非 images/edits）
             # 通过 image_urls 传 base64 图片数组
-            image_urls = [self._load_image_b64(r) for r in refs[:16]]
-            image_urls = [v for v in image_urls if v]
+            image_urls = []
+            for r in refs[:16]:
+                b64 = await self._load_image_b64(r)
+                if b64:
+                    image_urls.append(b64)
             if image_urls:
                 body["image_urls"] = image_urls
 
         url = self.build_url("images/generations")
 
         # 提交任务
-        async with httpx.AsyncClient(timeout=config.AI_REQUEST_TIMEOUT) as cli:
+        async with httpx.AsyncClient(timeout=config.AI_REQUEST_TIMEOUT, follow_redirects=False) as cli:
             resp = await cli.post(url, headers=self.build_headers(), json=body)
             if resp.status_code != 200:
                 err = resp.text[:500]
@@ -138,8 +144,8 @@ class APIMartProvider(BaseProvider):
             data = resp.json()
 
         # APIMart 异步模式：返回 task_id
-        task_items = data.get("data") or {}
-        if not task_items:
+        task_items = data.get("data") if data.get("data") is not None else None
+        if task_items is None:
             raise RuntimeError("APIMart 返回无任务数据")
         task = task_items[0] if isinstance(task_items, list) else task_items
         task_id = task.get("task_id", "") or task.get("id", "")
@@ -147,7 +153,7 @@ class APIMartProvider(BaseProvider):
         if not task_id:
             # 同步模式回退：直接解析图片
             # APIMart 同步响应可能是 data: [{url, b64_json}] 或 data: {url, b64_json}
-            items = data.get("data") or []
+            items = data.get("data") if data.get("data") is not None else []
             if isinstance(items, dict):
                 items = [items]
             if isinstance(items, list) and items:
@@ -161,8 +167,11 @@ class APIMartProvider(BaseProvider):
                     if isinstance(img_url, list):
                         img_url = img_url[0] if img_url else ""
                     if img_url and img_url.startswith("http"):
+                        if not validate_safe_url(img_url):
+                            log.warning(f"SSRF 拦截 — 上游返回了不安全的图片地址: {img_url[:80]}")
+                            raise RuntimeError(f"APIMart 返回了不安全的图片地址（内网/云metadata），已拦截")
                         try:
-                            async with httpx.AsyncClient(timeout=30) as dl_cli:
+                            async with httpx.AsyncClient(timeout=30, follow_redirects=False) as dl_cli:
                                 dl = await dl_cli.get(img_url)
                                 if dl.status_code == 200:
                                     path = self._save_image(dl.content, "apimart_")
@@ -175,7 +184,7 @@ class APIMartProvider(BaseProvider):
 
         # 轮询任务直到完成
         status_url = self.build_url(f"tasks/{task_id}")
-        async with httpx.AsyncClient(timeout=30) as cli:
+        async with httpx.AsyncClient(timeout=30, follow_redirects=False) as cli:
             for i in range(120):  # 最多等 4 分钟
                 await asyncio.sleep(2)
                 try:
@@ -240,8 +249,11 @@ class APIMartProvider(BaseProvider):
                     if img_url:
                         # 下载到本地
                         if img_url.startswith("http"):
+                            from ..security.network import validate_safe_url
+                            if not validate_safe_url(img_url):
+                                raise RuntimeError(f"APIMart 返回了不安全的图片地址（内网/云metadata），已拦截")
                             try:
-                                dl = await cli.get(img_url)
+                                dl = await cli.get(img_url, follow_redirects=False)
                                 if dl.status_code == 200:
                                     path = self._save_image(dl.content, "apimart_")
                                     return ImageResult(url=path, raw=s_data)
@@ -284,7 +296,7 @@ class APIMartProvider(BaseProvider):
             body["tool_choice"] = "auto"
 
         url = self.build_url("chat/completions")
-        async with httpx.AsyncClient(timeout=config.AI_REQUEST_TIMEOUT) as cli:
+        async with httpx.AsyncClient(timeout=config.AI_REQUEST_TIMEOUT, follow_redirects=False) as cli:
             resp = await cli.post(url, headers=self.build_headers(), json=body)
             if resp.status_code != 200:
                 raise RuntimeError(f"APIMart 对话失败 ({resp.status_code}): {resp.text[:500]}")
@@ -294,20 +306,7 @@ class APIMartProvider(BaseProvider):
         msg = choice.get("message", {})
 
         # 解析 tool_calls
-        tool_calls: List[dict] = []
-        raw_tool_calls = msg.get("tool_calls") or []
-        for tc in raw_tool_calls:
-            func = tc.get("function", {})
-            args_str = func.get("arguments", "{}")
-            try:
-                arguments = json.loads(args_str) if isinstance(args_str, str) else args_str
-            except json.JSONDecodeError:
-                arguments = {}
-            tool_calls.append({
-                "id": tc.get("id", ""),
-                "name": func.get("name", ""),
-                "arguments": arguments,
-            })
+        tool_calls = self._parse_tool_calls(msg)
 
         return ChatResult(
             content=msg.get("content", ""),
@@ -330,10 +329,11 @@ class APIMartProvider(BaseProvider):
         body: dict = {
             "model": model,
             "prompt": prompt,
-            "duration": int(duration),
+            "seconds": str(duration),  # AIHubMix 要求字符串格式
             "size": size,
-            "quality": quality,
         }
+        if quality and quality.lower() != "auto":
+            body["quality"] = quality
         refs = reference_images or []
         if refs:
             # API 要求公网可访问的 URL，不支持 base64
@@ -352,14 +352,14 @@ class APIMartProvider(BaseProvider):
                 body["image_urls"] = image_urls
 
         url = self.build_url("videos/generations")
-        async with httpx.AsyncClient(timeout=config.AI_REQUEST_TIMEOUT * 2) as cli:
+        async with httpx.AsyncClient(timeout=config.AI_REQUEST_TIMEOUT * 2, follow_redirects=False) as cli:
             resp = await cli.post(url, headers=self.build_headers(), json=body)
             if resp.status_code != 200:
                 raise RuntimeError(f"APIMart 视频生成失败 ({resp.status_code}): {resp.text[:500]}")
             data = resp.json()
 
         # APIMart 响应结构：{"data": {"task_id": "..."}} 或 {"task_id": "..."}
-        result = data.get("data") or data
+        result = data.get("data") if data.get("data") is not None else data
         if isinstance(result, list):
             result = result[0] if result else {}
         task_id = result.get("task_id") or result.get("id", "")
@@ -368,14 +368,14 @@ class APIMartProvider(BaseProvider):
     async def query_video_task(self, task_id: str) -> VideoResult:
         """查询 APIMart 视频任务状态。"""
         url = self.build_url(f"tasks/{task_id}")
-        async with httpx.AsyncClient(timeout=30) as cli:
+        async with httpx.AsyncClient(timeout=30, follow_redirects=False) as cli:
             resp = await cli.get(url, headers=self.build_headers())
             if resp.status_code != 200:
                 raise RuntimeError(f"APIMart 查询视频任务失败 ({resp.status_code}): {resp.text[:300]}")
             data = resp.json()
 
         # APIMart 响应结构：{"data": {"status": "...", "output": {...}}} 或顶层直接
-        result = data.get("data") or data
+        result = data.get("data") if data.get("data") is not None else data
         if isinstance(result, list):
             result = result[0] if result else {}
 
@@ -414,7 +414,7 @@ class APIMartProvider(BaseProvider):
         models = []
         try:
             url = self.build_url("models")
-            async with httpx.AsyncClient(timeout=30) as cli:
+            async with httpx.AsyncClient(timeout=30, follow_redirects=False) as cli:
                 resp = await cli.get(url, headers=self.build_headers())
             if resp.status_code == 200:
                 data = resp.json()
@@ -453,7 +453,7 @@ class APIMartProvider(BaseProvider):
                 "max_tokens": 5,
                 "stream": False,
             }
-            async with httpx.AsyncClient(timeout=15) as cli:
+            async with httpx.AsyncClient(timeout=15, follow_redirects=False) as cli:
                 resp = await cli.post(url, headers=self.build_headers(), json=body)
             elapsed = int((_time.time() - started) * 1000)
             if resp.status_code == 200:

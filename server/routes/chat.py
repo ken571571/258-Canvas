@@ -1,58 +1,24 @@
-"""API 路由：GPT 对话（含流式 SSE 和历史持久化）"""
+"""API 路由：GPT 对话（含流式 SSE 和历史持久化）
+
+路由层职责：HTTP 参数校验、SSE 流式传输。
+业务逻辑全部委托给 services/chat_service.py。
+"""
 
 import os
 import json
-import uuid
-import time
-import re
+import base64
+import logging
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from ..models import ChatRequest
-from ..providers.registry import get_provider_registry
 from ..routes.providers_cfg import resolve_provider
 from .. import config
-from ..storage.json_store import store
+from ..security.paths import safe_join  # 用于 canvas_llm 本地文件路径安全拼接
+from ..services import chat_service
+
+_log = logging.getLogger("canvas571")
 
 router = APIRouter(prefix="/api", tags=["chat"])
-
-
-import base64 as _base64
-
-
-def _conv_path(conversation_id: str) -> str:
-    # UUID 格式 ID (conv_ + hex) 直接使用，避免碰撞
-    if conversation_id.startswith("conv_") and re.match(r"^conv_[a-f0-9]+$", conversation_id):
-        safe = conversation_id
-    else:
-        # 非标准 ID：使用 URL-safe base64 编码防碰撞
-        safe = "conv_" + _base64.urlsafe_b64encode(
-            conversation_id.encode("utf-8")
-        ).decode("ascii").rstrip("=")
-    return os.path.join(config.HISTORY_DIR, f"{safe}.json")
-
-
-def _load_history(conversation_id: str) -> list:
-    data = store.read(_conv_path(conversation_id), default={"messages": []})
-    return data.get("messages", [])
-
-
-async def _save_history(conversation_id: str, messages: list, title: str = ""):
-    data = {
-        "id": conversation_id,
-        "title": title or "对话",
-        "updated_at": int(time.time() * 1000),
-        "messages": messages,
-    }
-    await store.write_with_timestamp(_conv_path(conversation_id), data)
-
-
-def _u():
-    return uuid.uuid4().hex[:12]
-
-
-def _auto_title(user_msg: str) -> str:
-    """根据用户第一条消息自动生成对话标题。"""
-    return (user_msg[:40] + "…") if len(user_msg) > 40 else user_msg
 
 
 # ——— 非流式对话（向后兼容） ———
@@ -65,29 +31,27 @@ async def chat(req: ChatRequest):
         raise HTTPException(status_code=400, detail=f"未找到 API 平台: {req.provider_id}")
 
     # 加载或创建历史
-    conv_id = req.conversation_id or f"conv_{_u()}"
-    messages = _load_history(conv_id)
+    conv_id = req.conversation_id or chat_service.generate_id()
 
-    if not messages:
-        if req.system_prompt:
-            messages.append({"role": "system", "content": req.system_prompt})
-        messages.append({"role": "user", "content": req.message})
-    else:
-        messages.append({"role": "user", "content": req.message})
+    async with chat_service.lock_conversation(conv_id):
+        messages = chat_service.load_history(conv_id)
 
-    # 限制历史长度
-    if len(messages) > config.MAX_HISTORY_MESSAGES + 2:
-        # 保留 system prompt 和最近的消息
-        system_msgs = [m for m in messages if m["role"] == "system"]
-        other_msgs = [m for m in messages if m["role"] != "system"]
-        messages = system_msgs + other_msgs[-(config.MAX_HISTORY_MESSAGES):]
+        if not messages:
+            if req.system_prompt:
+                messages.append({"role": "system", "content": req.system_prompt})
+            messages.append({"role": "user", "content": req.message})
+        else:
+            messages.append({"role": "user", "content": req.message})
 
-    result = await prov.chat(messages=messages, model=req.model)
+        # 限制历史长度
+        messages = chat_service.trim_history(messages, config.MAX_HISTORY_MESSAGES)
 
-    # 保存历史
-    messages.append({"role": "assistant", "content": result.content})
-    title = _auto_title(req.message) if len(messages) <= 3 else ""
-    await _save_history(conv_id, messages, title)
+        result = await prov.chat(messages=messages, model=req.model)
+
+        # 保存历史
+        messages.append({"role": "assistant", "content": result.content})
+        title = chat_service.auto_title(req.message) if len(messages) <= 3 else ""
+        await chat_service.save_history(conv_id, messages, title)
 
     return {
         "reply": result.content,
@@ -111,24 +75,25 @@ async def chat_stream(req: ChatRequest):
     if not prov:
         raise HTTPException(status_code=400, detail=f"未找到 API 平台: {req.provider_id}")
 
-    conv_id = req.conversation_id or f"conv_{_u()}"
-    messages = _load_history(conv_id)
+    conv_id = req.conversation_id or chat_service.generate_id()
 
-    if not messages:
-        if req.system_prompt:
-            messages.append({"role": "system", "content": req.system_prompt})
-        messages.append({"role": "user", "content": req.message})
-    else:
-        messages.append({"role": "user", "content": req.message})
+    # 在锁内加载历史并追加用户消息（保证事务完整性）
+    async with chat_service.lock_conversation(conv_id):
+        messages = chat_service.load_history(conv_id)
 
-    if len(messages) > config.MAX_HISTORY_MESSAGES + 2:
-        system_msgs = [m for m in messages if m["role"] == "system"]
-        other_msgs = [m for m in messages if m["role"] != "system"]
-        messages = system_msgs + other_msgs[-(config.MAX_HISTORY_MESSAGES):]
+        if not messages:
+            if req.system_prompt:
+                messages.append({"role": "system", "content": req.system_prompt})
+            messages.append({"role": "user", "content": req.message})
+        else:
+            messages.append({"role": "user", "content": req.message})
+
+        messages = chat_service.trim_history(messages, config.MAX_HISTORY_MESSAGES)
 
     async def event_stream():
         full_content = ""
         seq = 0
+        stream_error = None
         # SSE 重连间隔（毫秒）
         yield "retry: 3000\n\n"
         try:
@@ -143,16 +108,26 @@ async def chat_stream(req: ChatRequest):
                 yield f"id: {seq}\n"
                 yield f"data: {json.dumps({'content': token})}\n\n"
         except Exception as e:
+            stream_error = e
             seq += 1
             yield f"id: {seq}\n"
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
-        # 保存历史
-        messages.append({"role": "assistant", "content": full_content})
-        title = _auto_title(req.message) if len(messages) <= 3 else ""
-        await _save_history(conv_id, messages, title)
+        # 仅在流式成功时保存历史（避免保存损坏的部分内容）
+        if not stream_error:
+            try:
+                # 重新获取写锁，并从磁盘重载最新历史（避免覆盖流式期间的并发写入）
+                async with chat_service.lock_conversation(conv_id):
+                    latest = chat_service.load_history(conv_id)
+                    latest.append({"role": "assistant", "content": full_content})
+                    title = chat_service.auto_title(req.message) if len(latest) <= 3 else ""
+                    await chat_service.save_history(conv_id, latest, title)
+            except Exception as save_err:
+                _log.error("Failed to save chat history conv=%s: %s", conv_id, save_err)
+        else:
+            _log.warning("Stream error for conv=%s, history NOT saved: %s", conv_id, stream_error)
 
-        # 发送完成信号（含 conversation_id）
+        # 始终发送完成信号（含 conversation_id）
         seq += 1
         yield f"id: {seq}\n"
         yield f"data: {json.dumps({'done': True, 'conversation_id': conv_id, 'model': req.model or 'gpt-4o-mini'})}\n\n"
@@ -204,8 +179,7 @@ async def canvas_llm(req: ChatRequest):
             if url.startswith(("http://", "https://", "data:")):
                 data_url = url
             elif url.startswith(("/assets/", "/output/")):
-                import base64
-                local = os.path.join(config.BASE_DIR, url.lstrip("/").replace("/", os.sep))
+                local = safe_join(config.BASE_DIR, url.lstrip("/"))
                 if os.path.exists(local):
                     with open(local, "rb") as f:
                         raw = f.read()
@@ -241,39 +215,21 @@ async def canvas_llm(req: ChatRequest):
 
 @router.get("/threads")
 def list_conversations():
-    """列出所有对话历史。"""
-    os.makedirs(config.HISTORY_DIR, exist_ok=True)
-    items = []
-    for fn in os.listdir(config.HISTORY_DIR):
-        if fn.endswith(".json"):
-            try:
-                with open(os.path.join(config.HISTORY_DIR, fn), "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                items.append({
-                    "id": data.get("id", fn[:-5]),
-                    "title": data.get("title", "对话"),
-                    "updated_at": data.get("updated_at", 0),
-                    "message_count": len(data.get("messages", [])),
-                })
-            except Exception:
-                pass
-    items.sort(key=lambda c: c.get("updated_at", 0), reverse=True)
-    return {"conversations": items}
+    """列出所有对话历史（从元数据索引读取，O(1) 避免遍历全部文件）。"""
+    return {"conversations": chat_service.list_conversations()}
 
 
 @router.get("/threads/{thread_id}")
 def get_conversation(thread_id: str):
     """获取指定对话的完整历史。"""
-    messages = _load_history(thread_id)
+    messages = chat_service.load_history(thread_id)
     if not messages:
         raise HTTPException(status_code=404, detail="对话不存在")
     return {"conversation_id": thread_id, "messages": messages}
 
 
 @router.delete("/threads/{thread_id}")
-def delete_conversation(thread_id: str):
-    """删除对话历史。"""
-    p = _conv_path(thread_id)
-    if os.path.exists(p):
-        os.remove(p)
+async def delete_conversation(thread_id: str):
+    """删除对话历史（同时清理元数据索引）。"""
+    await chat_service.delete_conversation(thread_id)
     return {"ok": True}

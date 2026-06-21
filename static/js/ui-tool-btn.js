@@ -5,6 +5,11 @@
 // Light DOM 确保全局 CSS (.tool-btn, .toolbar-divider 等) 正常生效
 
 class UIToolBtn extends HTMLElement {
+  // HTML 属性转义（防 XSS）
+  _escAttr(s) { return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  // HTML 内容转义
+  _escHtml(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
   connectedCallback() {
     if (this._rendered) return;
     this._rendered = true;
@@ -20,11 +25,42 @@ class UIToolBtn extends HTMLElement {
     const fallback = this.getAttribute('fallback') || label;
     const action = this.getAttribute('action') || '';
 
-    this.innerHTML = '' +
-      '<button class="tool-btn"' + (action ? ' onclick="' + action + '"' : '') + '>' +
-      '<ui-icon name="' + icon + '" size="14"></ui-icon>' +
-      (label ? '<span data-t="' + label + '">' + fallback + '</span>' : '') +
-      '</button>';
+    // action 包含 JS 代码，通过 addEventListener 绑定（避免 setAttribute('onclick') 不编译的问题）
+    const btn = document.createElement('button');
+    btn.className = 'tool-btn';
+    var actionMap = {
+        "createNode('image')":    function() { window._canvas.createNode('image'); },
+        "createNode('prompt')":   function() { window._canvas.createNode('prompt'); },
+        "createNode('image_gen')": function() { window._canvas.createNode('image_gen'); },
+        "createNode('video_gen')": function() { window._canvas.createNode('video_gen'); },
+        "createNode('agent')":    function() { window._canvas.createNode('agent'); },
+        "createNode('loop')":     function() { window._canvas.createNode('loop'); },
+        "createNode('output')":   function() { window._canvas.createNode('output'); },
+        "createNode('comfy')":    function() { window._canvas.createNode('comfy'); },
+        "saveCanvas()":           function() { window._canvas.save(); },
+        "engine._toggleAssetPanel()": function() { window._canvas._toggleAssetPanel(); },
+    };
+    if (action) {
+        var handler = actionMap[action];
+        if (handler) {
+            btn.addEventListener('click', handler);
+        } else {
+            console.error('ui-tool-btn: unknown action "' + action + '"');
+        }
+    }
+    // icon
+    const iconEl = document.createElement('ui-icon');
+    iconEl.setAttribute('name', icon);
+    iconEl.setAttribute('size', '14');
+    btn.appendChild(iconEl);
+    // label
+    if (label) {
+      const span = document.createElement('span');
+      span.setAttribute('data-t', label);
+      span.textContent = fallback;
+      btn.appendChild(span);
+    }
+    this.appendChild(btn);
   }
 }
 customElements.define('ui-tool-btn', UIToolBtn);

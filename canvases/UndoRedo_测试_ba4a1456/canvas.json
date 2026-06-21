@@ -1,0 +1,38 @@
+{
+  "id": "ba4a14566cd040f2",
+  "title": "UndoRedo 测试",
+  "created_at": 1782013401423,
+  "updated_at": 1782013401695,
+  "nodes": [
+    {
+      "id": "n1",
+      "type": "image",
+      "x": 0,
+      "y": 0,
+      "w": 260,
+      "h": 100,
+      "label": "v1"
+    },
+    {
+      "id": "n2",
+      "type": "prompt",
+      "x": 300,
+      "y": 0,
+      "w": 260,
+      "h": 100,
+      "label": "v2"
+    }
+  ],
+  "connections": [],
+  "groups": [],
+  "viewport": {
+    "x": 0,
+    "y": 0,
+    "scale": 1
+  },
+  "icon": "layers",
+  "kind": "default",
+  "logs": [],
+  "settings": {},
+  "deleted_at": 1782013401666
+}

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>无限画布</title>
 <link rel="stylesheet" href="/static/css/style.css?v=10">
-<link rel="stylesheet" href="/static/css/components.css?v=1">
+<link rel="stylesheet" href="/static/css/components.css?v=2">
 </head>
 <body>
 <div class="canvas-shell">
@@ -47,20 +47,7 @@
         <div class="kbd-panel">
             <h2 data-t="shortcuts.title">⌨ 快捷键</h2>
             <p class="kbd-subtitle" data-t="shortcuts.subtitle">按 <kbd>?</kbd> 随时打开此面板 · 按 <kbd>Esc</kbd> 关闭</p>
-            <div class="kbd-grid">
-                <div class="kbd-row"><span class="kbd-label">平移画布</span><span class="kbd-keys"><kbd>Space</kbd>+拖拽</span></div>
-                <div class="kbd-row"><span class="kbd-label">平移画布</span><span class="kbd-keys"><kbd>中键</kbd>拖拽</span></div>
-                <div class="kbd-row"><span class="kbd-label">缩放画布</span><span class="kbd-keys"><kbd>滚轮</kbd></span></div>
-                <div class="kbd-row"><span class="kbd-label">框选节点</span><span class="kbd-keys"><kbd>Ctrl</kbd>+拖拽</span></div>
-                <div class="kbd-row"><span class="kbd-label">加选/减选</span><span class="kbd-keys"><kbd>Shift</kbd>+点击</span></div>
-                <div class="kbd-row"><span class="kbd-label">打组</span><span class="kbd-keys"><kbd>Ctrl</kbd>+<kbd>G</kbd></span></div>
-                <div class="kbd-row"><span class="kbd-label">解组</span><span class="kbd-keys"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd></span></div>
-                <div class="kbd-row"><span class="kbd-label">撤销</span><span class="kbd-keys"><kbd>Ctrl</kbd>+<kbd>Z</kbd></span></div>
-                <div class="kbd-row"><span class="kbd-label">复制/粘贴</span><span class="kbd-keys"><kbd>Ctrl</kbd>+<kbd>C</kbd>/<kbd>V</kbd></span></div>
-                <div class="kbd-row"><span class="kbd-label">删除选中</span><span class="kbd-keys"><kbd>Delete</kbd></span></div>
-                <div class="kbd-row"><span class="kbd-label">创建节点</span><span class="kbd-keys"><kbd>右键</kbd>空白</span></div>
-                <div class="kbd-row"><span class="kbd-label">节点菜单</span><span class="kbd-keys"><kbd>右键</kbd>选中</span></div>
-            </div>
+            <div class="kbd-grid" id="kbdGrid"></div>
             <button class="btn btn-secondary" style="margin-top:16px;width:100%;" onclick="document.getElementById('shortcutPanel').classList.remove('open')" data-t="shortcuts.close">关闭</button>
         </div>
     </div>
@@ -87,33 +74,92 @@
     </div>
 </div>
 
-<script src="/static/js/ui-icon.js?v=1"></script>
-<script src="/static/js/ui-tool-btn.js?v=1"></script>
-<script src="/static/js/i18n.js?v=1"></script>
-<script src="/static/js/api.js?v=12"></script>
-<script src="/static/js/canvas-core.js?v=4"></script>
+<script src="/static/js/ui-icon.js?v=2"></script>
+<script src="/static/js/ui-tool-btn.js?v=2"></script>
+<script src="/static/js/i18n.js?v=2"></script>
+<script src="/static/js/api.js?v=13"></script>
+<script src="/static/js/canvas-store.js?v=3"></script>
+<script src="/static/js/canvas-core.js?v=17"></script>
+<script src="/static/js/canvas-undo.js?v=2"></script>
+<script src="/static/js/canvas-viewport.js?v=1"></script>
 <!-- 渲染器模块（按依赖顺序加载） -->
-<script src="/static/js/canvas-renderer-core.js?v=1"></script>
+<script src="/static/js/canvas-renderer-core.js?v=2"></script>
 <script src="/static/js/canvas-renderer-providers.js?v=2"></script>
-<script src="/static/js/canvas-renderer-nodes.js?v=2"></script>
-<script src="/static/js/canvas-renderer-groups.js?v=1"></script>
-<script src="/static/js/canvas-renderer-links.js?v=1"></script>
-<script src="/static/js/canvas-renderer-lightbox.js?v=1"></script>
-<script src="/static/js/canvas-renderer-assets.js?v=1"></script>
-<script src="/static/js/canvas-pipeline.js?v=3"></script>
+<script src="/static/js/canvas-renderer-nodes.js?v=7"></script>
+<script src="/static/js/canvas-renderer-groups.js?v=5"></script>
+<script src="/static/js/canvas-renderer-links.js?v=2"></script>
+<script src="/static/js/canvas-renderer-lightbox.js?v=3"></script>
+<script src="/static/js/canvas-renderer-assets.js?v=2"></script>
+<script src="/static/js/canvas-pipeline.js?v=4"></script>
 <script src="/static/js/canvas-events.js?v=2"></script>
 <script>
 const engine = new CanvasEngine('board', 'world', 'nodes-container', 'links');
 engine.init().then(() => {
     console.log('canvas ready');
+    // 页面关闭/切换前强制保存（绕过 debounce，防止节点位置丢失）
+    window.addEventListener('beforeunload', () => {
+        clearTimeout(engine._saveDebounceTimer);
+        engine.save();
+    });
+}).catch(err => {
+    console.error('画布初始化失败:', err);
+    // 显示错误提示而非空白页面
+    const board = document.getElementById('board');
+    if (!board) return;
+    const msg = err && (err.message || String(err));
+    const safeMsg = String(msg || '未知错误').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--surface);border:1px solid var(--bad);border-radius:12px;padding:24px;text-align:center;z-index:9999;box-shadow:0 8px 32px rgba(0,0,0,.2);max-width:420px;';
+    overlay.innerHTML = '<div style="font-size:16px;font-weight:700;color:var(--bad);margin-bottom:8px;">画布加载失败</div>' +
+        '<div style="font-size:12px;color:var(--muted);margin-bottom:16px;word-break:break-all;">' + safeMsg + '</div>' +
+        '<div style="display:flex;gap:8px;justify-content:center;">' +
+        '<button onclick="localStorage.removeItem(\'canvas_current_id\');location.reload()" style="padding:6px 16px;border:1px solid var(--bad);border-radius:8px;background:var(--bg);color:var(--bad);cursor:pointer;font-size:13px;">重置画布 ID 并刷新</button>' +
+        '<button onclick="location.reload()" style="padding:6px 16px;border:none;border-radius:8px;background:var(--accent);color:var(--accent-ink);cursor:pointer;font-size:13px;">直接刷新</button>' +
+        '</div>';
+    board.appendChild(overlay);
 });
 
 // 初始化主题（postMessage 可能在新页面加载前已发送）
 (function(){ if(localStorage.theme==='dark') document.documentElement.classList.add('dark'); })();
 
 window.addEventListener('message', e => {
+    if (e.origin !== location.origin) return;
     if (e.data?.type === 'theme') {
         document.documentElement.classList.toggle('dark', e.data.theme === 'dark');
+    }
+    if (e.data?.type === 'refresh') {
+        // 平台变更 → 刷新 provider 缓存
+        if (typeof refreshProviders === 'function') {
+            refreshProviders().then(() => {
+                if (typeof engine !== 'undefined') {
+                    // 用户正在输入框中打字时跳过全量重渲染（避免 textarea 被销毁导致光标丢失）
+                    var activeTag = String((document.activeElement || {}).tagName || '').toLowerCase();
+                    if (activeTag !== 'input' && activeTag !== 'textarea') {
+                        engine._renderAll();  // 节点 Provider/Model 下拉框
+                    }
+                    engine._loadAgentOpts().catch(() => {});    // Agent 节点下拉框
+                    if (typeof engine.refreshComfyWorkflows === 'function') {
+                        engine.refreshComfyWorkflows().catch(() => {});  // ComfyUI 节点工作流下拉框
+                    }
+                }
+            }).catch(() => {});
+        }
+        // 检查是否切换了画布（canvas-gate 可能在 localStorage 写了新 canvas_id）
+        const newId = localStorage.getItem('canvas_current_id');
+        if (newId && typeof engine !== 'undefined' && engine.canvasId && newId !== engine.canvasId) {
+            // 切换前保存当前画布（绕过 debounce，防止节点新位置丢失）
+            clearTimeout(engine._saveDebounceTimer);
+            engine.save().finally(() => {
+                engine.canvasId = newId;
+                engine.load().catch(err => console.error('切换画布失败:', err));
+            });
+        }
+    }
+    if (e.data?.type === 'agents-changed') {
+        // Agent 变更 → 刷新 agent 列表 + 重渲染 Agent 节点下拉框
+        if (typeof engine !== 'undefined') {
+            engine._loadAgentOpts().then(() => { engine._renderAll(); }).catch(() => {});
+        }
     }
     if (e.data?.type === 'lang' && e.data.lang) {
         document.documentElement.lang = e.data.lang;
@@ -125,7 +171,34 @@ window.addEventListener('lang-applied', () => {
     if (typeof engine !== 'undefined' && engine._renderAll) {
         engine._renderAll();
     }
+    buildShortcutGrid();
 });
+
+// 动态生成快捷键面板（中英文切换）
+function buildShortcutGrid() {
+    var grid = document.getElementById('kbdGrid');
+    if (!grid) return;
+    var rows = [
+        {label: _t('shortcuts.pan1','平移画布'), keys: _t('shortcuts.pan1keys','Space+拖拽')},
+        {label: _t('shortcuts.pan2','平移画布'), keys: _t('shortcuts.pan2keys','中键拖拽')},
+        {label: _t('shortcuts.zoom','缩放画布'), keys: _t('shortcuts.zoomKeys','滚轮')},
+        {label: _t('shortcuts.select','框选节点'), keys: _t('shortcuts.selectKeys','Ctrl+拖拽')},
+        {label: _t('shortcuts.addRemove','加选/减选'), keys: _t('shortcuts.addRemoveKeys','Shift+点击')},
+        {label: _t('shortcuts.group','打组'), keys: _t('shortcuts.groupKeys','Ctrl+G')},
+        {label: _t('shortcuts.ungroup','解组'), keys: _t('shortcuts.ungroupKeys','Ctrl+Shift+G')},
+        {label: _t('shortcuts.undo','撤销'), keys: _t('shortcuts.undoKeys','Ctrl+Z')},
+        {label: _t('shortcuts.copyPaste','复制/粘贴'), keys: _t('shortcuts.copyPasteKeys','Ctrl+C/V')},
+        {label: _t('shortcuts.deleteSel','删除选中'), keys: _t('shortcuts.deleteSelKeys','Delete')},
+        {label: _t('shortcuts.createNode','创建节点'), keys: _t('shortcuts.createNodeKeys','右键空白')},
+        {label: _t('shortcuts.nodeMenu','节点菜单'), keys: _t('shortcuts.nodeMenuKeys','右键选中')}
+    ];
+    grid.innerHTML = rows.map(function(r) {
+        return '<div class="kbd-row"><span class="kbd-label">' + r.label + '</span><span class="kbd-keys">' + r.keys + '</span></div>';
+    }).join('');
+}
+// 初始生成
+if (typeof _t === 'function') { buildShortcutGrid(); } else { window.addEventListener('DOMContentLoaded', function(){ setTimeout(buildShortcutGrid, 100); }); }
+
 
 function createNode(type) { engine.createNode(type); }
 function saveCanvas() { engine.save(); }

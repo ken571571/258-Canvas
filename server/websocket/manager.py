@@ -7,8 +7,10 @@ from typing import List, Dict
 from fastapi import WebSocket
 
 
-HEARTBEAT_INTERVAL = 30   # 心跳间隔（秒）
-HEARTBEAT_TIMEOUT = 90    # 超时未收到 pong 则断连（秒）
+from .. import config
+
+HEARTBEAT_INTERVAL = config.HEARTBEAT_INTERVAL
+HEARTBEAT_TIMEOUT = config.HEARTBEAT_TIMEOUT
 
 
 class ConnectionManager:

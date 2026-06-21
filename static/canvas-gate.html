@@ -30,25 +30,25 @@
 .empty-state { text-align:center; padding:60px; color:var(--muted); }
 .empty-state button { margin-top:16px; }
 </style>
-<script src="/static/js/i18n.js?v=1"></script>
+<script src="/static/js/i18n.js?v=2"></script>
 </head>
 <body>
 <div class="page">
-    <h1>画布管理</h1>
-    <p class="page-sub">管理所有画布，点击进入编辑</p>
+    <h1 data-t="canvasGate.title">画布管理</h1>
+    <p class="page-sub" data-t="canvasGate.subtitle">管理所有画布，点击进入编辑</p>
     <div class="gate-toolbar">
-        <input id="searchInput" type="text" placeholder="搜索画布..." oninput="renderCards()">
-        <button class="btn btn-primary" onclick="createCanvas()">+ 新建画布</button>
+        <input id="searchInput" type="text" data-t-placeholder="canvasGate.searchPlaceholder" placeholder="搜索画布..." oninput="renderCards()">
+        <button class="btn btn-primary" data-t="canvasGate.newCanvas" onclick="createCanvas()">+ 新建画布</button>
     </div>
     <div class="gate-grid" id="cardGrid"></div>
     <div class="empty-state" id="emptyState" style="display:none;">
         <div style="font-size:48px;margin-bottom:12px;">🎨</div>
-        还没有画布，创建一个开始吧
-        <br><button class="btn btn-primary" onclick="createCanvas()">+ 新建画布</button>
+        <span data-t="canvasGate.emptyHint">还没有画布，创建一个开始吧</span>
+        <br><button class="btn btn-primary" data-t="canvasGate.newCanvas" onclick="createCanvas()">+ 新建画布</button>
     </div>
 </div>
 
-<script src="/static/js/api.js?v=4"></script>
+<script src="/static/js/api.js?v=5"></script>
 <script>
 let canvases = [];
 
@@ -73,65 +73,77 @@ function renderCards() {
     }
     empty.style.display = 'none';
     grid.innerHTML = filtered.map(c => {
-        const nodeCount = (c.nodes||[]).length;
-        const date = c.updated_at ? new Date(c.updated_at).toLocaleDateString('zh-CN') : '';
-        return `<div class="gate-card" onclick="openCanvas('${c.id}')">
-            <div class="gate-card-preview">${nodeCount ? '🔲' + nodeCount : '📄'}</div>
-            <div class="gate-card-body">
-                <div class="gate-card-title">${esc(c.title||'未命名')}</div>
-                <div class="gate-card-meta">${nodeCount} 节点 · ${date}</div>
-            </div>
-            <div class="gate-card-actions" onclick="event.stopPropagation()">
-                <button data-rename-id="${c.id}" data-rename-title="${esc(c.title||'')}" onclick="renameCanvas(this.dataset.renameId, this.dataset.renameTitle)" title="重命名">✎</button>
-                <button class="del" onclick="deleteCanvas('${c.id}')" title="删除">×</button>
-            </div>
-        </div>`;
+        const nodeCount = c.node_count || 0;
+        const date = c.updated_at ? new Date(c.updated_at).toLocaleDateString(navigator.language || 'zh-CN') : '';
+        const cntLabel = _t('canvasGate.nodeCount','# 节点').replace('#', nodeCount);
+        return '<div class="gate-card" onclick="openCanvas(\'' + escJs(c.id) + '\')">' +
+            '<div class="gate-card-preview">' + (nodeCount ? '🔲' + nodeCount : '📄') + '</div>' +
+            '<div class="gate-card-body">' +
+                '<div class="gate-card-title">' + esc(c.title || _t('canvasGate.untitled','未命名')) + '</div>' +
+                '<div class="gate-card-meta">' + cntLabel + ' · ' + date + '</div>' +
+            '</div>' +
+            '<div class="gate-card-actions" onclick="event.stopPropagation()">' +
+                '<button data-rename-id="' + escJs(c.id) + '" data-rename-title="' + esc(c.title||'') + '" onclick="renameCanvas(this.dataset.renameId, this.dataset.renameTitle)" title="' + _t('canvasGate.rename','重命名') + '">✎</button>' +
+                '<button onclick="duplicateCanvas(\'' + escJs(c.id) + '\')" title="' + _t('canvasGate.duplicate','创建副本') + '" style="font-size:11px;">📋</button>' +
+                '<button class="del" onclick="deleteCanvas(\'' + escJs(c.id) + '\',\'' + escJs(c.title||'') + '\')" title="' + _t('canvasGate.delete','删除') + '">×</button>' +
+            '</div>' +
+        '</div>';
     }).join('');
 }
 
 async function createCanvas() {
-    const name = prompt('画布名称:', '新画布');
+    const name = prompt(_t('canvasGate.newCanvasPrompt','画布名称:'), _t('canvasGate.newCanvasDefault','新画布'));
     if (name === null) return;  // 用户点了取消
-    const title = name.trim() || '新画布';
+    const title = name.trim() || _t('canvasGate.newCanvasDefault','新画布');
     try {
         const data = await apiJson('/api/boards', {
             method:'POST', headers:{'Content-Type':'application/json'},
             body:JSON.stringify({title})
         });
         openCanvas(data.canvas.id);
-    } catch(e) { alert('创建失败: '+e.message); }
+    } catch(e) { alert(_t('canvasGate.createFailed','创建失败: ')+e.message); }
 }
 
 function openCanvas(id) {
     localStorage.setItem('canvas_current_id', id);
-    window.parent.postMessage({type:'navigate', page:'canvas'}, '*');
+    window.parent.postMessage({type:'navigate', page:'canvas'}, location.origin);
 }
 
 async function renameCanvas(id, oldTitle) {
-    const name = prompt('新名称:', oldTitle)?.trim();
+    const name = prompt(_t('canvasGate.newNamePrompt','新名称:'), oldTitle)?.trim();
     if (!name) return;
     try {
-        await apiJson(`/api/boards/${id}/meta`, {
+        await apiJson('/api/boards/'+id+'/meta', {
             method:'POST', headers:{'Content-Type':'application/json'},
             body:JSON.stringify({title:name})
         });
         load();
-    } catch(e) { alert('重命名失败: '+e.message); }
+    } catch(e) { alert(_t('canvasGate.renameFailed','重命名失败: ')+e.message); }
 }
 
-async function deleteCanvas(id) {
-    if (!confirm('确定删除此画布？')) return;
+async function deleteCanvas(id, title) {
+    var name = title || _t('canvasGate.untitled','未命名');
+    if (!confirm(_t('canvasGate.deleteConfirm','确定删除「#」？此操作不可恢复').replace('#', name))) return;
     try {
-        await apiFetch(`/api/boards/${id}`, {method:'DELETE'});
+        await apiFetch('/api/boards/' + id + '/permanent', {method:'DELETE'});
         load();
-    } catch(e) { alert('删除失败: '+e.message); }
+    } catch(e) { alert(_t('canvasGate.deleteFailed','删除失败: ')+e.message); }
 }
 
-function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'); }
+async function duplicateCanvas(id) {
+    try {
+        const data = await apiJson('/api/boards/'+id+'/duplicate', {method:'POST'});
+        load();
+    } catch(e) { alert(_t('canvasGate.duplicateFailed','创建副本失败: ')+e.message); }
+}
+
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function escJs(s) { return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
 
 (function(){ if(localStorage.theme==='dark') document.documentElement.classList.add('dark'); })();
 load();
 window.addEventListener('message', e => {
+    if (e.origin !== location.origin) return;
     if (e.data?.type === 'theme') document.documentElement.classList.toggle('dark', e.data.theme === 'dark');
     if (e.data?.type === 'refresh') load();
 });

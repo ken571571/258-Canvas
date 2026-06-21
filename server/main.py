@@ -1,9 +1,13 @@
 """应用入口"""
 
+import json
 import uvicorn
 from .app import app
 from . import config
 from .logging_config import setup_logging, get_logger
+
+# 模块级初始化日志（确保 uvicorn server.main:app 启动时也能正确配置日志）
+setup_logging()
 
 # 导入并注册路由
 from .routes.generation import router as gen_router
@@ -46,15 +50,22 @@ from fastapi import WebSocket, WebSocketDisconnect
 
 
 @app.websocket("/ws")
-async def ws_endpoint(ws: WebSocket, client_id: str = ""):
+async def ws_endpoint(ws: WebSocket):
+    # FastAPI WebSocket 不支持通过函数签名提取查询参数，需手动获取
+    client_id = ws.query_params.get("client_id", "")
     await manager.connect(ws, client_id)
     try:
         while True:
             data = await ws.receive_text()
-            if data == "hb.ping":
-                await ws.send_text('{"type":"hb.pong"}')
-            elif data == "hb.pong":
-                manager._record_pong(ws)
+            # 支持 JSON 心跳和纯文本心跳两种协议
+            try:
+                msg = json.loads(data)
+                if msg.get("type") == "hb.ping":
+                    await ws.send_text('{"type":"hb.pong"}')
+                elif msg.get("type") == "hb.pong":
+                    manager._record_pong(ws)
+            except (json.JSONDecodeError, ValueError):
+                pass  # 非 JSON 消息（如旧客户端纯文本心跳）忽略
     except WebSocketDisconnect:
         await manager.disconnect(ws)
     except Exception:
@@ -70,13 +81,17 @@ async def health():
 @app.get("/")
 async def index():
     import os
-    # 缓存 HTML 内容，避免每次请求都读文件
-    if not hasattr(index, "_cached_html"):
-        path = os.path.join(config.STATIC_DIR, "index.html")
-        with open(path, "r", encoding="utf-8") as f:
-            index._cached_html = f.read()
     from fastapi.responses import Response
-    return Response(index._cached_html, media_type="text/html; charset=utf-8")
+    # 缓存 HTML 内容（按 mtime 自动失效，避免每次请求都读文件）
+    path = os.path.join(config.STATIC_DIR, "index.html")
+    mtime = os.path.getmtime(path)
+    cached = getattr(index, "_cache", None)
+    if cached and cached[0] == mtime:
+        return Response(cached[1], media_type="text/html; charset=utf-8")
+    with open(path, "r", encoding="utf-8") as f:
+        html = f.read()
+    index._cache = (mtime, html)
+    return Response(html, media_type="text/html; charset=utf-8")
 
 
 def main():

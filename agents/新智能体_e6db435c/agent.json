@@ -1,0 +1,12 @@
+{
+  "id": "e6db435c5a964c8b",
+  "name": "新智能体2",
+  "system_prompt": "对方的打发打发分段",
+  "skills": [],
+  "knowledge_bases": [],
+  "model": "gpt-4o-mini",
+  "provider_id": "apimart",
+  "max_steps": 10,
+  "created_at": 1781867046569,
+  "updated_at": 1781880880757
+}

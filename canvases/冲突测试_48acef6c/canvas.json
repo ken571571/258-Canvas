@@ -1,0 +1,29 @@
+{
+  "id": "48acef6c26714220",
+  "title": "冲突测试-v2",
+  "created_at": 1781970660026,
+  "updated_at": 1781970660067,
+  "nodes": [
+    {
+      "id": "n1",
+      "type": "image",
+      "x": 0,
+      "y": 0,
+      "w": 260,
+      "h": 100,
+      "label": "test"
+    }
+  ],
+  "connections": [],
+  "groups": [],
+  "viewport": {
+    "x": 0,
+    "y": 0,
+    "scale": 1
+  },
+  "icon": "layers",
+  "kind": "default",
+  "logs": [],
+  "settings": {},
+  "deleted_at": 1781970660063
+}

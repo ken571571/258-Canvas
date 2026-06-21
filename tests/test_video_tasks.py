@@ -49,12 +49,11 @@ class VideoTasksTests(unittest.TestCase):
             "provider_id": "openai",
             "model": "",
         })
-        # 应该是 200（task 创建成功）或 400（provider 不可用）
-        self.assertIn(resp.status_code, (200, 400))
-        if resp.status_code == 200:
-            data = resp.json()
-            self.assertIn("task_id", data)
-            self.assertEqual(data["status"], "queued")
+        # create_task 总是成功（queued 状态），即使 provider 不可用
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertIn("task_id", data)
+        self.assertEqual(data["status"], "queued")
 
 
 if __name__ == "__main__":

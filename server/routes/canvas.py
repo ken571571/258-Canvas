@@ -1,156 +1,137 @@
-"""API 路由：画布管理"""
+"""API 路由：画布管理
 
-import os
-import json
+画布存储结构（每个画布一个独立目录，可直接跨实例复制）：
+  canvases/{名称}_{id前8位}/
+    ├── canvas.json      ← 画布完整数据（节点/连线/分组/数据）
+    └── files/           ← 画布引用的所有媒体文件（自包含）
+
+与 Agent 存储模式一致：拷贝整个目录即可迁移到另一台机器。
+
+路由层职责：HTTP 参数校验、状态码转换、WebSocket 广播。
+业务逻辑全部委托给 services/canvas_service.py。
+"""
+
 import uuid
-import time
 from fastapi import APIRouter, HTTPException
-from ..models import CanvasCreateRequest, CanvasMetaUpdate
 from .. import config
 from ..storage.json_store import store
 from ..websocket.manager import manager
+from ..models import CanvasCreateRequest, CanvasMetaUpdate
+from ..exceptions import AppError, ConflictError
+from ..services import canvas_service
 
 router = APIRouter(prefix="/api", tags=["canvas"])
 
 
-def _now():
-    return int(time.time() * 1000)
+# ——— 异常转换辅助 ———
 
 
-def _path(cid):
-    return os.path.join(config.CANVAS_DIR, f"{cid}.json")
+def _to_http(exc: AppError) -> HTTPException:
+    """将 AppError 转换为 FastAPI HTTPException。"""
+    d = exc.to_dict()
+    return HTTPException(status_code=exc.status_code, detail=d)
 
 
-def _load(cid):
-    p = _path(cid)
-    if not os.path.exists(p):
-        raise HTTPException(status_code=404, detail="画布不存在")
-    with open(p, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-async def _save(c):
-    """原子写入画布（自动更新 updated_at）。"""
-    await store.write_with_timestamp(_path(c["id"]), c)
-
-
-def _list():
-    items = []
-    if not os.path.isdir(config.CANVAS_DIR):
-        return items
-    for fn in os.listdir(config.CANVAS_DIR):
-        if fn.endswith(".json"):
-            path = _path(fn[:-5])
-            try:
-                with open(path, "r", encoding="utf-8") as f:
-                    c = json.load(f)
-                if not c.get("deleted_at"):
-                    items.append(c)
-            except Exception:
-                pass
-    items.sort(key=lambda c: c.get("updated_at", 0), reverse=True)
-    return items
+# ——— 路由 ———
 
 
 @router.get("/boards")
 def list_canvases():
-    return {"canvases": _list()}
+    return {"canvases": canvas_service.list_all()}
 
 
 @router.post("/boards")
 async def create_canvas(req: CanvasCreateRequest):
-    cid = uuid.uuid4().hex[:16]
-    now = _now()
-    canvas = {
-        "id": cid,
-        "title": req.title or "未命名画布",
-        "created_at": now,
-        "updated_at": now,
-        "nodes": [],
-        "connections": [],
-        "groups": [],
-        "viewport": {"x": 0, "y": 0, "scale": 1},
-    }
-    await _save(canvas)
-    return {"canvas": canvas}
+    title = (req.title or "未命名画布")[:80]
+    canvas, dir_name = canvas_service.create(title)
+    await canvas_service.save(canvas)
+    return {"canvas": canvas, "_dir": dir_name}
 
 
 @router.get("/boards/{canvas_id}")
 def get_canvas(canvas_id: str):
-    return {"canvas": _load(canvas_id)}
+    try:
+        return {"canvas": canvas_service.load(canvas_id)}
+    except AppError as e:
+        raise _to_http(e)
 
 
 @router.put("/boards/{canvas_id}")
 async def save_canvas(canvas_id: str, payload: dict):
-    # _load 会在画布不存在时抛出 404，所以不需要额外检查 existing
-    existing = _load(canvas_id)
+    try:
+        existing = canvas_service.load(canvas_id)
+    except AppError as e:
+        raise _to_http(e)
 
-    # ——— 乐观并发控制 ———
-    base_updated_at = payload.get("base_updated_at")
-    current_updated_at = existing.get("updated_at", 0)
-    if base_updated_at and current_updated_at and int(base_updated_at) < current_updated_at:
+    try:
+        canvas = canvas_service.merge_from_payload(existing, payload)
+    except ConflictError as e:
+        # 冲突时返回 409 + 最新数据，供前端自动刷新
         raise HTTPException(
             status_code=409,
             detail={
-                "message": "画布已被其他页面更新，已拒绝旧版本覆盖。请刷新页面获取最新数据。",
+                "message": e.message,
                 "canvas": existing,
-                "updated_at": current_updated_at,
+                "updated_at": existing.get("updated_at", 0),
             },
         )
 
-    canvas = {
-        "id": canvas_id,
-        "title": payload.get("title", existing.get("title", "未命名画布")),
-        "created_at": existing.get("created_at", _now()),
-        "updated_at": _now(),
-        "nodes": payload.get("nodes", existing.get("nodes", [])),
-        "connections": payload.get("connections", existing.get("connections", [])),
-        "groups": payload.get("groups", existing.get("groups", [])),
-        "viewport": payload.get("viewport", existing.get("viewport", {"x": 0, "y": 0, "scale": 1})),
-        # 保留扩展字段
-        "icon": payload.get("icon", existing.get("icon", "layers")),
-        "kind": payload.get("kind", existing.get("kind", "default")),
-        "logs": payload.get("logs", existing.get("logs", [])),
-        "settings": payload.get("settings", existing.get("settings", {})),
-    }
-    await _save(canvas)
-    # 广播更新，携带 client_id 避免回环
+    await canvas_service.save(canvas)
+
+    # 广播更新（携带 client_id 避免回环）
     client_id = payload.get("client_id", "")
     await manager.broadcast_board_synced(canvas_id, canvas["updated_at"], client_id)
     return {"canvas": canvas}
 
 
-# ——— 画布元数据（轻量更新，不触发 updated_at 排序变化） ———
-
-
 @router.post("/boards/{canvas_id}/meta")
-async def update_canvas_meta(canvas_id: str, payload: dict):
-    """更新画布元数据（标题/图标/颜色/置顶等），不刷新 updated_at，
-    避免打标签、置顶等操作改变画布列表排序。"""
-    existing = _load(canvas_id)
+async def update_canvas_meta(canvas_id: str, payload: CanvasMetaUpdate):
+    """更新画布元数据（标题/图标/颜色/置顶等），不刷新 updated_at。
 
-    if payload.get("title") is not None:
-        existing["title"] = (str(payload["title"]) or existing.get("title") or "未命名画布")[:80]
-    if payload.get("icon") is not None:
-        existing["icon"] = (str(payload["icon"]) or "layers")[:32]
-    if payload.get("color") is not None:
-        existing["color"] = str(payload["color"])[:20]
-    if payload.get("owner") is not None:
-        existing["owner"] = str(payload["owner"]).strip()[:40]
-    if payload.get("pinned") is not None:
-        existing["pinned"] = bool(payload["pinned"])
-    if payload.get("kind") is not None:
-        existing["kind"] = str(payload["kind"])[:20]
+    直接写入 canvas.json 而非通过 save()，避免触发文件同步和 updated_at 变更。
+    """
+    try:
+        existing = canvas_service.load(canvas_id)
+    except AppError as e:
+        raise _to_http(e)
 
-    # 原子写入，不更改 updated_at（元数据更新不影响排序）
-    await store.write(_path(canvas_id), existing)
-
+    canvas_service.update_meta(existing, payload)
+    await store.write(canvas_service._canvas_path(canvas_id), existing)
     return {"canvas": existing}
 
 
 @router.delete("/boards/{canvas_id}")
 async def delete_canvas(canvas_id: str):
-    c = _load(canvas_id)
-    c["deleted_at"] = _now()
-    await _save(c)
+    try:
+        c = canvas_service.load(canvas_id)
+    except AppError as e:
+        raise _to_http(e)
+
+    canvas_service.soft_delete(c)
+    await canvas_service.save(c)
     return {"ok": True}
+
+
+@router.delete("/boards/{canvas_id}/permanent")
+async def delete_canvas_permanent(canvas_id: str):
+    """永久删除画布（清空整个目录，不可恢复）。"""
+    try:
+        c = canvas_service.load(canvas_id)
+    except AppError as e:
+        raise _to_http(e)
+
+    canvas_service.hard_delete(c)
+    return {"ok": True, "permanent": True}
+
+
+@router.post("/boards/{canvas_id}/duplicate")
+async def duplicate_canvas(canvas_id: str):
+    """创建画布副本（含所有节点、连线、分组）。"""
+    try:
+        existing = canvas_service.load(canvas_id)
+    except AppError as e:
+        raise _to_http(e)
+
+    new_canvas, dir_name = canvas_service.duplicate(existing)
+    await canvas_service.save(new_canvas)
+    return {"canvas": new_canvas, "_dir": dir_name}

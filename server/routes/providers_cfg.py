@@ -2,16 +2,20 @@
 
 import os
 import asyncio
-import threading
 from fastapi import APIRouter, HTTPException
 from .. import config
 from ..providers.base import BaseProvider
 from ..providers.registry import get_provider_registry
+from ..providers.openai import OpenAIProvider
+from ..providers.gemini import GeminiProvider
+from ..providers.volcengine import VolcengineProvider
+from ..providers.apimart import APIMartProvider
+from ..providers.runninghub import RunningHubProvider
 
 router = APIRouter(prefix="/api", tags=["providers"])
 
-# 写锁（threading.Lock：跨路由同步调用也安全，不会因为不同事件循环而失效）
-_env_lock = threading.Lock()
+# 写锁（asyncio.Lock：不阻塞事件循环，与 async 路由配合更优）
+_env_lock = asyncio.Lock()
 
 
 def _env_path():
@@ -43,7 +47,7 @@ def _parse_env(lines: list) -> dict:
 
 async def _write_env(updates: dict):
     """增量更新 .env 文件：保留原有注释和格式，只修改/追加键值。"""
-    with _env_lock:
+    async with _env_lock:
         os.makedirs(os.path.dirname(_env_path()), exist_ok=True)
 
         lines = _read_env()
@@ -58,16 +62,22 @@ async def _write_env(updates: dict):
             stripped = line.strip()
             if stripped and not stripped.startswith("#") and "=" in stripped:
                 k = stripped.split("=", 1)[0].strip()
+                # 跳过已有空值行和本次要清空的行
                 if k in updated_keys:
-                    new_lines.append(f"{k}={current[k]}")
+                    if current[k]:
+                        new_lines.append(f"{k}={current[k]}")
                     seen_keys.add(k)
                     continue
                 seen_keys.add(k)
+                # 已有空值行 → 删除
+                v = stripped.split("=", 1)[1].strip().strip('"').strip("'")
+                if not v:
+                    continue
             new_lines.append(line)
 
-        # 追加新键
+        # 追加新键（跳过空值）
         for k, v in current.items():
-            if k not in seen_keys:
+            if k not in seen_keys and v:
                 new_lines.append(f"{k}={v}")
 
         with open(_env_path(), "w", encoding="utf-8") as f:
@@ -92,18 +102,65 @@ def get_api_keys():
     return {"keys": result}
 
 
+# 允许写入 .env 的键名前缀白名单（防止环境变量注入攻击）
+_ALLOWED_KEY_PREFIXES = (
+    "APP_API_KEY",
+    "API_PROVIDER_",      # API_PROVIDER_OPENAI_KEY 等
+    "PROVIDER_",          # PROVIDER_OPENAI_BASE_URL 等
+    "AI_REQUEST_TIMEOUT",
+    "IMAGE_POLL_INTERVAL",
+    "REQUEST_TIMEOUT",
+    "CORS_ORIGINS",
+    # UPDATE_REPO_URL 不在白名单 —— 仅允许通过 .env 文件直接修改，防止 API 接口被利用进行供应链攻击
+)
+
+# 允许写入的键名后缀白名单（针对 {PID}_IMAGE_MODELS 等自定义平台配置）
+_ALLOWED_KEY_SUFFIXES = (
+    "_API_KEY",
+    "_BASE_URL",
+    "_IMAGE_MODELS",
+    "_CHAT_MODELS",
+    "_VIDEO_MODELS",
+    "_WALLET_API_KEY",
+)
+
+
+def _is_allowed_env_key(key: str) -> bool:
+    """校验键名是否在白名单内（前缀匹配 + 后缀匹配）。"""
+    upper = key.upper().strip()
+    # 前缀匹配
+    for prefix in _ALLOWED_KEY_PREFIXES:
+        if upper.startswith(prefix):
+            return True
+    # 后缀匹配（自定义平台配置如 AIHUBMIX_IMAGE_MODELS）
+    for suffix in _ALLOWED_KEY_SUFFIXES:
+        if upper.endswith(suffix):
+            return True
+    return False
+
+
 @router.post("/settings/api-keys")
 async def save_api_keys(payload: dict):
     """保存 API Key 或 Base URL 等配置项。
 
-    接受任意键值对，不仅限于 KEY/SECRET/TOKEN。
+    仅允许白名单内的键名前缀，防止系统环境变量注入攻击。
     键名会自动转为大写。
     """
     updates = {}
+    rejected = []
     for k, v in payload.items():
         k = str(k).strip().upper()
-        if k:
-            updates[k] = str(v or "").strip()
+        if not k:
+            continue
+        if not _is_allowed_env_key(k):
+            rejected.append(k)
+            continue
+        updates[k] = str(v or "").strip()
+    if rejected:
+        raise HTTPException(
+            status_code=400,
+            detail=f"不允许写入的键名: {', '.join(rejected)}"
+        )
     await _write_env(updates)
     # 重新加载环境变量以使 provider 和运行期配置生效
     config.load_env(override=True)
@@ -147,12 +204,6 @@ def _get_or_create_provider(provider_id: str, protocol: str = "openai", api_key:
 
     # 内置平台找不到 → 尝试用 protocol 匹配
     # 例如 deepseek 的 protocol 是 openai，直接用 OpenAIProvider
-    from ..providers.openai import OpenAIProvider
-    from ..providers.gemini import GeminiProvider
-    from ..providers.volcengine import VolcengineProvider
-    from ..providers.apimart import APIMartProvider
-    from ..providers.runninghub import RunningHubProvider
-
     protocol_map = {
         "openai": OpenAIProvider,
         "apimart": APIMartProvider,
@@ -167,7 +218,27 @@ def _get_or_create_provider(provider_id: str, protocol: str = "openai", api_key:
         prov._injected_key = api_key
     if base_url:
         prov._injected_url = base_url
+    # 注入自定义平台的模型列表（读取 {PID}_IMAGE_MODELS 等 env 变量）
+    _inject_custom_models(prov, provider_id)
     return prov
+
+
+def _inject_custom_models(prov, provider_id: str):
+    """将自定义平台的环境变量模型列表注入到 Provider 实例。"""
+    import os as _os3
+    pid_upper = provider_id.upper()
+    def _read(suffix):
+        raw = _os3.getenv(f"{pid_upper}_{suffix}", "")
+        return [s.strip() for s in raw.split(",") if s.strip()]
+    img = _read("IMAGE_MODELS")
+    chat = _read("CHAT_MODELS")
+    vid = _read("VIDEO_MODELS")
+    if img:
+        prov.list_image_models = lambda m=img: m
+    if chat:
+        prov.list_chat_models = lambda m=chat: m
+    if vid:
+        prov.list_video_models = lambda m=vid: m
 
 
 def resolve_provider(provider_id: str) -> BaseProvider | None:
@@ -177,13 +248,18 @@ def resolve_provider(provider_id: str) -> BaseProvider | None:
     而是从环境变量（.env 文件）中自动读取配置。
 
     查找顺序:
-    1. 内置平台 → 从 ProviderRegistry 获取
+    1. 内置平台 → 从 ProviderRegistry 获取（检查禁用状态）
     2. 自定义平台 → 根据 .env 中的 Key + Base URL 动态创建 OpenAIProvider
     """
-    # 1. 先查注册表
-    prov = get_provider_registry().get(provider_id)
+    reg = get_provider_registry()
+
+    # 1. 先查注册表——需要同时验证 Key 存在
+    prov = reg.get(provider_id)
     if prov:
-        return prov
+        api_key = config.get_provider_api_key(provider_id)
+        if api_key:
+            return prov
+        return None  # 注册平台存在但未配置 Key
 
     # 2. 尝试从环境变量解析自定义平台
     api_key = config.get_provider_api_key(provider_id)
@@ -193,15 +269,13 @@ def resolve_provider(provider_id: str) -> BaseProvider | None:
     base_url = config.get_provider_base_url(provider_id)
 
     # 3. 默认按 OpenAI 协议创建（绝大多数自定义平台兼容 OpenAI 格式）
-    from ..providers.openai import OpenAIProvider
     prov = OpenAIProvider()
     prov._injected_key = api_key
     if base_url:
         prov._injected_url = base_url
 
-    # 重写 provider_id 使其返回自定义 ID（供日志/错误信息使用）
-    # 注意：不能直接修改 property，所以通过 _injected_key 机制传递信息
-    # provider_name 保持 "OpenAI 兼容" 即可，前端已知道平台名
+    # 注入自定义平台的模型列表（读取 {PID}_IMAGE_MODELS 等 env 变量）
+    _inject_custom_models(prov, provider_id)
 
     return prov
 
@@ -219,18 +293,24 @@ async def test_provider_connection(provider_id: str, payload: dict = {}):
     temp_key = str(payload.get("api_key") or "").strip()
     temp_url = str(payload.get("base_url") or "").strip()
     protocol = str(payload.get("protocol") or "openai").strip()
+
+    # SSRF 防护：拒绝内网地址
+    if temp_url:
+        from ..security.network import validate_safe_url
+        if not validate_safe_url(temp_url):
+            raise HTTPException(status_code=400, detail="禁止连接内网地址或云 metadata 服务")
     prov = _get_or_create_provider(provider_id, protocol, temp_key, temp_url)
 
-    # URL 协议检测
+    # URL 协议检测：URL 域名匹配 协议名 或 平台ID 就不报错
+    # 因为 _URL_PROTOCOL_MAP 混用了协议名(modelscope)和平台名(openai)，都算合法
     url_protocol = _detect_protocol_from_url(temp_url)
-    # 用 provider_id 做匹配（url_protocol 跟 provider_id 比，不跟 protocol 比）
-    # 因为多个 provider 可能共用同一种 protocol（如 deepseek 和 openai 都是 openai 协议）
-    if url_protocol and url_protocol != provider_id:
+    actual_protocol = prov.protocol
+    if url_protocol and url_protocol != actual_protocol and url_protocol != provider_id:
         return {
             "ok": False,
             "latency_ms": 0,
             "status_code": 0,
-            "error": f"URL 是 {url_protocol} 平台的地址，但当前选中了 {provider_id} 平台。请在左侧选择正确的平台或修改 URL。",
+            "error": f"URL 疑似 {url_protocol} 平台的地址，但当前选中了 {provider_id} 平台。请确认平台匹配。",
             "protocol": url_protocol,
             "mismatch": True,
         }
@@ -249,6 +329,12 @@ async def fetch_provider_models(provider_id: str, payload: dict = {}):
     temp_key = str(payload.get("api_key") or "").strip()
     temp_url = str(payload.get("base_url") or "").strip()
     protocol = str(payload.get("protocol") or "openai").strip()
+
+    # SSRF 防护：拒绝内网地址
+    if temp_url:
+        from ..security.network import validate_safe_url
+        if not validate_safe_url(temp_url):
+            raise HTTPException(status_code=400, detail="禁止连接内网地址或云 metadata 服务")
     prov = _get_or_create_provider(provider_id, protocol, temp_key, temp_url)
     models = await prov.fetch_models()
 
@@ -266,6 +352,9 @@ async def fetch_provider_models(provider_id: str, payload: dict = {}):
         "video_models": video_models,
         "models": [{"id": m.id, "name": m.name, "type": m.type} for m in models],
     }
+
+
+# ——— 平台启用 / 禁用 ———
 
 
 def _is_sensitive_key(key: str) -> bool:

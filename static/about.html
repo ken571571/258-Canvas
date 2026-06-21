@@ -21,7 +21,7 @@ body { overflow-y: auto; background: var(--bg); }
 .about-footer span { color: var(--accent); }
 </style>
 <script src="/static/js/ui-icon.js?v=1"></script>
-<script src="/static/js/i18n.js?v=1"></script>
+<script src="/static/js/i18n.js?v=2"></script>
 </head>
 <body>
 <div class="about-page">
@@ -57,7 +57,7 @@ body { overflow-y: auto; background: var(--bg); }
             <div class="about-avatar">K</div>
             <div class="about-author-info">
                 <strong>ken571571</strong>
-                <p style="color:var(--muted);margin-top:2px" data-t="about.authorDesc">全栈开发者 · AI 创作工具探索者</p>
+                <p style="color:var(--muted);margin-top:2px" data-t="about.authorDesc">自由职业者</p>
             </div>
         </div>
         <p class="about-intro" style="margin-top:14px">
@@ -107,6 +107,7 @@ function refreshI18n() {
 
 // 主题跟随父窗口
 window.addEventListener('message', function(e) {
+    if (e.origin !== location.origin) return;
     if (e.data && e.data.type === 'theme') {
         document.documentElement.classList.toggle('dark', e.data.theme === 'dark');
     }
@@ -117,20 +118,16 @@ window.addEventListener('message', function(e) {
     }
 });
 
-// 初始主题同步
-if (window.parent !== window) {
-    try {
-        var theme = window.parent.localStorage.getItem('theme');
-        if (theme === 'dark') document.documentElement.classList.add('dark');
-    } catch(e) {}
-}
+// 初始主题同步（与其他 iframe 页面一致）
+(function(){ if(localStorage.theme==='dark') document.documentElement.classList.add('dark'); })();
 
 // 页面加载完做首次翻译（等待 i18n 资源加载完成）
-(function retryI18n() {
+(function retryI18n(retries) {
+    retries = retries || 0;
     if (typeof _i18nLoaded === 'function' && _i18nLoaded()) {
         refreshI18n();
-    } else {
-        setTimeout(retryI18n, 50);
+    } else if (retries < 40) {
+        setTimeout(function() { retryI18n(retries + 1); }, 50);
     }
 })();
 

@@ -10,8 +10,8 @@ WORKFLOW_DIR = os.path.join(BASE_DIR, "workflows")
 SKILLS_DIR = os.path.join(BASE_DIR, "skills")
 ASSETS_DIR = os.path.join(BASE_DIR, "assets")
 API_ENV_FILE = os.path.join(BASE_DIR, "API", ".env")
-API_PROVIDERS_FILE = os.path.join(DATA_DIR, "api_providers.json")
-CANVAS_DIR = os.path.join(DATA_DIR, "canvases")
+CANVAS_DIR = os.path.join(DATA_DIR, "canvases")  # 旧格式（兼容）
+CANVASES_ROOT = os.path.join(BASE_DIR, "canvases")  # 新格式：每个画布一个独立目录
 AGENTS_DIR = os.path.join(DATA_DIR, "agents")
 KB_DIR = os.path.join(DATA_DIR, "knowledge_bases")
 HISTORY_DIR = os.path.join(DATA_DIR, "chat_history")
@@ -22,13 +22,12 @@ OUTPUT_DIR = os.path.join(BASE_DIR, "output")     # AI 生成结果输出
 OUTPUT_IMAGES_DIR = os.path.join(OUTPUT_DIR, "images")
 OUTPUT_VIDEOS_DIR = os.path.join(OUTPUT_DIR, "videos")
 AGENTS_ROOT = os.path.join(BASE_DIR, "agents")    # 智能体根目录（可拷贝）
-AGENTS_INDEX = os.path.join(AGENTS_ROOT, "_index.json")
 
 
 def ensure_directories():
     """确保必要目录存在。"""
     dirs = [STATIC_DIR, DATA_DIR, WORKFLOW_DIR, SKILLS_DIR, ASSETS_DIR,
-            CANVAS_DIR, KB_DIR, HISTORY_DIR,
+            CANVAS_DIR, CANVASES_ROOT, KB_DIR, HISTORY_DIR,
             INPUT_DIR, OUTPUT_DIR, OUTPUT_IMAGES_DIR, OUTPUT_VIDEOS_DIR,
             AGENTS_ROOT, os.path.dirname(API_ENV_FILE)]
     for d in dirs:

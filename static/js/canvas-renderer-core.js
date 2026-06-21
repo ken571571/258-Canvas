@@ -5,6 +5,19 @@ CanvasEngine.prototype._renderAll = function() {
     this._renderLinks();
     this._renderMarquee();
     this._renderMinimap();
+    // 全量渲染完成后清除脏标记，使后续增量渲染可以生效
+    if (this.store) this.store.clearDirty();
+};
+
+// 延迟渲染：在下一帧执行，避免 select onchange 等事件处理器中同步销毁 DOM
+CanvasEngine.prototype._renderAllDeferred = function() {
+    if (this._rafRenderPending) return;
+    this._rafRenderPending = true;
+    var self = this;
+    requestAnimationFrame(function() {
+        self._rafRenderPending = false;
+        self._renderAll();
+    });
 };
 
 
@@ -32,12 +45,13 @@ CanvasEngine.prototype._renderMinimap = function() {
     const sx = mapW / w, sy = mapH / h, s = Math.min(sx, sy);
     const ox = (mapW - w * s) / 2, oy = (mapH - h * s) / 2;
 
-    // 背景
-    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--surface-2').trim() || '#eee';
+    // 每次读取 CSS 变量确保主题切换后正确（getComputedStyle 在现代浏览器中很快）
+    const minimapBg = getComputedStyle(document.documentElement).getPropertyValue('--surface-2').trim() || '#eee';
+    ctx.fillStyle = minimapBg;
     ctx.fillRect(0, 0, mapW, mapH);
 
     // 节点色块
-    const colors = {image:'#3b82f6', prompt:'#8b5cf6', image_gen:'#f59e0b', video_gen:'#ef4444', generator:'#f59e0b', agent:'#10b981', loop:'#ec4899', output:'#6b7280'};
+    const colors = {image:'#3b82f6', prompt:'#8b5cf6', image_gen:'#f59e0b', video_gen:'#ef4444', agent:'#10b981', loop:'#ec4899', output:'#6b7280'};
     this.nodes.forEach(n => {
         ctx.fillStyle = colors[n.type] || '#999';
         ctx.fillRect(ox + (n.x - minX + pad) * s, oy + (n.y - minY + pad) * s, (n.w||260) * s, (n.h||120) * s);
@@ -80,7 +94,7 @@ CanvasEngine.prototype._renderMarquee = function() {
 
 
 CanvasEngine.prototype._getPortPoint = function(node, portType, fieldId = '') {
-    const el = document.querySelector(`[data-id="${node.id}"]`);
+    const el = this.nodesEl.querySelector(`[data-id="${node.id}"]`);
     let portEl = null;
     if (fieldId) {
         // ComfyUI 多端口：找特定 fieldId 的端口

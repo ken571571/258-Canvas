@@ -4,20 +4,18 @@
 """
 
 import os
-import json
 import uuid
 import time
-import asyncio
 import mimetypes
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from .. import config
+from ..storage.json_store import store
 
 router = APIRouter(prefix="/api", tags=["shared_folders"])
 
 SHARED_FILE = os.path.join(config.DATA_DIR, "shared_folders.json")
 SHARED_MEDIA_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".mp4", ".webm", ".mov"}
-_write_lock = asyncio.Lock()
 
 
 def _now():
@@ -25,18 +23,64 @@ def _now():
 
 
 def _load() -> dict:
-    if not os.path.exists(SHARED_FILE):
-        return {"folders": []}
-    with open(SHARED_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+    return store.read(SHARED_FILE, default={"folders": []})
 
 
 async def _save(data: dict):
-    async with _write_lock:
-        tmp = SHARED_FILE + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        os.replace(tmp, SHARED_FILE)
+    await store.write(SHARED_FILE, data)
+
+
+# ——— 系统目录黑名单（防止通过共享文件夹浏览敏感系统路径） ———
+
+_FORBIDDEN_ROOTS = [
+    # Windows 系统目录（使用正斜杠，normpath 会统一转换）
+    "C:/Windows",
+    "C:/Windows/System32",
+    "C:/Windows/SysWOW64",
+    "C:/Program Files",
+    "C:/Program Files (x86)",
+    "C:/ProgramData",
+    "C:/Users/All Users",
+    "C:/$Recycle.Bin",
+    # Unix 系统目录
+    "/etc",
+    "/proc",
+    "/sys",
+    "/boot",
+    "/root",
+    "/var/log",
+    "/var/run",
+]
+
+_FORBIDDEN_PREFIXES = [
+    # Windows
+    "C:/Windows/",
+    "C:/Program Files/",
+    "C:/Program Files (x86)/",
+    "C:/ProgramData/",
+    # Unix
+    "/etc/",
+    "/proc/",
+    "/sys/",
+    "/boot/",
+    "/root/",
+]
+
+
+def _is_safe_folder_path(abs_path: str) -> bool:
+    """检查路径是否安全可注册（不在系统敏感目录内）。"""
+    norm = os.path.normpath(os.path.abspath(abs_path)).replace("/", os.sep)
+    norm_lower = norm.lower()
+    # 精确匹配（大小写不敏感，Windows 下 C:\Windows == c:\windows）
+    for forbidden in _FORBIDDEN_ROOTS:
+        if os.path.normpath(forbidden).replace("/", os.sep).lower() == norm_lower:
+            return False
+    # 前缀匹配（后面必须跟分隔符，防止 C:\Windows 误杀 C:\Windows10）
+    norm_with_sep = norm_lower + os.sep
+    for prefix in _FORBIDDEN_PREFIXES:
+        if norm_with_sep.startswith(os.path.normpath(prefix).lower() + os.sep):
+            return False
+    return True
 
 
 # ——— 文件夹管理 ———
@@ -65,9 +109,14 @@ async def register_folder(payload: dict):
 
     payload: {path: "D:/my_images", name: "我的图片库"}
     """
-    abs_path = os.path.abspath(str(payload.get("path", "")).strip())
+    raw_path = payload.get("path")
+    if raw_path is None or not isinstance(raw_path, str):
+        raise HTTPException(status_code=400, detail="缺少文件夹路径")
+    abs_path = os.path.abspath(raw_path.strip())
     if not abs_path or not os.path.isdir(abs_path):
         raise HTTPException(status_code=400, detail="文件夹路径不存在或不可访问")
+    if not _is_safe_folder_path(abs_path):
+        raise HTTPException(status_code=400, detail="不允许注册系统目录，请选择用户数据目录")
     name = str(payload.get("name") or os.path.basename(abs_path))[:100]
 
     data = _load()

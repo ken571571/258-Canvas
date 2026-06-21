@@ -7,7 +7,7 @@ from .env import (
     get_app_api_key, get_cors_origins, get_ai_request_timeout,
     get_image_poll_interval, get_max_history_messages, get_comfyui_instances,
     get_public_base_url, get_rate_limit_enabled, get_rate_limit_requests,
-    get_rate_limit_window,
+    get_rate_limit_window, get_canvas_env, is_development,
 )
 from .constants import LOCAL_IMAGE_IMPORT_EXTS
 from .env import get_local_image_import_max_bytes, get_skill_authorized_dirs
@@ -26,6 +26,8 @@ class RuntimeConfig:
     rate_limit_enabled: bool = False
     rate_limit_requests: int = 30
     rate_limit_window: int = 60
+    canvas_env: str = "production"
+    is_dev: bool = False
 
 
 def _build_runtime_config() -> RuntimeConfig:
@@ -40,6 +42,8 @@ def _build_runtime_config() -> RuntimeConfig:
         rate_limit_enabled=get_rate_limit_enabled(),
         rate_limit_requests=get_rate_limit_requests(),
         rate_limit_window=get_rate_limit_window(),
+        canvas_env=get_canvas_env(),
+        is_dev=is_development(),
     )
 
 

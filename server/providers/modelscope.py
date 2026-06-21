@@ -6,11 +6,15 @@ ModelScope 遵循 OpenAI 兼容协议，额外支持：
 - 图片编辑（Image Edit）
 """
 
+import asyncio
 import os
 import json
+import re
 import time
+import base64
 from typing import List, Dict, Any
 import httpx
+from ..security.network import validate_safe_url
 
 from .base import BaseProvider, ImageResult, VideoResult, ChatResult
 from .. import config
@@ -43,11 +47,15 @@ class ModelScopeProvider(BaseProvider):
 
     @property
     def _api_key(self) -> str:
+        temp = self._temp_key("MODELSCOPE_API_KEY")
+        if temp: return temp
         val = os.getenv("MODELSCOPE_API_KEY", "")
         return val.strip().strip('"').strip("'")
 
     @property
     def _base_url(self) -> str:
+        temp = self._temp_url(self._DEFAULT_BASE)
+        if temp != self._DEFAULT_BASE: return temp.rstrip("/")
         val = os.getenv("MODELSCOPE_BASE_URL", "")
         return val.rstrip("/") if val else self._DEFAULT_BASE
 
@@ -62,7 +70,8 @@ class ModelScopeProvider(BaseProvider):
     def build_url(self, endpoint: str) -> str:
         endpoint = endpoint.lstrip("/")
         base = self._base_url
-        if not base.endswith("/v1"):
+        # 仅在 URL 不含 /v{N} 版本段时追加 /v1
+        if not re.search(r'/v\d+$', base):
             base += "/v1"
         return f"{base}/{endpoint}"
 
@@ -98,7 +107,7 @@ class ModelScopeProvider(BaseProvider):
         }
 
         url = self.build_url("chat/completions")
-        async with httpx.AsyncClient(timeout=config.AI_REQUEST_TIMEOUT) as cli:
+        async with httpx.AsyncClient(timeout=config.AI_REQUEST_TIMEOUT, follow_redirects=False) as cli:
             resp = await cli.post(url, headers=self.build_headers(), json=body)
             if resp.status_code != 200:
                 raise RuntimeError(f"ModelScope 对话失败 ({resp.status_code}): {resp.text[:500]}")
@@ -130,7 +139,10 @@ class ModelScopeProvider(BaseProvider):
             "size": size,
         }
         if refs:
-            body["image_url"] = [self._load_image_b64(r) for r in refs[:3]]
+            image_urls = []
+            for r in refs[:3]:
+                image_urls.append(await self._load_image_b64(r))
+            body["image_url"] = image_urls
         if loras:
             body["loras"] = loras
 
@@ -138,7 +150,7 @@ class ModelScopeProvider(BaseProvider):
         headers = {**self.build_headers(), "X-ModelScope-Async-Mode": "true"}
         url = self.build_url("images/generations")
 
-        async with httpx.AsyncClient(timeout=config.AI_REQUEST_TIMEOUT) as cli:
+        async with httpx.AsyncClient(timeout=config.AI_REQUEST_TIMEOUT, follow_redirects=False) as cli:
             resp = await cli.post(url, headers=headers, json=body)
             if resp.status_code != 200:
                 raise RuntimeError(f"ModelScope 生图失败 ({resp.status_code}): {resp.text[:500]}")
@@ -155,9 +167,9 @@ class ModelScopeProvider(BaseProvider):
     async def _poll_image_task(self, task_id: str, headers: dict, max_wait: int = 300) -> ImageResult:
         """轮询 ModelScope 异步图片任务。"""
         url = self.build_url(f"tasks/{task_id}")
-        async with httpx.AsyncClient(timeout=30) as cli:
+        async with httpx.AsyncClient(timeout=30, follow_redirects=False) as cli:
             for i in range(max_wait):
-                await __import__("asyncio").sleep(2)
+                await asyncio.sleep(2)
                 resp = await cli.get(
                     url,
                     headers={**headers, "X-ModelScope-Task-Type": "image_generation"},
@@ -171,8 +183,11 @@ class ModelScopeProvider(BaseProvider):
                     img_url = (data.get("output_images") or [""])[0]
                     if img_url:
                         if img_url.startswith("http"):
+                            # SSRF 防护：验证下载地址安全
+                            if not validate_safe_url(img_url):
+                                raise RuntimeError(f"ModelScope 返回了不安全的图片地址（内网/云metadata），已拦截")
                             # 下载远程图片到本地
-                            dl_resp = await cli.get(img_url)
+                            dl_resp = await cli.get(img_url, follow_redirects=False)
                             if dl_resp.status_code == 200:
                                 path = self._save_image(dl_resp.content, f"ms_{task_id[:8]}_")
                                 return ImageResult(url=path, raw=data)
@@ -210,7 +225,7 @@ class ModelScopeProvider(BaseProvider):
         started = _time.time()
         try:
             url = self.build_url("models")
-            async with httpx.AsyncClient(timeout=15) as cli:
+            async with httpx.AsyncClient(timeout=15, follow_redirects=False) as cli:
                 resp = await cli.get(url, headers=self.build_headers())
             elapsed = int((_time.time() - started) * 1000)
             if 200 <= resp.status_code < 300:

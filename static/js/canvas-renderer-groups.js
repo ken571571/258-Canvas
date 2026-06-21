@@ -2,8 +2,15 @@ CanvasEngine.prototype._renderGroups = function() {
     if (!this.groupsEl) return;
     this.groupsEl.innerHTML = '';
 
+    // 预建 nodeId→node 索引，O(N) 替代 O(N²) 的 filter+includes
+    var nodeMap = {};
+    this.nodes.forEach(function(node) { nodeMap[node.id] = node; });
+
     this.groups.forEach(group => {
-        const children = this.nodes.filter(node => group.childIds.includes(node.id));
+        var children = [];
+        group.childIds.forEach(cid => {
+            if (nodeMap[cid]) children.push(nodeMap[cid]);
+        });
         if (children.length === 0) return;
 
         const padding = group.padding || 18;
@@ -72,6 +79,7 @@ CanvasEngine.prototype._renderGroups = function() {
                     .filter(item => group.childIds.includes(item.id))
                     .map(item => ({ node: item, startX: item.x, startY: item.y })),
             };
+            this._ensureDragListeners();
             this._renderAll();
         });
 
@@ -94,7 +102,15 @@ CanvasEngine.prototype._renderGroups = function() {
                     else if (corner === 'ne') delta = Math.max(dx, -dy);
                     else if (corner === 'sw') delta = Math.max(-dx, dy);
                     group.padding = Math.max(4, startPadding + delta);
-                    this._renderGroups();
+                    // 直接更新当前分组的 CSS，避免每像素重建全部 DOM
+                    var newX = minX - group.padding;
+                    var newY = minY - group.padding;
+                    var newW = maxX - minX + group.padding * 2;
+                    var newH = maxY - minY + group.padding * 2;
+                    div.style.left = newX + 'px';
+                    div.style.top = newY + 'px';
+                    div.style.width = newW + 'px';
+                    div.style.height = newH + 'px';
                 };
 
                 const onUp = () => {

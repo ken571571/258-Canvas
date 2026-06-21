@@ -23,16 +23,6 @@ class ChatRequest(BaseModel):
     conversation_id: str = ""
 
 
-# —— 多模态对话 ——
-class CanvasLLMRequest(BaseModel):
-    message: str = Field(min_length=1, max_length=20000)
-    provider_id: str = "openai"
-    model: str = ""
-    system_prompt: str = ""
-    images: List[str] = Field(default_factory=list)
-    videos: List[str] = Field(default_factory=list)
-
-
 # —— 视频生成 ——
 class VideoGenerateRequest(BaseModel):
     prompt: str = Field(min_length=1, max_length=4000)
@@ -61,43 +51,58 @@ class CanvasMetaUpdate(BaseModel):
     kind: Optional[str] = None
 
 
-# —— 工作流 ——
-class WorkflowField(BaseModel):
-    id: str
-    node: str = ""
-    input: str = ""
-    name: str = ""
-    type: str = "text"
-    default: Any = None
-    options: List[str] = Field(default_factory=list)
-
-
-class WorkflowConfig(BaseModel):
-    title: str = ""
-    fields: List[WorkflowField] = Field(default_factory=list)
-
-
 # —— Agent ——
-class AgentSkill(BaseModel):
-    id: str = ""
-    name: str = ""
-    description: str = ""
-    enabled: bool = True
-    parameters: Dict[str, Any] = Field(default_factory=dict)
-
-
-class AgentConfig(BaseModel):
-    id: str = ""
+class AgentCreateRequest(BaseModel):
     name: str = "新智能体"
-    system_prompt: str = ""
-    skills: List[AgentSkill] = Field(default_factory=list)
-    knowledge_bases: List[str] = Field(default_factory=list)
-    model: str = "gpt-4o-mini"
-    provider_id: str = "openai"
-    max_steps: int = 10
 
 
-class AgentExecutionRequest(BaseModel):
-    agent_id: str = ""
+class AgentUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    system_prompt: Optional[str] = None
+    model: Optional[str] = None
+    provider_id: Optional[str] = None
+    skills: Optional[List[str]] = None
+    knowledge_bases: Optional[List[str]] = None
+    max_steps: Optional[int] = None
+
+
+class AgentRunRequest(BaseModel):
     user_input: str = ""
     input_images: List[str] = Field(default_factory=list)
+    prompt_vars: Optional[dict] = None
+
+
+# —— 提示词库 ——
+class PromptLibraryCreate(BaseModel):
+    name: str = Field(default="新建提示词库", max_length=80)
+    type: str = "prompt"
+
+
+class PromptItemCreate(BaseModel):
+    name: str = Field(default="", max_length=100)
+    positive: str = Field(default="", max_length=20000)
+    negative: str = ""
+    scene: str = ""
+    tags: List[str] = Field(default_factory=list)
+
+
+class PromptItemUpdate(BaseModel):
+    name: Optional[str] = None
+    positive: Optional[str] = None
+    negative: Optional[str] = None
+    scene: Optional[str] = None
+    tags: Optional[List[str]] = None
+
+
+# —— 资产库 ——
+class AssetItemCreate(BaseModel):
+    name: str = Field(default="", max_length=100)
+    url: str = ""
+    type: str = "image"
+    category_id: str = ""
+
+
+class AssetCategoryCreate(BaseModel):
+    name: str = Field(default="新分类", max_length=50)
+
+

@@ -25,13 +25,24 @@ class AssetsTests(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 400)
 
-    def test_upload_rejects_oversized_file(self):
-        """上传超过 50MB 限制的文件应被拒绝。"""
+    def test_upload_small_file_ok(self):
+        """上传合法的小文件应成功。"""
         resp = client.post(
             "/api/upload",
-            files={"file": ("test.png", io.BytesIO(b"\x89PNG\r\n\x1a\n" + b"\x00" * 100), "image/png")},
+            files={"file": ("small.png", io.BytesIO(b"\x89PNG\r\n\x1a\n" + b"\x00" * 100), "image/png")},
         )
-        self.assertIn(resp.status_code, (200, 400, 422))
+        # 小文件应被接受（200），如果返回 400/422 说明配置异常
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertIn("url", data)
+
+    def test_upload_rejects_exe_extension(self):
+        """上传 .exe 文件应被拒绝（已在 test_upload_rejects_invalid_extension 覆盖但这里补充双重验证）。"""
+        resp = client.post(
+            "/api/upload",
+            files={"file": ("virus.exe", io.BytesIO(b"MZ" + b"\x00" * 200), "application/octet-stream")},
+        )
+        self.assertEqual(resp.status_code, 400)
 
     def test_upload_accepts_valid_image(self):
         """上传有效的 PNG 图片应成功。"""
@@ -48,7 +59,7 @@ class AssetsTests(unittest.TestCase):
             "/api/upload",
             files={"file": ("test_valid.png", io.BytesIO(valid_png), "image/png")},
         )
-        self.assertIn(resp.status_code, (200, 201, 400))
+        self.assertEqual(resp.status_code, 200)
 
     # ——— 路径穿越安全测试 ———
 
@@ -66,7 +77,7 @@ class AssetsTests(unittest.TestCase):
     def test_delete_asset_rejects_encoded_traversal(self):
         """删除素材接口应拒绝 URL 编码的路径穿越。"""
         resp = client.delete("/api/assets/delete?url=/input/%2e%2e%2fAPI/.env")
-        self.assertIn(resp.status_code, (400, 404))
+        self.assertEqual(resp.status_code, 400)
 
 
 if __name__ == "__main__":

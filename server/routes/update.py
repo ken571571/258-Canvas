@@ -51,9 +51,11 @@ async def check_update():
     """检测更新源是否有新版本。"""
     if not GITHUB_REPO:
         return {"current": config.APP_VERSION, "update_available": False, "error": "未配置更新源（UPDATE_REPO_URL）"}
+    if not GITHUB_REPO.startswith("https://"):
+        return {"current": config.APP_VERSION, "update_available": False, "error": "更新源必须以 https:// 开头"}
     version_url = f"{GITHUB_REPO}/VERSION"
     try:
-        async with httpx.AsyncClient(timeout=10) as cli:
+        async with httpx.AsyncClient(timeout=10, follow_redirects=False) as cli:
             resp = await cli.get(
                 version_url,
                 headers={"User-Agent": "Canvas571-Updater"},
@@ -79,10 +81,24 @@ async def check_update():
 
 
 @router.post("/update")
-async def do_update():
-    """从更新源下载最新文件并执行更新。"""
+async def do_update(payload: dict = {}):
+    """从更新源下载最新文件并执行更新。
+
+    安全要求:
+    - UPDATE_REPO_URL 必须以 https:// 开头
+    - 需要 confirm=true 确认操作
+    """
     if not GITHUB_REPO:
         raise HTTPException(status_code=400, detail="未配置更新源（UPDATE_REPO_URL）")
+
+    # 安全：强制 HTTPS
+    if not GITHUB_REPO.startswith("https://"):
+        raise HTTPException(status_code=400, detail="UPDATE_REPO_URL 必须以 https:// 开头")
+
+    # 安全：要求显式确认
+    if not payload.get("confirm"):
+        raise HTTPException(status_code=400, detail="更新操作需要 confirm=true 确认")
+
     # 1. 确认有更新
     check = await check_update()
     if not check.get("update_available"):
@@ -96,11 +112,17 @@ async def do_update():
     updatable_files = []  # (remote_url, local_rel_path)
 
     try:
-        # 备份 main.py
-        main_path = os.path.join(config.BASE_DIR, "main.py")
-        if os.path.exists(main_path):
-            shutil.copy2(main_path, os.path.join(backup_root, "main.py"))
-            updatable_files.append((f"{GITHUB_REPO}/main.py", "main.py"))
+        # 备份启动入口 run.py
+        run_path = os.path.join(config.BASE_DIR, "run.py")
+        if os.path.exists(run_path):
+            shutil.copy2(run_path, os.path.join(backup_root, "run.py"))
+            updatable_files.append((f"{GITHUB_REPO}/run.py", "run.py"))
+
+        # 备份服务主模块 server/main.py
+        server_main_path = os.path.join(config.BASE_DIR, "server", "main.py")
+        if os.path.exists(server_main_path):
+            shutil.copy2(server_main_path, os.path.join(backup_root, "server_main.py"))
+            updatable_files.append((f"{GITHUB_REPO}/server/main.py", "server/main.py"))
 
         # 备份 VERSION
         ver_path = os.path.join(config.BASE_DIR, "VERSION")
@@ -131,7 +153,7 @@ async def do_update():
     # 3. 下载并替换文件
     updated = []
     failed = []
-    async with httpx.AsyncClient(timeout=60) as cli:
+    async with httpx.AsyncClient(timeout=60, follow_redirects=False) as cli:
         for remote_path, local_rel in updatable_files:
             url = f"{remote_path}?t={int(time.time())}"
             try:
@@ -207,18 +229,35 @@ def list_backups():
 @router.post("/update/rollback")
 def rollback(backup_id: str = ""):
     """回滚到指定备份。"""
+    import re as _re
+    from ..security.paths import safe_join as _safe_join
+
     backup_id = str(backup_id).strip()
     if not backup_id:
         raise HTTPException(status_code=400, detail="请指定备份 ID")
 
-    backup_path = os.path.join(BACKUP_DIR, backup_id)
+    # 安全校验：备份 ID 必须为 YYYYMMDD-HHMMSS 格式，防止路径穿越
+    if not _re.match(r"^\d{8}-\d{6}$", backup_id):
+        raise HTTPException(status_code=400, detail="备份 ID 格式无效")
+
+    try:
+        backup_path = _safe_join(BACKUP_DIR, backup_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="备份 ID 不合法")
     if not os.path.isdir(backup_path):
         raise HTTPException(status_code=404, detail="备份不存在")
 
-    # 回滚 main.py
-    src_main = os.path.join(backup_path, "main.py")
+    # 回滚 run.py
+    src_run = os.path.join(backup_path, "run.py")
+    if os.path.exists(src_run):
+        shutil.copy2(src_run, os.path.join(config.BASE_DIR, "run.py"))
+
+    # 回滚 server/main.py（备份时存储为 server_main.py）
+    src_main = os.path.join(backup_path, "server_main.py")
     if os.path.exists(src_main):
-        shutil.copy2(src_main, os.path.join(config.BASE_DIR, "main.py"))
+        dst_dir = os.path.join(config.BASE_DIR, "server")
+        os.makedirs(dst_dir, exist_ok=True)
+        shutil.copy2(src_main, os.path.join(dst_dir, "main.py"))
 
     # 回滚 VERSION
     src_ver = os.path.join(backup_path, "VERSION")

@@ -270,7 +270,7 @@ html.dark .platform-card:hover { box-shadow:0 6px 20px rgba(0,0,0,.3); }
 .picker-tab .cat-count { font-size:10px; padding:1px 5px; border-radius:4px; background:var(--surface-2); color:var(--muted); font-weight:800; }
 .picker-tab.active .cat-count { background:var(--bg); color:var(--text); }
 .picker-body { flex:1; overflow-y:auto; padding:8px 14px 14px; }
-.picker-body:empty::after { content:'加载中…'; display:block; padding:40px; text-align:center; color:var(--muted); font-size:13px; }
+.picker-body:empty::after { display:block; padding:40px; text-align:center; color:var(--muted); font-size:13px; }
 .picker-row { display:flex; align-items:center; gap:12px; padding:10px 12px; border-bottom:1px solid var(--border); cursor:pointer; transition:background .12s; }
 .picker-row:hover { background:var(--surface-2); }
 .picker-check { width:20px; height:20px; border:2px solid var(--border-strong); border-radius:5px; flex-shrink:0; display:flex; align-items:center; justify-content:center; color:transparent; transition:all .15s; }
@@ -308,7 +308,7 @@ html.dark .platform-card:hover { box-shadow:0 6px 20px rgba(0,0,0,.3); }
     .content-head { flex-direction:column; align-items:flex-start; }
 }
 </style>
-<script src="/static/js/i18n.js?v=1"></script>
+<script src="/static/js/i18n.js?v=2"></script>
 </head>
 <body>
 
@@ -316,19 +316,19 @@ html.dark .platform-card:hover { box-shadow:0 6px 20px rgba(0,0,0,.3); }
     <!-- ===== 左侧 Provider 列表 ===== -->
     <aside class="api-sidebar">
         <div class="api-sidehead">
-            <h2>平台列表</h2>
+            <h2 data-t="settings.platformList">平台列表</h2>
             <span style="font-size:10px;color:var(--muted);font-weight:800;" id="providerCount">0</span>
         </div>
         <div class="provider-list" id="providerList"></div>
         <button class="add-provider-btn" onclick="addProvider()">
-            <span style="font-size:18px;">+</span> 新增平台
+            <span style="font-size:18px;">+</span> <span data-t="settings.addPlatform">新增平台</span>
         </button>
         <button class="add-provider-btn" onclick="showPlatformsView()" style="border-style:solid;">
-            <span style="font-size:16px;">📋</span> 浏览推荐平台
+            <span style="font-size:16px;">📋</span> <span data-t="settings.browseRecommend">浏览推荐平台</span>
         </button>
         <div class="quick-links">
             <button class="quick-link" onclick="scrollToSection('securityBlock')">
-                <span class="dot green"></span> 安全设置
+                <span class="dot green"></span> <span data-t="settings.securitySettings">安全设置</span>
             </button>
         </div>
     </aside>
@@ -343,17 +343,17 @@ html.dark .platform-card:hover { box-shadow:0 6px 20px rgba(0,0,0,.3); }
         <div class="content-head">
             <div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;">
                 <div>
-                    <div class="editor-title" id="editorTitle">选择平台</div>
-                    <div class="editor-sub" id="editorSub">从左侧列表选择一个平台进行配置</div>
+                    <div class="editor-title" id="editorTitle" data-t="settings.selectHint">选择平台</div>
+                    <div class="editor-sub" id="editorSub" data-t="settings.selectSub">从左侧列表选择一个平台进行配置</div>
                 </div>
                 <span id="verifyStatus" style="font-size:11.5px;font-weight:700;min-width:180px;"></span>
             </div>
             <div class="content-actions">
-                <button class="btn btn-secondary" onclick="openRegister()" style="color:#2563eb;border-color:rgba(37,99,235,.3);background:rgba(37,99,235,.06);">注册账号</button>
-                <button class="btn btn-secondary" onclick="deleteCurrentProvider()" id="deleteBtn" style="display:none;" title="删除当前平台">删除</button>
-                <button class="btn btn-secondary" onclick="testConnection()" id="testBtn">验证连接</button>
-                <button class="btn btn-secondary" onclick="fetchModels()" id="fetchBtn">拉取模型</button>
-                <button class="btn btn-primary" onclick="saveCurrent()">保存当前</button>
+                <button class="btn btn-secondary" data-t="settings.register" onclick="openRegister()" style="color:#2563eb;border-color:rgba(37,99,235,.3);background:rgba(37,99,235,.06);">注册账号</button>
+                <button class="btn btn-secondary" data-t="settings.delete" data-t-title="settings.deleteTitle" onclick="deleteCurrentProvider()" id="deleteBtn" style="display:none;">删除</button>
+                <button class="btn btn-secondary" data-t="settings.verifyConn" onclick="testConnection()" id="testBtn">验证连接</button>
+                <button class="btn btn-secondary" data-t="settings.fetchModels" onclick="fetchModels()" id="fetchBtn">拉取模型</button>
+                <button class="btn btn-primary" data-t="settings.saveCurrent" onclick="saveCurrent()">保存当前</button>
             </div>
         </div>
 
@@ -361,63 +361,87 @@ html.dark .platform-card:hover { box-shadow:0 6px 20px rgba(0,0,0,.3); }
         <section class="block" id="basicBlock">
             <div class="block-head">
                 <div>
-                    <div class="block-title">基本信息</div>
-                    <div class="block-desc">平台显示名、唯一标识和请求地址</div>
+                    <div class="block-title" data-t="settings.basicInfo">基本信息</div>
+                    <div class="block-desc" data-t="settings.basicInfoDesc">平台显示名、唯一标识和请求地址</div>
                 </div>
             </div>
             <div class="form-grid">
                 <div class="field">
-                    <label>平台名称</label>
-                    <input id="nameInput" type="text" placeholder="例如: OpenAI" oninput="updateProviderMeta()">
-                    <span class="hint">平台 ID: <code id="idPreview">—</code></span>
+                    <label data-t="settings.platformName">平台名称</label>
+                    <input id="nameInput" type="text" data-t-placeholder="settings.namePlaceholder" placeholder="例如: OpenAI" oninput="updateProviderMeta()">
+                    <span class="hint"><span data-t="settings.platformId">平台 ID:</span> <code id="idPreview">—</code></span>
                 </div>
                 <div class="field">
-                    <label>协议类型</label>
+                    <label data-t="settings.protocolType">协议类型</label>
                     <select id="protocolSelect" onchange="onProtocolChange()">
-                        <option value="openai">OpenAI 协议</option>
-                        <option value="apimart">APIMart</option>
-                        <option value="gemini">Gemini 协议</option>
-                        <option value="volcengine">火山方舟</option>
-                        <option value="modelscope">ModelScope</option>
-                                                <option value="runninghub">RunningHub</option>
-                        <option value="deepseek">DeepSeek</option>
+                        <option value="openai" data-t="settings.protocolOptionOpenAI">OpenAI 协议</option>
+                        <option value="apimart" data-t="settings.protocolOptionAPIMart">APIMart</option>
+                        <option value="gemini" data-t="settings.protocolOptionGemini">Gemini 协议</option>
+                        <option value="volcengine" data-t="settings.protocolOptionVolcengine">火山方舟</option>
+                        <option value="modelscope" data-t="settings.protocolOptionModelScope">ModelScope</option>
+                                                <option value="runninghub" data-t="settings.protocolOptionRunningHub">RunningHub</option>
+                        <option value="deepseek" data-t="settings.protocolOptionDeepSeek">DeepSeek</option>
                     </select>
                 </div>
                 <div class="field full" id="baseUrlField">
-                    <label>请求地址 (Base URL)</label>
+                    <label data-t="settings.baseUrl">请求地址 (Base URL)</label>
                     <input id="baseInput" type="text" placeholder="https://api.openai.com/v1" oninput="updateProviderMeta()">
                 </div>
                 <div class="field full" id="keyField">
                     <span style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
                         <label>API Key</label>
-                        <button class="get-key-btn" onclick="openKeyPage()" title="获取 API Key">获取 API Key &#8599;</button>
+                        <button class="get-key-btn" onclick="openKeyPage()" title="获取 API Key"><span data-t="settings.getApiKey">获取 API Key</span> &#8599;</button>
                     </span>
                     <div class="key-row">
-                        <input id="keyInput" type="password" placeholder="sk-..." autocomplete="off">
+                        <input id="keyInput" type="text" placeholder="sk-..." autocomplete="off" autocorrect="off" spellcheck="false">
                         <div class="key-actions">
-                            <button class="key-btn eye-btn" onclick="toggleKeyVis('keyInput', this)" title="显示/隐藏">&#128065;</button>
                             <button class="key-btn" onclick="saveKeyOnly()" title="保存 Key">&#10003;</button>
                             <button class="key-btn clear" onclick="clearKeyOnly()" title="清除 Key">&#10005;</button>
                         </div>
                     </div>
                     <span class="hint" id="keyHint"></span>
-                    <script>document.getElementById('keyInput').addEventListener('input', function(){
+                    <script>(function(){
+                        const ki = document.getElementById('keyInput');
                         const hint = document.getElementById('keyHint');
-                        if (this.value.trim() && this.dataset.masked !== 'true') {
-                            hint.textContent = '已输入但未保存，切换平台前请点 ✓';
-                            hint.style.color = 'var(--warn)';
-                        } else { hint.style.color = ''; }
-                    });</script>
+                        ki.addEventListener('focus', function(){
+                            // 聚焦时切换到密码模式保护正在输入的 Key
+                            if (this.dataset.masked === 'true') {
+                                const real = localStorage.getItem(PROVIDER_CONFIG_PREFIX + 'key_' + currentProviderId) || '';
+                                this.type = 'password';
+                                this.value = real;
+                                this.dataset.masked = 'false';
+                            } else {
+                                this.type = 'password';
+                            }
+                        });
+                        ki.addEventListener('blur', function(){
+                            // 安全读取：始终通过 _readKeyFromInput 获取真实 Key，防止掩码字符串被误存
+                            const storageKey = PROVIDER_CONFIG_PREFIX + 'key_' + currentProviderId;
+                            const realKey = _readKeyFromInput('keyInput', storageKey);
+                            if (realKey && this.dataset.masked !== 'true' && currentProviderId) {
+                                // 保存真实 Key 到 localStorage（若与已存储的不同）
+                                if (realKey !== (localStorage.getItem(storageKey) || '')) {
+                                    localStorage.setItem(storageKey, realKey);
+                                    hint.textContent = _t('settings.keySaved','Key 已保存');
+                                    hint.style.color = '';
+                                }
+                            }
+                            // 切回明文显示掩码（后4位可见）
+                            const real = localStorage.getItem(storageKey) || '';
+                            this.type = 'text';
+                            this.value = real.length > 8 ? '••••' + real.slice(-4) : '••••';
+                            this.dataset.masked = 'true';
+                        });
+                    })();</script>
                 </div>
                 <!-- RunningHub 余额 Key（仅 RunningHub 显示） -->
                 <div class="field full" id="walletKeyField" style="display:none;">
-                    <span><label>账户余额 API Key <span style="color:var(--muted);font-weight:600;">· 可选</span></label></span>
+                    <span><label data-t="settings.walletKeyLabel">账户余额 API Key <span style="color:var(--muted);font-weight:600;">· <span data-t="settings.walletOptional">可选</span></span></label></span>
                     <div class="key-row">
-                        <input id="walletKeyInput" type="password" placeholder="使用账户余额接口时填写..." autocomplete="off">
+                        <input id="walletKeyInput" type="password" data-t-placeholder="settings.walletPlaceholder" placeholder="使用账户余额接口时填写..." autocomplete="off">
                         <div class="key-actions">
-                            <button class="key-btn eye-btn" onclick="toggleKeyVis('walletKeyInput', this)" title="显示/隐藏">&#128065;</button>
-                            <button class="key-btn" onclick="saveWalletKey()" title="保存余额 Key">&#10003;</button>
-                            <button class="key-btn clear" onclick="clearWalletKey()" title="清除余额 Key">&#10005;</button>
+                            <button class="key-btn" data-t-title="settings.saveWalletKey" onclick="saveWalletKey()" title="保存余额 Key">&#10003;</button>
+                            <button class="key-btn clear" data-t-title="settings.clearWalletKey" onclick="clearWalletKey()" title="清除余额 Key">&#10005;</button>
                         </div>
                     </div>
                     <span class="hint" id="walletKeyHint"></span>
@@ -430,27 +454,27 @@ html.dark .platform-card:hover { box-shadow:0 6px 20px rgba(0,0,0,.3); }
             <section class="block">
                 <div class="block-head">
                     <div>
-                        <div class="block-title">生图模型</div>
-                        <div class="block-desc">在线生图和画布 API 生成使用</div>
+                        <div class="block-title" data-t="settings.imageModels">生图模型</div>
+                        <div class="block-desc" data-t="settings.imageModelsDesc">在线生图和画布 API 生成使用</div>
                     </div>
                 </div>
                 <div class="model-list" id="imageModelList"></div>
                 <div class="model-add-row">
-                    <input id="newImageModel" type="text" placeholder="输入模型名，如 dall-e-3" onkeydown="if(event.key==='Enter')addModel('image')">
-                    <button class="model-add-btn" onclick="addModel('image')">+ 添加</button>
+                    <input id="newImageModel" type="text" data-t-placeholder="settings.modelPlaceholder" placeholder="输入模型名，如 dall-e-3" onkeydown="if(event.key==='Enter')addModel('image')">
+                    <button class="model-add-btn" data-t="settings.add" onclick="addModel('image')">+ 添加</button>
                 </div>
             </section>
 
             <section class="block">
                 <div class="block-head">
                     <div>
-                        <div class="block-title">文本模型</div>
-                        <div class="block-desc">GPT 对话和 Agent 节点使用</div>
+                        <div class="block-title" data-t="settings.chatModels">文本模型</div>
+                        <div class="block-desc" data-t="settings.chatModelsDesc">GPT 对话和 Agent 节点使用</div>
                     </div>
                 </div>
                 <div class="model-list" id="chatModelList"></div>
                 <div class="model-add-row">
-                    <input id="newChatModel" type="text" placeholder="输入模型名，如 gpt-4o-mini" onkeydown="if(event.key==='Enter')addModel('chat')">
+                    <input id="newChatModel" type="text" data-t-placeholder="settings.modelPlaceholderChat" placeholder="输入模型名，如 gpt-4o-mini" onkeydown="if(event.key==='Enter')addModel('chat')">
                     <button class="model-add-btn" onclick="addModel('chat')">+ 添加</button>
                 </div>
             </section>
@@ -458,13 +482,13 @@ html.dark .platform-card:hover { box-shadow:0 6px 20px rgba(0,0,0,.3); }
             <section class="block wide" id="videoModelBlock">
                 <div class="block-head">
                     <div>
-                        <div class="block-title">视频模型</div>
-                        <div class="block-desc">画布视频生成节点使用</div>
+                        <div class="block-title" data-t="settings.videoModels">视频模型</div>
+                        <div class="block-desc" data-t="settings.videoModelsDesc">画布视频生成节点使用</div>
                     </div>
                 </div>
                 <div class="model-list" id="videoModelList"></div>
                 <div class="model-add-row">
-                    <input id="newVideoModel" type="text" placeholder="输入模型名，如 veo3-fast" onkeydown="if(event.key==='Enter')addModel('video')">
+                    <input id="newVideoModel" type="text" data-t-placeholder="settings.modelPlaceholderVideo" placeholder="输入模型名，如 veo3-fast" onkeydown="if(event.key==='Enter')addModel('video')">
                     <button class="model-add-btn" onclick="addModel('video')">+ 添加</button>
                 </div>
             </section>
@@ -474,26 +498,26 @@ html.dark .platform-card:hover { box-shadow:0 6px 20px rgba(0,0,0,.3); }
         <section class="block" id="securityBlock">
             <div class="block-head">
                 <div>
-                    <div class="block-title">安全设置</div>
-                    <div class="block-desc">访问密码和跨域来源配置</div>
+                    <div class="block-title" data-t="settings.securityBlock">安全设置</div>
+                    <div class="block-desc" data-t="settings.securityDesc">访问密码和跨域来源配置</div>
                 </div>
             </div>
             <div class="form-grid">
                 <div class="field">
-                    <label>访问密码 (APP_API_KEY)</label>
-                    <input id="appApiKey" type="password" placeholder="留空则不启用鉴权" autocomplete="off">
-                    <span class="hint">设置后所有 API 请求需要携带 X-API-Key，浏览器会自动存储</span>
+                    <label data-t="settings.appApiKeyLabel">访问密码 (APP_API_KEY)</label> <span style="color:#f87171;font-size:11px;font-weight:400;" data-t="settings.appApiKeyLanHint">局域网其他设备访问需要输入此密码（默认 571 ）可自由更改</span>
+                    <input id="appApiKey" type="password" data-t-placeholder="settings.appApiKeyPlaceholder" placeholder="留空则不启用鉴权" autocomplete="off">
+                    <span class="hint" data-t="settings.appApiKeyHint2">设置后所有 API 请求需要携带 X-API-Key，浏览器会自动存储</span>
                 </div>
                 <div class="field">
-                    <label>CORS 允许来源</label>
-                    <input id="corsOrigins" type="text" placeholder="https://your-domain.com（可选）" autocomplete="off">
-                    <span class="hint">多个来源用逗号分隔</span>
+                    <label data-t="settings.corsLabel">CORS 允许来源</label>
+                    <input id="corsOrigins" type="text" data-t-placeholder="settings.corsPlaceholder" placeholder="https://your-domain.com（可选）" autocomplete="off">
+                    <span class="hint" data-t="settings.corsHint">多个来源用逗号分隔</span>
                 </div>
             </div>
         </section>
 
         <div style="display:flex;align-items:center;gap:10px;padding:4px 0;">
-            <button class="btn btn-primary" onclick="saveAll()">保存全部设置</button>
+            <button class="btn btn-primary" data-t="settings.saveAll" onclick="saveAll()">保存全部设置</button>
             <span id="globalStatus" class="inline-status"></span>
         </div>
         </div><!-- /configView -->
@@ -501,8 +525,8 @@ html.dark .platform-card:hover { box-shadow:0 6px 20px rgba(0,0,0,.3); }
         <!-- === 推荐平台面板 === -->
         <div id="platformsView" style="display:none;" class="platforms-panel">
             <div class="platforms-panel-head">
-                <h2>📋 推荐平台</h2>
-                <button class="btn btn-secondary" onclick="showConfigView()" style="font-size:11px;padding:6px 14px;">← 返回配置</button>
+                <h2 data-t="settings.recommendTitle">📋 推荐平台</h2>
+                <button class="btn btn-secondary" data-t="settings.backToConfig" onclick="showConfigView()" style="font-size:11px;padding:6px 14px;">← 返回配置</button>
             </div>
             <div class="platforms-card-grid" id="platformsCardGrid"></div>
         </div>
@@ -514,30 +538,30 @@ html.dark .platform-card:hover { box-shadow:0 6px 20px rgba(0,0,0,.3); }
     <div class="picker-modal">
         <div class="picker-head">
             <div>
-                <div class="picker-title">从上游拉取的模型清单</div>
+                <div class="picker-title" data-t="settings.pickerTitle">从上游拉取的模型清单</div>
                 <div class="picker-count" id="pickerCount">—</div>
             </div>
             <div class="picker-close" onclick="closeModelPicker()">&#10005;</div>
         </div>
         <div class="picker-toolbar">
-            <input id="pickerFilter" class="picker-search" type="text" placeholder="按名称搜索模型…" oninput="renderModelPicker()">
+            <input id="pickerFilter" class="picker-search" type="text" data-t-placeholder="settings.pickerSearch" placeholder="按名称搜索模型…" oninput="renderModelPicker()">
             <div class="picker-tabs">
-                <button class="picker-tab active" data-cat="all" onclick="selectPickerCat('all')">全部 <span class="cat-count">0</span></button>
-                <button class="picker-tab" data-cat="image" onclick="selectPickerCat('image')">生图 <span class="cat-count">0</span></button>
-                <button class="picker-tab" data-cat="chat" onclick="selectPickerCat('chat')">LLM <span class="cat-count">0</span></button>
-                <button class="picker-tab" data-cat="video" onclick="selectPickerCat('video')">视频 <span class="cat-count">0</span></button>
+                <button class="picker-tab active" data-cat="all" onclick="selectPickerCat('all')"><span data-t="settings.all">全部</span> <span class="cat-count">0</span></button>
+                <button class="picker-tab" data-cat="image" onclick="selectPickerCat('image')"><span data-t="settings.image">生图</span> <span class="cat-count">0</span></button>
+                <button class="picker-tab" data-cat="chat" onclick="selectPickerCat('chat')"><span data-t="settings.llm">LLM</span> <span class="cat-count">0</span></button>
+                <button class="picker-tab" data-cat="video" onclick="selectPickerCat('video')"><span data-t="settings.video">视频</span> <span class="cat-count">0</span></button>
             </div>
         </div>
         <div id="pickerList" class="picker-body"></div>
         <div class="picker-bot">
-            <span class="picker-sum-chip" id="sumImage">生图 0</span>
-            <span class="picker-sum-chip" id="sumChat">LLM 0</span>
-            <span class="picker-sum-chip" id="sumVideo">视频 0</span>
-            <span id="sumUnsel" style="margin-left:auto;color:var(--muted);font-size:11px;font-weight:700">未选 0</span>
+            <span class="picker-sum-chip" id="sumImage"><span data-t="settings.image">生图</span> 0</span>
+            <span class="picker-sum-chip" id="sumChat"><span data-t="settings.llm">LLM</span> 0</span>
+            <span class="picker-sum-chip" id="sumVideo"><span data-t="settings.video">视频</span> 0</span>
+            <span id="sumUnsel" style="margin-left:auto;color:var(--muted);font-size:11px;font-weight:700"><span data-t="settings.unselected">未选</span> 0</span>
         </div>
         <div class="picker-foot">
-            <button class="btn btn-secondary" type="button" onclick="closeModelPicker()">取消</button>
-            <button class="btn btn-primary" type="button" onclick="applyModelPicker()">应用到模型列表</button>
+            <button class="btn btn-secondary" type="button" data-t="settings.cancel" onclick="closeModelPicker()">取消</button>
+            <button class="btn btn-primary" type="button" data-t="settings.applyToModels" onclick="applyModelPicker()">应用到模型列表</button>
         </div>
     </div>
 </div>
@@ -545,44 +569,44 @@ html.dark .platform-card:hover { box-shadow:0 6px 20px rgba(0,0,0,.3); }
 <!-- 新增 Provider 弹窗 -->
 <div class="modal-overlay" id="addProviderModal">
     <div class="modal-box">
-        <h3>新增 API 平台</h3>
+        <h3 data-t="settings.addProviderModal">新增 API 平台</h3>
         <div class="field">
-            <label>平台名称</label>
-            <input id="newProviderName" type="text" placeholder="例如: Gemini" oninput="autoGenProviderId()">
+            <label data-t="settings.platformName">平台名称</label>
+            <input id="newProviderName" type="text" data-t-placeholder="settings.namePlaceholder" placeholder="例如: Gemini" oninput="autoGenProviderId()">
         </div>
         <div class="field">
-            <label>平台 ID</label>
+            <label data-t="settings.platformId">平台 ID</label>
             <input id="newProviderId" type="text" placeholder="例如: gemini" oninput="this.value=this.value.replace(/[^a-zA-Z0-9_-]/g,'').toLowerCase()">
-            <span class="hint">唯一标识，只能使用英文、数字、下划线和连字符</span>
+            <span class="hint" data-t="settings.idHint">唯一标识，只能使用英文、数字、下划线和连字符</span>
         </div>
         <div class="field">
-            <label>协议类型</label>
+            <label data-t="settings.protocolType">协议类型</label>
             <select id="newProviderProtocol">
-                <option value="openai">OpenAI 协议</option>
-                <option value="apimart">APIMart</option>
-                <option value="gemini">Gemini 协议</option>
-                <option value="volcengine">火山方舟</option>
-                <option value="modelscope">ModelScope</option>
-                                <option value="runninghub">RunningHub</option>
-                <option value="deepseek">DeepSeek</option>
+                <option value="openai" data-t="settings.protocolOptionOpenAI">OpenAI 协议</option>
+                <option value="apimart" data-t="settings.protocolOptionAPIMart">APIMart</option>
+                <option value="gemini" data-t="settings.protocolOptionGemini">Gemini 协议</option>
+                <option value="volcengine" data-t="settings.protocolOptionVolcengine">火山方舟</option>
+                <option value="modelscope" data-t="settings.protocolOptionModelScope">ModelScope</option>
+                                <option value="runninghub" data-t="settings.protocolOptionRunningHub">RunningHub</option>
+                <option value="deepseek" data-t="settings.protocolOptionDeepSeek">DeepSeek</option>
             </select>
         </div>
         <div class="field">
-            <label>类型</label>
+            <label data-t="settings.vendorType">类型</label>
             <select id="newProviderVendor">
-                <option value="official">🏛️ 官方 API</option>
-                <option value="third_party">🔄 第三方中转</option>
+                <option value="official" data-t="settings.vendorOfficialOption">🏛️ 官方 API</option>
+                <option value="third_party" data-t="settings.vendorThirdOption">🔄 第三方中转</option>
             </select>
-            <span class="hint">官方 API 直接来自模型厂商，第三方中转通过中间商转发请求</span>
+            <span class="hint" data-t="settings.vendorHint">官方 API 直接来自模型厂商，第三方中转通过中间商转发请求</span>
         </div>
         <div class="modal-actions">
-            <button class="btn btn-secondary" onclick="closeAddModal()">取消</button>
-            <button class="btn btn-primary" onclick="confirmAddProvider()">确认新增</button>
+            <button class="btn btn-secondary" data-t="settings.cancel" onclick="closeAddModal()">取消</button>
+            <button class="btn btn-primary" data-t="settings.confirmAdd" onclick="confirmAddProvider()">确认新增</button>
         </div>
     </div>
 </div>
 
-<script src="/static/js/api.js?v=4"></script>
+<script src="/static/js/api.js?v=5"></script>
 <script>
 // ===== 数据模型 =====
 let providers = [];
@@ -599,19 +623,31 @@ const DEFAULT_BASE_URLS = {
 
 // ===== 初始化 =====
 async function init() {
-    // 从后端加载 Provider 列表
+    // 从后端加载 Provider 列表，同步到本地
+    // 已有平台的模型列表更新；API 发现但本地未收录的平台自动加入列表
     try {
         const resp = await apiFetch('/api/providers');
         const data = await resp.json();
         const remoteProvs = data.providers || [];
-        // 仅用远程数据更新已有平台的模型列表，不自动添加新平台
         const local = loadLocalProviders();
+        const localIds = new Set(local.map(p => p.id));
         for (const rp of remoteProvs) {
             const existing = local.find(p => p.id === rp.id);
             if (existing) {
+                // 已有平台：更新模型列表和协议
                 if (!existing.image_models.length) existing.image_models = rp.image_models || [];
                 if (!existing.chat_models.length) existing.chat_models = rp.chat_models || [];
                 if (!existing.video_models.length) existing.video_models = rp.video_models || [];
+                if (!existing.protocol) existing.protocol = rp.protocol || 'openai';
+            } else {
+                // API 发现的新平台（.env 中有 Key 但本地未收录）→ 自动加入列表
+                local.push({
+                    id: rp.id, name: rp.name || rp.id, protocol: rp.protocol || 'openai',
+                    base_url: '', vendor: 'third_party', desc: '',
+                    image_models: rp.image_models || [],
+                    chat_models: rp.chat_models || [],
+                    video_models: rp.video_models || [],
+                });
             }
         }
         saveLocalProviders(local);
@@ -623,13 +659,12 @@ async function init() {
     // 补全缺失字段（vendor, desc）- 兼容旧版本存储的数据
     providers = backfillProviderDefaults(providers);
     saveLocalProviders(providers);
-    if (!providers.length) {
-        providers = initDefaultProviders();
-        saveLocalProviders(providers);
-    }
+    // 注意：不再自动恢复默认平台列表。如果用户清空了列表，保持清空。
+    // 用户可通过"添加平台"按钮手动添加需要的平台。
 
-    // 加载安全设置
+    // 加载安全设置 + 同步后端 Key 状态
     await loadSecuritySettings();
+    await _syncServerKeyStatus();
 
     renderProviderList();
     if (providers.length > 0) selectProvider(providers[0].id);
@@ -638,19 +673,21 @@ async function init() {
 function initDefaultProviders() {
     return [
         { id: 'openai', name: 'OpenAI', protocol: 'openai', base_url: 'https://api.openai.com/v1', vendor: 'official',
-          desc: 'openai.com', image_models: ['dall-e-3', 'gpt-image-2'], chat_models: ['gpt-4o-mini', 'gpt-4o'], video_models: ['veo3-fast'] },
+          desc: 'openai.com', image_models: ['dall-e-3', 'gpt-image-2'], chat_models: ['gpt-4o-mini', 'gpt-4o', 'deepseek-v4-flash'], video_models: ['veo3-fast'] },
         { id: 'apimart', name: 'APIMart', protocol: 'apimart', base_url: 'https://api.apimart.ai', vendor: 'third_party',
-          desc: 'apimart.ai · API 中转', image_models: ['nano-banana-pro', 'gpt-image-2'], chat_models: ['gpt-4o-mini', 'gemini-3.1-flash-image-preview-2k'], video_models: ['veo3-fast', 'veo3.1-fast', 'veo2', 'sora-2', 'wan2.6-t2v', 'wan2.6-i2v'] },
+          desc: 'apimart.ai · API 中转', image_models: ['nano-banana-pro', 'gpt-image-2'], chat_models: ['gpt-4o-mini', 'gpt-4o', 'gemini-3.1-flash-image-preview-2k'], video_models: ['veo3-fast', 'veo3.1-fast', 'veo2', 'sora-2', 'wan2.6-t2v', 'wan2.6-i2v'] },
         { id: 'gemini', name: 'Gemini', protocol: 'gemini', base_url: 'https://generativelanguage.googleapis.com/v1beta', vendor: 'official',
           desc: 'Google AI', image_models: ['gemini-2.5-flash-image-preview'], chat_models: ['gemini-2.5-flash', 'gemini-2.5-pro'], video_models: [] },
         { id: 'volcengine', name: '火山方舟', protocol: 'volcengine', base_url: 'https://ark.cn-beijing.volces.com/api/v3', vendor: 'official',
-          desc: '字节跳动 ARK 平台', image_models: ['doubao-seedream-3-0', 'doubao-seedream-4-0'], chat_models: ['doubao-1-5-pro-32k', 'deepseek-v4-pro'], video_models: ['doubao-seedance-2-0-260128', 'doubao-seedance-2-0-fast-260128'] },
+          desc: '字节跳动 ARK 平台', image_models: ['doubao-seedream-3-0', 'doubao-seedream-4-0'], chat_models: ['doubao-1-5-pro-32k', 'deepseek-v4-pro'], video_models: ['doubao-seedance-2-0-260128', 'doubao-seedance-2-0-fast-260128', 'doubao-seedance-1-5-pro-251215', 'doubao-seedance-1-0-pro-250528'] },
         { id: 'modelscope', name: 'ModelScope', protocol: 'modelscope', base_url: 'https://api-inference.modelscope.cn/v1', vendor: 'official',
-          desc: '阿里魔搭社区', image_models: ['Tongyi-MAI/Z-Image-Turbo', 'Qwen/Qwen-Image-Edit-2511'], chat_models: ['Qwen/Qwen3-235B-A22B'], video_models: [] },
+          desc: '阿里魔搭社区', image_models: ['Tongyi-MAI/Z-Image-Turbo', 'Qwen/Qwen-Image-2512', 'Qwen/Qwen-Image-Edit-2511', 'black-forest-labs/FLUX.2-klein-9B'], chat_models: ['Qwen/Qwen3-235B-A22B'], video_models: [] },
         { id: 'runninghub', name: 'RunningHub', protocol: 'runninghub', base_url: 'https://www.runninghub.cn', vendor: 'official',
           desc: 'AI 工作流平台', image_models: ['seedream-v5-lite/text-to-image'], chat_models: [], video_models: [] },
         { id: 'deepseek', name: 'DeepSeek', protocol: 'openai', base_url: 'https://api.deepseek.com', vendor: 'official',
           desc: 'deepseek.com', image_models: [], chat_models: ['deepseek-chat', 'deepseek-reasoner'], video_models: [] },
+        { id: 'xmmimo', name: 'MiMo', protocol: 'openai', base_url: 'https://api.xiaomimimo.com/v1', vendor: 'official',
+          desc: '小米 AI · 思考模式+工具调用', image_models: [], chat_models: ['mimo-v2.5-pro'], video_models: [] },
         { id: 'aihubmix', name: 'AIHubMix', protocol: 'openai', base_url: 'https://aihubmix.com/v1', vendor: 'third_party',
           desc: 'aihubmix.com · 推理时代',
           image_models: ['gpt-image-2', 'dall-e-3'],
@@ -704,6 +741,20 @@ async function loadSecuritySettings() {
     } catch (e) { console.error('加载安全设置失败:', e); }
 }
 
+// 记录后端 .env 中已有的 Key（按大写 KEY 名索引，用于 localStorage 丢失后提示）
+var _serverKeys = {};
+async function _syncServerKeyStatus() {
+    try {
+        var resp = await apiFetch('/api/settings/api-keys');
+        var data = await resp.json();
+        var keys = data.keys || {};
+        _serverKeys = {};
+        for (var k in keys) {
+            if (keys[k]) _serverKeys[k.toUpperCase()] = true;
+        }
+    } catch(e) {}
+}
+
 // ===== 渲染侧边栏 =====
 function renderProviderList() {
     const container = document.getElementById('providerList');
@@ -715,15 +766,15 @@ function renderProviderList() {
         const modelCount = (p.image_models?.length || 0) + (p.chat_models?.length || 0) + (p.video_models?.length || 0);
         const isOfficial = p.vendor !== 'third_party';
         const vendorBadge = isOfficial
-            ? '<span style="display:inline-block;padding:1px 6px;border-radius:4px;background:color-mix(in srgb, var(--good) 12%, transparent);color:var(--good);font-size:9px;font-weight:900;letter-spacing:.04em;">官网</span>'
-            : '<span style="display:inline-block;padding:1px 6px;border-radius:4px;background:color-mix(in srgb, var(--warn) 12%, transparent);color:var(--warn);font-size:9px;font-weight:900;letter-spacing:.04em;">第三方</span>';
+            ? '<span style="display:inline-block;padding:1px 6px;border-radius:4px;background:color-mix(in srgb, var(--good) 12%, transparent);color:var(--good);font-size:9px;font-weight:900;letter-spacing:.04em;">' + _t('settings.officialBadge','官网') + '</span>'
+            : '<span style="display:inline-block;padding:1px 6px;border-radius:4px;background:color-mix(in srgb, var(--warn) 12%, transparent);color:var(--warn);font-size:9px;font-weight:900;letter-spacing:.04em;">' + _t('settings.thirdBadge','第三方') + '</span>';
         return `<div class="provider-item${active}" onclick="selectProvider('${p.id}')" id="prov-${p.id}">
             <div class="provider-dot">${initials}</div>
             <div>
                 <div class="provider-name">${esc(p.name)} ${vendorBadge}</div>
-                <div class="provider-meta">${esc(p.desc || '')} · ${modelCount} 模型</div>
+                <div class="provider-meta">${esc(p.desc || '')} · ${modelCount} ${_t('settings.modelCount','个模型')}</div>
             </div>
-            <div class="provider-del" onclick="event.stopPropagation();removeProvider('${p.id}')" title="删除">×</div>
+            <div class="provider-del" onclick="event.stopPropagation();removeProvider('${p.id}')" title="${_t('settings.delete','删除')}">×</div>
         </div>`;
     }).join('');
 }
@@ -738,7 +789,7 @@ function selectProvider(id) {
         const prevInput = document.getElementById('keyInput');
         const prevStored = localStorage.getItem(PROVIDER_CONFIG_PREFIX + 'key_' + currentProviderId) || '';
         if (prevInput.value.trim() && prevInput.dataset.masked === 'false' && prevInput.value !== prevStored) {
-            if (!confirm('当前平台有未保存的 Key，切换平台将丢失。是否保存？')) return;
+            if (!confirm(_t('settings.unsavedKeyWarn','当前平台有未保存的 Key，切换平台将丢失。是否保存？'))) return;
             saveKeyOnly();
         }
     }
@@ -748,10 +799,10 @@ function selectProvider(id) {
     if (!p) return;
 
     const vendorBadge = p.vendor !== 'third_party'
-        ? '<span style="color:var(--good);font-weight:900;">🏛️ 官方</span>'
-        : '<span style="color:var(--warn);font-weight:900;">🔄 第三方中转</span>';
+        ? '<span style="color:var(--good);font-weight:900;">' + _t('settings.official','🏛️ 官方') + '</span>'
+        : '<span style="color:var(--warn);font-weight:900;">' + _t('settings.thirdParty','🔄 第三方中转') + '</span>';
     document.getElementById('editorTitle').textContent = p.name;
-    document.getElementById('editorSub').innerHTML = `${vendorBadge} &nbsp;·&nbsp; 协议: ${p.protocol} &nbsp;·&nbsp; ${(p.image_models||[]).length + (p.chat_models||[]).length + (p.video_models||[]).length} 个模型`;
+    document.getElementById('editorSub').innerHTML = vendorBadge + ' &nbsp;·&nbsp; ' + _t('settings.protocol','协议:') + ' ' + p.protocol + ' &nbsp;·&nbsp; ' + ((p.image_models||[]).length + (p.chat_models||[]).length + (p.video_models||[]).length) + ' ' + _t('settings.modelCount','个模型');
     document.getElementById('deleteBtn').style.display = (providers.length <= 1) ? 'none' : '';
 
     document.getElementById('nameInput').value = p.name;
@@ -763,13 +814,21 @@ function selectProvider(id) {
     const storedKey = localStorage.getItem(PROVIDER_CONFIG_PREFIX + 'key_' + p.id) || '';
     const keyInput = document.getElementById('keyInput');
     if (storedKey) {
+        keyInput.type = 'text';
         keyInput.value = storedKey.length > 8 ? '••••' + storedKey.slice(-4) : '••••';
         keyInput.dataset.masked = 'true';
-        document.getElementById('keyHint').textContent = 'Key 已保存';
+        document.getElementById('keyHint').textContent = _t('settings.keySaved','Key 已保存');
     } else {
+        keyInput.type = 'password';
         keyInput.value = '';
         keyInput.dataset.masked = '';
-        document.getElementById('keyHint').textContent = '';
+        // 检查后端 .env 中该平台的具体 Key 是否存在（用 providerEnvKey 精确匹配）
+        var envKey = providerEnvKey(p.id).toUpperCase();
+        if (_serverKeys[envKey]) {
+            document.getElementById('keyHint').innerHTML = '<span style=\"color:#f59e0b;\">' + _t('settings.keyOnServer','Key 已在后端，但浏览器未存储，请重新输入') + '</span>';
+        } else {
+            document.getElementById('keyHint').textContent = '';
+        }
     }
     // RunningHub 余额 Key
     const storedWalletKey = localStorage.getItem(PROVIDER_CONFIG_PREFIX + 'wallet_key_' + p.id) || '';
@@ -777,15 +836,13 @@ function selectProvider(id) {
     if (storedWalletKey) {
         walletInput.value = storedWalletKey.length > 8 ? '••••' + storedWalletKey.slice(-4) : '••••';
         walletInput.dataset.masked = 'true';
-        document.getElementById('walletKeyHint').textContent = '余额 Key 已保存';
+        document.getElementById('walletKeyHint').textContent = _t('settings.walletKeySaved','余额 Key 已保存');
     } else {
         walletInput.value = '';
         walletInput.dataset.masked = '';
         document.getElementById('walletKeyHint').textContent = '';
     }
 
-    // 重置眼睛按钮状态
-    document.querySelectorAll('.eye-btn').forEach(b => { b.style.color = ''; b.style.background = ''; b.title = '显示/隐藏'; });
     document.getElementById('verifyStatus').innerHTML = '';
 
     onProtocolChange();
@@ -796,7 +853,7 @@ function selectProvider(id) {
 // ===== 协议切换 =====
 function onProtocolChange() {
     const protocol = document.getElementById('protocolSelect').value;
-    document.getElementById('videoModelBlock').style.display = (protocol === 'gemini' || protocol === 'modelscope' || protocol === 'runninghub') ? 'none' : '';
+    document.getElementById('videoModelBlock').style.display = (protocol === 'gemini' || protocol === 'modelscope' || protocol === 'runninghub' || protocol === 'deepseek') ? 'none' : '';
 
     // 预填默认 API 地址
     const p = providers.find(x => x.id === currentProviderId);
@@ -815,16 +872,16 @@ function renderModelLists() {
     const renderList = (containerId, models, type) => {
         const container = document.getElementById(containerId);
         if (!models || !models.length) {
-            container.innerHTML = `<div style="padding:14px;color:var(--muted);font-size:12px;text-align:center;border:1px dashed var(--border);border-radius:var(--radius);">
-                暂无模型<br><button class="empty-hint-btn" onclick="fetchModels()">从 API 拉取模型</button>
-                <span style="margin:0 6px;color:var(--muted)">或</span>
-                <span style="font-size:11px">在下方手动添加</span>
-            </div>`;
+            container.innerHTML = '<div style="padding:14px;color:var(--muted);font-size:12px;text-align:center;border:1px dashed var(--border);border-radius:var(--radius);">' +
+                _t('settings.noModels','暂无模型') + '<br><button class="empty-hint-btn" onclick="fetchModels()">' + _t('settings.fetchHint','从 API 拉取模型') + '</button>' +
+                '<span style="margin:0 6px;color:var(--muted)">' + _t('settings.or','或') + '</span>' +
+                '<span style="font-size:11px">' + _t('settings.manualAdd','在下方手动添加') + '</span>' +
+            '</div>';
         } else {
             container.innerHTML = models.map((m, i) => `
                 <div class="model-row">
-                    <input value="${esc(m)}" onchange="updateModel('${type}', ${i}, this.value)" placeholder="模型名称">
-                    <button class="del-model-btn" onclick="removeModel('${type}', ${i})" title="删除">×</button>
+                    <input value="${esc(m)}" onchange="updateModel('${type}', ${i}, this.value)" placeholder="${_t('settings.modelName','模型名称')}">
+                    <button class="del-model-btn" onclick="removeModel('${type}', ${i})" title="${_t('settings.delete','删除')}">×</button>
                 </div>
             `).join('');
         }
@@ -901,15 +958,15 @@ function renderPlatformCards() {
         const initials = d.name.slice(0, 2).toUpperCase();
         const exists = providers.find(p => p.id === d.id);
         const badgeCls = d.vendor === 'third_party' ? 'third' : 'official';
-        const badgeTxt = d.vendor === 'third_party' ? '第三方' : '官网';
+        const badgeTxt = d.vendor === 'third_party' ? _t('settings.thirdBadge','第三方') : _t('settings.officialBadge','官网');
         const imgN = (d.image_models || []).length;
         const chatN = (d.chat_models || []).length;
         const vidN = (d.video_models || []).length;
-        const modelsStr = [imgN ? imgN+' 图' : '', chatN ? chatN+' 文' : '', vidN ? vidN+' 视频' : ''].filter(Boolean).join(' · ') || '暂无模型';
+        const modelsStr = [imgN ? imgN+_t('settings.image','生图') : '', chatN ? chatN+_t('settings.llm','LLM') : '', vidN ? vidN+_t('settings.video','视频') : ''].filter(Boolean).join(' · ') || _t('settings.noModels','暂无模型');
 
         const actionHtml = exists
-            ? '<span class="added-mark">✓ 已添加</span><button class="btn-xs" onclick="event.stopPropagation();removePlatformCard(\'' + d.id + '\')" title="移除">✕</button>'
-            : '<button class="btn-xs add" onclick="event.stopPropagation();addPlatformCard(\'' + d.id + '\')">+ 添加</button>';
+            ? '<span class="added-mark">' + _t('settings.added','✓ 已添加') + '</span><button class="btn-xs" onclick="event.stopPropagation();removePlatformCard(\'' + d.id + '\')" title="' + _t('settings.remove','移除') + '">✕</button>'
+            : '<button class="btn-xs add" onclick="event.stopPropagation();addPlatformCard(\'' + d.id + '\')">' + _t('settings.addToPlatform','+ 添加') + '</button>';
 
         var clickAction = exists ? 'onclick="selectPlatformCard(\'' + d.id + '\')"' : '';
         return '<div class="platform-card" ' + clickAction + ' style="' + (exists ? 'cursor:pointer;' : '') + '">' +
@@ -941,7 +998,7 @@ function selectPlatformCard(id) {
 }
 
 function addPlatformCard(id) {
-    if (providers.find(p => p.id === id)) { showToast('该平台已在列表中', 'warn'); return; }
+    if (providers.find(p => p.id === id)) { showToast(_t('settings.alreadyInList','该平台已在列表中'), 'warn'); return; }
     const def = initDefaultProviders().find(d => d.id === id);
     if (!def) return;
     providers.push({
@@ -954,11 +1011,11 @@ function addPlatformCard(id) {
     renderProviderList();
     renderPlatformCards();
     selectProvider(def.id);
-    showToast('已添加 ' + def.name);
+    showToast(_t('settings.addedPlatform','已添加 ') + def.name);
 }
 
 function removePlatformCard(id) {
-    if (!confirm('确定要移除 "' + id + '" 平台配置吗？')) return;
+    if (!confirm(_t('settings.removeConfirm','确定要移除 "#" 平台配置吗？').replace('#',id))) return;
     providers = providers.filter(p => p.id !== id);
     saveLocalProviders(providers);
     renderProviderList();
@@ -969,7 +1026,7 @@ function removePlatformCard(id) {
         document.getElementById('platformsView').style.display = 'none';
         if (providers.length > 0) selectProvider(providers[0].id);
     }
-    showToast('已移除');
+    showToast(_t('settings.removed','已移除'));
 }
 
 // ===== Provider CRUD =====
@@ -999,21 +1056,47 @@ function confirmAddProvider() {
     const protocol = document.getElementById('newProviderProtocol').value;
     const vendor = document.getElementById('newProviderVendor').value;
 
-    if (!name) { showToast('请输入平台名称', 'warn'); return; }
-    if (!id || !/^[a-zA-Z0-9_-]{2,40}$/.test(id)) { showToast('平台 ID 只能使用英文、数字、下划线、连字符，2-40 个字符', 'warn'); return; }
-    if (providers.find(p => p.id === id)) { showToast('平台 ID 已存在', 'warn'); return; }
+    if (!name) { showToast(_t('settings.enterName','请输入平台名称'), 'warn'); return; }
+    if (!id || !/^[a-zA-Z0-9_-]{2,40}$/.test(id)) { showToast(_t('settings.invalidId','平台 ID 只能使用英文、数字、下划线、连字符，2-40 个字符'), 'warn'); return; }
+    if (providers.find(p => p.id === id)) { showToast(_t('settings.idExists','平台 ID 已存在'), 'warn'); return; }
 
     providers.push({ id, name, protocol, vendor, base_url: '', desc: '', image_models: [], chat_models: [], video_models: [] });
     saveLocalProviders(providers);
+    // 如果是之前禁用的内置平台，重新启用并刷新缓存
+    apiFetch('/api/providers/' + id + '/enable', { method: 'POST' })
+        .then(() => { refreshProviders().catch(() => {}); notifyRefresh(); })
+        .catch(e => { console.warn('重新启用平台失败（可能不是内置平台）:', e); });
     closeAddModal();
     renderProviderList();
     selectProvider(id);
 }
 
 function removeProvider(id) {
-    if (!confirm(`确定要删除 "${id}" 平台配置吗？`)) return;
+    if (!confirm(_t('settings.remove','确定要删除') + ' "' + id + '" ?')) return;
+    const pid = id.toUpperCase();
+    const keysToClear = {};
+    // 1. 所有 KEY 变体（覆盖服务端 get_provider_api_key 检查的全部模式）
+    var allKeyNames = _allProviderKeyNames(id);
+    for (var i = 0; i < allKeyNames.length; i++) {
+        keysToClear[allKeyNames[i]] = '';
+    }
+    // 2. Base URL（两种模式）
+    keysToClear[providerBaseUrlEnvKey(id)] = '';
+    keysToClear['API_PROVIDER_' + pid + '_BASE_URL'] = '';
+    // 3. 模型列表
+    keysToClear[pid + '_IMAGE_MODELS'] = '';
+    keysToClear[pid + '_CHAT_MODELS'] = '';
+    keysToClear[pid + '_VIDEO_MODELS'] = '';
+    apiFetch('/api/settings/api-keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(keysToClear)
+    }).then(() => {
+        refreshProviders().catch(() => {});
+        notifyRefresh();
+    }).catch(e => { console.error('清除平台配置失败:', e); });
+    // 清理前端 localStorage
     providers = providers.filter(p => p.id !== id);
-    // 清理所有关联的 key
     localStorage.removeItem(PROVIDER_CONFIG_PREFIX + 'key_' + id);
     localStorage.removeItem(PROVIDER_CONFIG_PREFIX + 'wallet_key_' + id);
     saveLocalProviders(providers);
@@ -1022,8 +1105,8 @@ function removeProvider(id) {
         currentProviderId = providers.length > 0 ? providers[0].id : null;
         if (currentProviderId) selectProvider(currentProviderId);
         else {
-            document.getElementById('editorTitle').textContent = '选择平台';
-            document.getElementById('editorSub').textContent = '从左侧列表选择一个平台进行配置';
+            document.getElementById('editorTitle').textContent = _t('settings.selectHint','选择平台');
+            document.getElementById('editorSub').textContent = _t('settings.selectSub','从左侧列表选择一个平台进行配置');
             document.getElementById('deleteBtn').style.display = 'none';
         }
     }
@@ -1033,7 +1116,7 @@ function removeProvider(id) {
 function deleteCurrentProvider() {
     if (!currentProviderId) return;
     if (providers.length <= 1) {
-        showToast('至少需要保留一个平台', 'warn');
+        showToast(_t('settings.atLeastOne','至少需要保留一个平台'), 'warn');
         return;
     }
     removeProvider(currentProviderId);
@@ -1079,6 +1162,7 @@ function openRegister() {
         'modelscope': 'https://www.modelscope.cn/',
         'runninghub': 'https://www.runninghub.cn/',
                 'deepseek':   'https://platform.deepseek.com/',
+        'xmmimo':     'https://platform.xiaomimimo.com?ref=RMU2DB',
     };
     let url = currentProviderId ? regUrls[currentProviderId] : null;
     if (!url) {
@@ -1128,14 +1212,28 @@ function updateProviderMeta() {
 }
 
 // ===== Key 操作 =====
+// 安全读取输入框中的 Key：掩码状态下从 localStorage 读真 Key，明文状态直接读输入框
+function _readKeyFromInput(inputId, storageKey) {
+    const input = document.getElementById(inputId);
+    if (!input) return '';
+    const val = input.value.trim();
+    // 掩码状态（••••xxxx）→ 从 localStorage 读真 Key
+    if (val.startsWith('••••') || input.dataset.masked === 'true') {
+        return localStorage.getItem(storageKey) || '';
+    }
+    // 明文状态 → 直接返回
+    return val;
+}
+
 async function saveKeyOnly() {
     const p = providers.find(x => x.id === currentProviderId);
     if (!p) return;
-    const val = document.getElementById('keyInput').value.trim();
+    const storageKey = PROVIDER_CONFIG_PREFIX + 'key_' + p.id;
+    const val = _readKeyFromInput('keyInput', storageKey);
     if (!val) return;
 
-    // 保存到 localStorage
-    localStorage.setItem(PROVIDER_CONFIG_PREFIX + 'key_' + p.id, val);
+    // 保存到 localStorage（始终存真 Key）
+    localStorage.setItem(storageKey, val);
 
     // 同时保存到后端 .env
     const envKey = providerEnvKey(p.id);
@@ -1145,49 +1243,33 @@ async function saveKeyOnly() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ [envKey]: val })
         });
-        document.getElementById('keyHint').textContent = 'Key 已保存到后端';
+        document.getElementById('keyHint').textContent = _t('settings.keySavedBackend','Key 已保存到后端');
         document.getElementById('keyHint').className = 'hint';
+        // 刷新缓存使其他页面可见
+        refreshProviders().catch(() => {});
+        notifyRefresh();
     } catch (e) {
-        document.getElementById('keyHint').textContent = 'Key 已保存到浏览器，但后端写入失败: ' + e.message;
+        document.getElementById('keyHint').textContent = _t('settings.keySavedBrowser','Key 已保存到浏览器，但后端写入失败: ') + e.message;
         document.getElementById('keyHint').style.color = 'var(--bad)';
     }
-    // 保存后保持显示真实 Key，点击眼睛才会掩码
-    document.getElementById('keyInput').dataset.masked = 'false';
-}
-
-function toggleKeyVis(inputId, btn) {
-    const input = document.getElementById(inputId);
-    if (!input) return;
-    const isPassword = input.type === 'password';
-    if (isPassword && input.dataset.masked === 'true') {
-        // 从 localStorage 读取真实 Key 填入
-        const storageKey = inputId === 'keyInput'
-            ? PROVIDER_CONFIG_PREFIX + 'key_' + currentProviderId
-            : PROVIDER_CONFIG_PREFIX + 'wallet_key_' + currentProviderId;
-        const real = localStorage.getItem(storageKey) || '';
-        if (real) { input.value = real; input.dataset.masked = 'false'; }
-    }
-    if (!isPassword && input.dataset.masked === 'false') {
-        // 重新掩码
-        const val = input.value;
-        input.value = val.length > 8 ? '••••' + val.slice(-4) : '••••';
-        input.dataset.masked = 'true';
-    }
-    input.type = isPassword ? 'text' : 'password';
-    btn.style.color = isPassword ? 'var(--accent)' : '';
-    btn.style.background = isPassword ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : '';
-    btn.title = isPassword ? '隐藏' : '显示/隐藏';
+    // 保存后显示掩码（明文 text 模式下可见后4位）
+    const input = document.getElementById('keyInput');
+    input.type = 'text';
+    input.value = val.length > 8 ? '••••' + val.slice(-4) : '••••';
+    input.dataset.masked = 'true';
 }
 
 function clearKeyOnly() {
     const p = providers.find(x => x.id === currentProviderId);
     if (!p) return;
-    if (!confirm('确定清除此平台的 API Key？')) return;
+    if (!confirm(_t('settings.clearKeyConfirm','确定清除此平台的 API Key？'))) return;
 
     localStorage.removeItem(PROVIDER_CONFIG_PREFIX + 'key_' + p.id);
-    document.getElementById('keyInput').value = '';
-    document.getElementById('keyInput').dataset.masked = '';
-    document.getElementById('keyHint').textContent = 'Key 已清除';
+    const ki = document.getElementById('keyInput');
+    ki.type = 'password';
+    ki.value = '';
+    ki.dataset.masked = '';
+    document.getElementById('keyHint').textContent = _t('settings.keyCleared','Key 已清除');
 
     const envKey = providerEnvKey(p.id);
     apiFetch('/api/settings/api-keys', {
@@ -1201,30 +1283,34 @@ function clearKeyOnly() {
 function saveWalletKey() {
     const p = providers.find(x => x.id === currentProviderId);
     if (!p) return;
-    const val = document.getElementById('walletKeyInput').value.trim();
+    const storageKey = PROVIDER_CONFIG_PREFIX + 'wallet_key_' + p.id;
+    const val = _readKeyFromInput('walletKeyInput', storageKey);
     if (!val) return;
-    localStorage.setItem(PROVIDER_CONFIG_PREFIX + 'wallet_key_' + p.id, val);
+    localStorage.setItem(storageKey, val);
     apiFetch('/api/settings/api-keys', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 'RUNNINGHUB_WALLET_API_KEY': val })
     }).then(() => {
-        document.getElementById('walletKeyHint').textContent = '余额 Key 已保存';
+        document.getElementById('walletKeyHint').textContent = _t('settings.walletKeySaved','余额 Key 已保存');
         document.getElementById('walletKeyHint').className = 'hint';
     }).catch(e => {
-        document.getElementById('walletKeyHint').textContent = 'Key 已保存到浏览器，但后端写入失败';
+        document.getElementById('walletKeyHint').textContent = _t('settings.keySavedBrowser','Key 已保存到浏览器，但后端写入失败: ');
     });
-    document.getElementById('walletKeyInput').dataset.masked = 'false';
+    // 保存后显示掩码
+    const input = document.getElementById('walletKeyInput');
+    input.value = val.length > 8 ? '••••' + val.slice(-4) : '••••';
+    input.dataset.masked = 'true';
 }
 
 function clearWalletKey() {
     const p = providers.find(x => x.id === currentProviderId);
     if (!p) return;
-    if (!confirm('确定清除 RunningHub 余额 Key？')) return;
+    if (!confirm(_t('settings.clearWalletConfirm','确定清除 RunningHub 余额 Key？'))) return;
     localStorage.removeItem(PROVIDER_CONFIG_PREFIX + 'wallet_key_' + p.id);
     document.getElementById('walletKeyInput').value = '';
     document.getElementById('walletKeyInput').dataset.masked = '';
-    document.getElementById('walletKeyHint').textContent = '余额 Key 已清除';
+    document.getElementById('walletKeyHint').textContent = _t('settings.keyCleared','余额 Key 已清除');
     apiFetch('/api/settings/api-keys', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1243,6 +1329,29 @@ function providerEnvKey(providerId) {
                 'deepseek': 'DEEPSEEK_API_KEY',
     };
     return keyMap[providerId] || `API_PROVIDER_${providerId.toUpperCase().replace(/-/g, '_')}_KEY`;
+}
+
+// 返回服务端 get_provider_api_key() 检查的所有 KEY 变体名
+function _allProviderKeyNames(providerId) {
+    // 与 server/config/env.py get_provider_api_key() 的 key_map 保持同步
+    var names = [providerEnvKey(providerId)];  // 主 KEY
+    var pid = providerId.toUpperCase();
+    names.push(pid + '_API_KEY');              // {PID}_API_KEY 模式
+    // 内置平台别名
+    var aliasMap = {
+        'OPENAI': ['OPENAI_API_KEY'],
+        'APIMART': ['COMFLY_API_KEY'],
+        'DEEPSEEK': ['DEEPSEEK_API_KEY'],
+        'GEMINI': ['GEMINI_API_KEY'],
+        'MODELSCOPE': ['MODELSCOPE_API_KEY'],
+        'RUNNINGHUB': ['RUNNINGHUB_API_KEY', 'RUNNINGHUB_WALLET_API_KEY'],
+        'VOLCENGINE': ['ARK_API_KEY'],
+    };
+    var aliases = aliasMap[pid] || [];
+    for (var i = 0; i < aliases.length; i++) {
+        names.push(aliases[i]);
+    }
+    return names;
 }
 
 function providerBaseUrlEnvKey(providerId) {
@@ -1270,7 +1379,7 @@ async function testConnection() {
     const p = providers.find(x => x.id === currentProviderId);
     if (!p) return;
 
-    status.innerHTML = '<span style=\"color:var(--muted)\">验证中...</span>';
+    status.innerHTML = '<span style=\"color:var(--muted)\">' + _t('settings.verifying','验证中...') + '</span>';
 
     const apiKey = localStorage.getItem(PROVIDER_CONFIG_PREFIX + 'key_' + p.id) || '';
     const baseUrl = document.getElementById('baseInput').value.trim();
@@ -1283,12 +1392,12 @@ async function testConnection() {
         });
         const data = await resp.json();
         if (data.ok) {
-            let msg = `<span style=\"color:var(--good);font-weight:800\">✓ 地址验证通过 · ${data.latency_ms}ms</span>`;
+            let msg = '<span style=\"color:var(--good);font-weight:800\">' + _t('settings.verifyPassed','✓ 地址验证通过 · ') + data.latency_ms + 'ms</span>';
             if (data.protocol && data.protocol !== document.getElementById('protocolSelect').value) {
                 document.getElementById('protocolSelect').value = data.protocol;
                 if (p) { p.protocol = data.protocol; saveLocalProviders(providers); }
                 onProtocolChange();
-                msg += ` <span style=\"color:var(--accent);font-size:10.5px\">(已自动识别为 ${data.protocol})</span>`;
+                msg += ' <span style=\"color:var(--accent);font-size:10.5px\">' + _t('settings.autoDetectedAs','(已自动识别为 ') + data.protocol + ')</span>';
             }
             status.innerHTML = msg;
         } else if (data.mismatch) {
@@ -1296,7 +1405,7 @@ async function testConnection() {
             const switchBtn = `<button onclick=\"switchToProvider('${data.protocol}')\" style=\"margin-left:6px;padding:2px 10px;border-radius:4px;border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);font-size:11px;font-weight:800;cursor:pointer\">切换到 ${data.protocol}</button>`;
             status.innerHTML = `<span style=\"color:var(--warn);font-weight:800\">⚠ ${esc(data.error||'')}</span>${switchBtn}`;
         } else {
-            status.innerHTML = `<span style=\"color:var(--warn);font-weight:800\">⚠ 验证失败 (HTTP ${data.status_code||'?'})</span> <span style=\"color:var(--muted);font-size:10.5px\">${esc((data.error||'').slice(0,80))}</span>`;
+            status.innerHTML = '<span style=\"color:var(--warn);font-weight:800\">' + _t('settings.verifyFailedStatus','⚠ 验证失败 (HTTP ') + (data.status_code||'?') + ')</span> <span style=\"color:var(--muted);font-size:10.5px\">' + esc((data.error||'').slice(0,80)) + '</span>';
         }
     } catch (e) {
         status.innerHTML = `<span style=\"color:var(--bad);font-weight:800\">⚠ ${esc(e.message)}</span>`;
@@ -1310,8 +1419,8 @@ async function fetchModels() {
     if (!p) return;
 
     document.getElementById('fetchBtn').disabled = true;
-    document.getElementById('fetchBtn').textContent = '拉取中...';
-    status.innerHTML = '<span style=\"color:var(--muted)\">正在拉取模型列表...</span>';
+    document.getElementById('fetchBtn').textContent = _t('settings.fetching','拉取中...');
+    status.innerHTML = '<span style=\"color:var(--muted)\">' + _t('settings.fetching','正在拉取模型列表...') + '</span>';
 
     const apiKey = localStorage.getItem(PROVIDER_CONFIG_PREFIX + 'key_' + p.id) || '';
     const baseUrl = document.getElementById('baseInput').value.trim();
@@ -1351,22 +1460,22 @@ async function fetchModels() {
             pickerState.selected[id] = existing.image.has(id) || existing.chat.has(id) || existing.video.has(id);
         });
 
-        status.innerHTML = `<span style=\"color:var(--good);font-weight:800\">✓ 已拉取 ${data.total} 个模型</span>`;
+        status.innerHTML = '<span style=\"color:var(--good);font-weight:800\">' + _t('settings.fetchedModels','✓ 已拉取 # 个模型').replace('#',data.total) + '</span>';
 
         // 打开模型选择器
         openModelPicker();
 
     } catch (e) {
-        status.innerHTML = `<span style=\"color:var(--bad);font-weight:800\">⚠ 拉取失败: ${esc(e.message)}</span>`;
+        status.innerHTML = '<span style=\"color:var(--bad);font-weight:800\">' + _t('settings.fetchFailedStatus','⚠ 拉取失败: ') + esc(e.message) + '</span>';
     } finally {
         document.getElementById('fetchBtn').disabled = false;
-        document.getElementById('fetchBtn').textContent = '拉取模型';
+        document.getElementById('fetchBtn').textContent = _t('settings.fetchModels','拉取模型');
     }
 }
 
 // ===== 模型选择器 =====
 function openModelPicker() {
-    if (!lastFetchedAll.length) { showToast('没有拉取到模型，请先点"拉取模型"', 'warn'); return; }
+    if (!lastFetchedAll.length) { showToast(_t('settings.noFetched','没有拉取到模型，请先点"拉取模型"'), 'warn'); return; }
     document.querySelectorAll('.picker-tab').forEach(t => t.classList.toggle('active', t.dataset.cat === 'all'));
     document.getElementById('modelPickerOverlay').classList.add('open');
     renderModelPicker();
@@ -1401,7 +1510,7 @@ function renderModelPicker() {
     });
     pickerVisibleIds = list;
 
-    document.getElementById('pickerCount').textContent = `共 ${totals.all} 个模型 · 当前显示 ${list.length} 个`;
+    document.getElementById('pickerCount').textContent = _t('settings.pickerCount','共 # 个模型 · 当前显示 # 个').replace('#',totals.all).replace('#',list.length);
     document.querySelectorAll('.picker-tab').forEach(tab => {
         const cat = tab.dataset.cat;
         const cnt = tab.querySelector('.cat-count');
@@ -1421,7 +1530,7 @@ function renderModelPicker() {
             <span class=\"picker-model-tag ${tagCls}\">${tagLabel}</span>
         </div>`;
     }).join('');
-    document.getElementById('pickerList').innerHTML = html || '<div style=\"padding:40px;text-align:center;color:var(--muted);font-size:13px\">无匹配模型</div>';
+    document.getElementById('pickerList').innerHTML = html || '<div style=\"padding:40px;text-align:center;color:var(--muted);font-size:13px\">' + _t('settings.noMatch','无匹配模型') + '</div>';
 
     const si = selecteds;
     ['Image','Chat','Video'].forEach((k, i) => {
@@ -1462,7 +1571,7 @@ function applyModelPicker() {
 // ===== 保存当前 =====
 async function saveCurrent() {
     const status = document.getElementById('verifyStatus');
-    if (!currentProviderId) { showToast('请先选择平台', 'warn'); return; }
+    if (!currentProviderId) { showToast(_t('settings.selectPlatformWarn','请先选择平台'), 'warn'); return; }
 
     // 同步编辑内容到数据模型中
     updateProviderMeta();
@@ -1471,6 +1580,7 @@ async function saveCurrent() {
     if (!p) return;
 
     const updates = {};
+    // Key：从 localStorage 读取（真实 Key，非掩码值）
     const storedKey = localStorage.getItem(PROVIDER_CONFIG_PREFIX + 'key_' + p.id);
     if (storedKey) updates[providerEnvKey(p.id)] = storedKey;
     const walletKey = localStorage.getItem(PROVIDER_CONFIG_PREFIX + 'wallet_key_' + p.id);
@@ -1478,10 +1588,16 @@ async function saveCurrent() {
     // 同时保存 Base URL（自定义平台必需，否则 Chat/生图 无法知道请求地址）
     const baseUrl = document.getElementById('baseInput').value.trim();
     if (baseUrl) updates[providerBaseUrlEnvKey(p.id)] = baseUrl;
+    // 同步模型列表到 .env，确保其他页面（生图/对话/画布）能获取到正确的模型
+    const pid = p.id.toUpperCase();
+    if ((p.image_models || []).length) updates[pid + '_IMAGE_MODELS'] = p.image_models.join(',');
+    if ((p.chat_models || []).length) updates[pid + '_CHAT_MODELS'] = p.chat_models.join(',');
+    if ((p.video_models || []).length) updates[pid + '_VIDEO_MODELS'] = p.video_models.join(',');
 
     if (!Object.keys(updates).length) {
-        status.innerHTML = '<span style=\"color:var(--muted)\">无需保存</span>';
-        setTimeout(() => { if (status.textContent === '无需保存') status.innerHTML = ''; }, 2000);
+        status.innerHTML = '<span style=\"color:var(--muted)\">' + _t('settings.noNeedSave','无需保存') + '</span>';
+        status.dataset.fading = '1';
+        setTimeout(() => { if (status.dataset.fading === '1') { status.innerHTML = ''; delete status.dataset.fading; } }, 2000);
         return;
     }
 
@@ -1490,17 +1606,20 @@ async function saveCurrent() {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(updates)
         });
-        status.innerHTML = '<span style=\"color:var(--good)\">✓ 已保存 ' + p.name + '</span>';
+        // 失效所有页面的 Provider 缓存
+        refreshProviders().catch(() => {});
+        notifyRefresh();
+        status.innerHTML = '<span style=\"color:var(--good)\">' + _t('settings.savedStatus','✓ 已保存 ') + p.name + '</span>';
         setTimeout(() => { if (status.innerHTML.includes('已保存')) status.innerHTML = ''; }, 2500);
     } catch (e) {
-        status.innerHTML = '<span style=\"color:var(--bad)\">保存失败: ' + esc(e.message) + '</span>';
+        status.innerHTML = '<span style=\"color:var(--bad)\">' + _t('settings.saveFailed','保存失败: ') + esc(e.message) + '</span>';
     }
 }
 
 // ===== 保存全部 =====
 async function saveAll() {
     const status = document.getElementById('globalStatus');
-    status.textContent = '正在保存…';
+    status.textContent = _t('settings.saving','正在保存…');
     status.className = 'inline-status';
 
     // 1. 保存当前 provider 的编辑内容
@@ -1526,6 +1645,11 @@ async function saveAll() {
         if (baseUrl) {
             updates[providerBaseUrlEnvKey(p.id)] = baseUrl;
         }
+        // 同步模型列表到 .env
+        const pid = p.id.toUpperCase();
+        if ((p.image_models || []).length) updates[pid + '_IMAGE_MODELS'] = p.image_models.join(',');
+        if ((p.chat_models || []).length) updates[pid + '_CHAT_MODELS'] = p.chat_models.join(',');
+        if ((p.video_models || []).length) updates[pid + '_VIDEO_MODELS'] = p.video_models.join(',');
     }
 
     // 安全设置
@@ -1544,15 +1668,22 @@ async function saveAll() {
         // 保存 APP_API_KEY 到浏览器（后续请求自动携带）
         if (appKey) setStoredApiKey(appKey);
 
-        status.textContent = '全部设置已保存成功';
+        // 失效所有页面的 Provider 缓存
+        refreshProviders().catch(() => {});
+        notifyRefresh();
+
+        status.textContent = _t('settings.allSaved','全部设置已保存成功');
         status.className = 'inline-status ok';
     } catch (e) {
-        status.textContent = '保存失败: ' + e.message;
+        status.textContent = _t('settings.saveFailed','保存失败: ') + e.message;
         status.className = 'inline-status err';
     }
 }
 
 // ===== 辅助 =====
+function notifyRefresh() {
+    try { parent.postMessage({type:'refresh'}, location.origin); } catch(e) {}
+}
 function esc(str) { return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 
 function scrollToSection(id) {
@@ -1578,8 +1709,12 @@ init();
 
 // 接收主题切换
 window.addEventListener('message', e => {
+    if (e.origin !== location.origin) return;
     if (e.data?.type === 'theme') {
         document.documentElement.classList.toggle('dark', e.data.theme === 'dark');
+    }
+    if (e.data?.type === 'refresh') {
+        init().catch(() => {});
     }
 });
 window.addEventListener('lang-applied',function(){if(window._i18nUpdate)window._i18nUpdate();});</script>
