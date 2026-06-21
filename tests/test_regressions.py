@@ -1042,4 +1042,233 @@ class TestTaskManager(unittest.TestCase):
         self.mgr.create_task()
         after = self.mgr.count()
         self.assertEqual(after, before + 2)
+class TestImageService(unittest.TestCase):
+    """Image service utility tests."""
+
+    def test_auto_detect_gemini(self):
+        """auto_detect_provider should switch to GeminiProvider for gemini models."""
+        from server.providers.openai import OpenAIProvider
+        from server.services.image_service import auto_detect_provider
+        p = OpenAIProvider()
+        result = auto_detect_provider(p, "gemini-2.0-flash")
+        self.assertEqual(result.provider_id, "gemini")
+
+    def test_auto_detect_keep_openai(self):
+        """auto_detect_provider should keep provider for non-gemini models."""
+        from server.providers.openai import OpenAIProvider
+        from server.services.image_service import auto_detect_provider
+        p = OpenAIProvider()
+        result = auto_detect_provider(p, "gpt-4o")
+        self.assertIs(result, p)
+
+    def test_normalize_image_url_noop(self):
+        """normalize_image_url should return URL as-is for non-/assets/output/ paths."""
+        from server.services.image_service import normalize_image_url
+        url = "/output/images/test.png"
+        result = normalize_image_url(url)
+        self.assertEqual(result, url)
+
+    def test_build_video_result_meta(self):
+        """build_video_result_meta should construct correct metadata dict."""
+        from server.services.video_service import build_video_result_meta
+        meta = build_video_result_meta("openai", "veo3-fast", "/output/videos/test.mp4", "up_id")
+        self.assertEqual(meta["provider_id"], "openai")
+        self.assertEqual(meta["model"], "veo3-fast")
+        self.assertEqual(meta["video_url"], "/output/videos/test.mp4")
+        self.assertEqual(meta["upstream_task_id"], "up_id")
+
+class TestAgentCrypto(unittest.TestCase):
+    """Agent encryption utility tests."""
+
+    def test_fingerprint_hash_consistency(self):
+        """fingerprint_hash should produce consistent output for same input."""
+        from server.security.agent_crypto import fingerprint_hash
+        h1 = fingerprint_hash("test_fingerprint")
+        h2 = fingerprint_hash("test_fingerprint")
+        self.assertEqual(h1, h2)
+        self.assertIsInstance(h1, str)
+        self.assertGreater(len(h1), 10)
+
+    def test_fingerprint_hash_different(self):
+        """fingerprint_hash should produce different output for different inputs."""
+        from server.security.agent_crypto import fingerprint_hash
+        h1 = fingerprint_hash("fp_1")
+        h2 = fingerprint_hash("fp_2")
+        self.assertNotEqual(h1, h2)
+
+    def test_encrypt_decrypt_bytes_roundtrip(self):
+        """encrypt_bytes and decrypt_bytes should roundtrip correctly."""
+        from server.security.agent_crypto import encrypt_bytes, decrypt_bytes
+        data = b"hello world"
+        key = b"k" * 32
+        encrypted = encrypt_bytes(data, key)
+        self.assertNotEqual(encrypted, data)
+        decrypted = decrypt_bytes(encrypted, key)
+        self.assertEqual(decrypted, data)
+
+    def test_encrypt_decrypt_wrong_key(self):
+        """decrypt_bytes with wrong key should raise."""
+        from server.security.agent_crypto import encrypt_bytes, decrypt_bytes
+        data = b"secret"
+        key = b"k" * 32
+        wrong_key = b"w" * 32
+        encrypted = encrypt_bytes(data, key)
+        with self.assertRaises(Exception):
+            decrypt_bytes(encrypted, wrong_key)
+
+    def test_is_encrypted_true(self):
+        """is_encrypted should detect encrypted data."""
+        from server.security.agent_crypto import encrypt_bytes, is_encrypted
+        data = encrypt_bytes(b"test", b"k" * 32)
+        self.assertTrue(is_encrypted(data))
+
+    def test_is_encrypted_false(self):
+        """is_encrypted should return False for plain data."""
+        from server.security.agent_crypto import is_encrypted
+        self.assertFalse(is_encrypted(b"plain text data"))
+
+    def test_encrypt_str_roundtrip(self):
+        """encrypt_str and decrypt_str should roundtrip correctly."""
+        from server.security.agent_crypto import encrypt_str, decrypt_str
+        text = "hello 你好"
+        key = b"k" * 32
+        encrypted = encrypt_str(text, key)
+        self.assertIsInstance(encrypted, str)
+        decrypted = decrypt_str(encrypted, key)
+        self.assertEqual(decrypted, text)
+
+    def test_encrypt_with_fingerprint_roundtrip(self):
+        """encrypt_with_fingerprint and decrypt_with_fingerprint should roundtrip."""
+        from server.security.agent_crypto import encrypt_with_fingerprint, decrypt_with_fingerprint
+        text = "sensitive prompt"
+        fp = "test_machine_fingerprint"
+        encrypted = encrypt_with_fingerprint(text, fp)
+        self.assertIsInstance(encrypted, str)
+        decrypted = decrypt_with_fingerprint(encrypted, fp)
+        self.assertEqual(decrypted, text)
+
+    def test_decrypt_with_wrong_fingerprint(self):
+        """decrypt_with_fingerprint with wrong fingerprint should raise."""
+        from server.security.agent_crypto import encrypt_with_fingerprint, decrypt_with_fingerprint
+        encrypted = encrypt_with_fingerprint("secret", "correct_fp")
+        with self.assertRaises(Exception):
+            decrypt_with_fingerprint(encrypted, "wrong_fp")
+
+    def test_derive_key_deterministic(self):
+        """derive_key should produce same key for same password and salt."""
+        from server.security.agent_crypto import derive_key
+        salt = b"s" * 16
+        k1 = derive_key("password123", salt)
+        k2 = derive_key("password123", salt)
+        self.assertEqual(k1, k2)
+
+    def test_derive_key_different_salt(self):
+        """derive_key should produce different keys for different salts."""
+        from server.security.agent_crypto import derive_key
+        k1 = derive_key("password", b"s" * 16)
+        k2 = derive_key("password", b"d" * 16)
+        self.assertNotEqual(k1, k2)
+
+    def test_collect_fingerprint(self):
+        """collect_machine_fingerprint should return a string."""
+        import unittest.mock
+        with unittest.mock.patch("platform.node", return_value="test-host"):
+            from server.security.agent_crypto import collect_machine_fingerprint
+            fp = collect_machine_fingerprint()
+            self.assertIsInstance(fp, str)
+            self.assertGreater(len(fp), 0)
+
+class TestAgentEngine(unittest.TestCase):
+    """Agent engine ReAct loop tests."""
+
+    def _make_mock_provider(self, response_text="Hello from agent"):
+        """Create a minimal mock provider for testing."""
+        from server.providers.base import ChatResult
+        import unittest.mock
+        prov = unittest.mock.MagicMock()
+        prov.provider_id = "mock"
+        prov.protocol = "mock"
+        async def mock_chat(messages, model="", **kwargs):
+            return ChatResult(content=response_text, model=model)
+        prov.chat = mock_chat
+        return prov
+
+    def test_run_agent_basic(self):
+        """run_agent should return success with provider response."""
+        import asyncio
+        from server.agent.engine import run_agent
+        prov = self._make_mock_provider("test output")
+        config = {"system_prompt": "You are helpful", "model": "gpt-4o", "max_steps": 3}
+        result = asyncio.run(run_agent(config, "hello", [], prov))
+        self.assertTrue(result["success"])
+        self.assertIn("test output", result.get("final_output", ""))
+
+    def test_run_agent_empty_config(self):
+        """run_agent should handle empty config gracefully."""
+        import asyncio
+        from server.agent.engine import run_agent
+        prov = self._make_mock_provider()
+        result = asyncio.run(run_agent({}, "", [], prov))
+        self.assertTrue(result["success"])
+        self.assertIn("steps", result)
+
+    def test_run_agent_provider_error(self):
+        """run_agent should log errors in steps and return default output."""
+        import asyncio
+        from server.agent.engine import run_agent
+        class FailingProvider:
+            provider_id = "mock"
+            protocol = "mock"
+            async def chat(self, messages, model="", **kwargs):
+                raise RuntimeError("API error")
+        prov = FailingProvider()
+        result = asyncio.run(run_agent({"max_steps": 2}, "hello", [], prov))
+        self.assertTrue(result["success"])
+        self.assertIn("steps", result)
+        error_steps = [s for s in result["steps"] if s.get("status") == "error"]
+        self.assertGreaterEqual(len(error_steps), 1)
+        self.assertTrue(len(result.get("final_output", "")) > 0)
+
+    def test_run_agent_with_images(self):
+        """run_agent should accept and pass through image inputs."""
+        import asyncio
+        from server.agent.engine import run_agent
+        prov = self._make_mock_provider()
+        result = asyncio.run(run_agent({}, "describe", ["data:image/png;base64,abc"], prov))
+        self.assertTrue(result["success"])
+
+    def test_run_agent_custom_model(self):
+        """run_agent should use the configured model from config."""
+        import asyncio
+        from server.agent.engine import run_agent
+        prov = self._make_mock_provider()
+        config = {"model": "gpt-4o", "system_prompt": "Be concise"}
+        result = asyncio.run(run_agent(config, "hi", [], prov))
+        self.assertTrue(result["success"])
+
+    def test_run_agent_empty_input(self):
+        """run_agent should handle empty user input."""
+        import asyncio
+        from server.agent.engine import run_agent
+        prov = self._make_mock_provider()
+        result = asyncio.run(run_agent({}, "", [], prov))
+        self.assertTrue(result["success"])
+
+    def test_run_agent_max_steps_limit(self):
+        """run_agent should respect max_steps from config."""
+        import asyncio
+        from server.agent.engine import run_agent
+        prov = self._make_mock_provider()
+        config = {"max_steps": 5}
+        result = asyncio.run(run_agent(config, "test", [], prov))
+        self.assertTrue(result["success"])
+
+    def test_run_agent_output_has_steps(self):
+        """run_agent output should contain steps list."""
+        import asyncio
+        from server.agent.engine import run_agent
+        prov = self._make_mock_provider()
+        result = asyncio.run(run_agent({}, "hello", [], prov))
+        self.assertIn("steps", result)
+        self.assertIsInstance(result["steps"], list)
 
