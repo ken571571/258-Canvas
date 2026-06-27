@@ -34,8 +34,8 @@
 ### 1. 克隆仓库
 
 ```bash
-git clone <你的仓库地址>
-cd <仓库目录>
+git clone https://github.com/ken571571/258-Canvas.git
+cd 258-Canvas
 ```
 
 ### 2. 安装依赖
