@@ -12,12 +12,11 @@ python/
 
 # ——— 用户运行时数据 ———
 data/
-skills/
 logs/
 input/
 output/
 
-# 画布数据纳入版本控制，方便分享示例画布
+# skills/ 和 canvases/ 纳入版本控制，方便分享
 
 # ——— 日志 ———
 *.log
