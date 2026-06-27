@@ -14,9 +14,10 @@ python/
 data/
 skills/
 logs/
-canvases/
 input/
 output/
+
+# 画布数据纳入版本控制，方便分享示例画布
 
 # ——— 日志 ———
 *.log
