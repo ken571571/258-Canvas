@@ -11,8 +11,10 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from .. import config
 from ..storage.json_store import store
+from ..utils import KeyedLockManager
 
 router = APIRouter(prefix="/api", tags=["shared_folders"])
+_locks = KeyedLockManager()
 
 SHARED_FILE = os.path.join(config.DATA_DIR, "shared_folders.json")
 SHARED_MEDIA_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".mp4", ".webm", ".mov"}
@@ -119,35 +121,39 @@ async def register_folder(payload: dict):
         raise HTTPException(status_code=400, detail="不允许注册系统目录，请选择用户数据目录")
     name = str(payload.get("name") or os.path.basename(abs_path))[:100]
 
-    data = _load()
-    # 检查是否已注册
-    for entry in data.get("folders", []):
-        if os.path.normpath(os.path.abspath(entry.get("path", ""))) == os.path.normpath(abs_path):
-            entry["name"] = name
-            await _save(data)
-            return {"folder": {**entry, "path": abs_path, "exists": True}}
+    lock = await _locks.get(SHARED_FILE)
+    async with lock:
+        data = _load()
+        # 检查是否已注册
+        for entry in data.get("folders", []):
+            if os.path.normpath(os.path.abspath(entry.get("path", ""))) == os.path.normpath(abs_path):
+                entry["name"] = name
+                await _save(data)
+                return {"folder": {**entry, "path": abs_path, "exists": True}}
 
-    entry = {
-        "id": f"shared_{uuid.uuid4().hex[:12]}",
-        "name": name,
-        "path": abs_path,
-        "created_at": _now(),
-    }
-    data.setdefault("folders", []).append(entry)
-    await _save(data)
-    return {"folder": {**entry, "exists": True}}
+        entry = {
+            "id": f"shared_{uuid.uuid4().hex[:12]}",
+            "name": name,
+            "path": abs_path,
+            "created_at": _now(),
+        }
+        data.setdefault("folders", []).append(entry)
+        await _save(data)
+        return {"folder": {**entry, "exists": True}}
 
 
 @router.delete("/folders/{folder_id}")
 async def unregister_folder(folder_id: str):
     """取消注册共享文件夹（不删除实际文件）。"""
-    data = _load()
-    before = len(data.get("folders", []))
-    data["folders"] = [f for f in data.get("folders", []) if f.get("id") != folder_id]
-    if len(data["folders"]) == before:
-        raise HTTPException(status_code=404, detail="共享文件夹不存在")
-    await _save(data)
-    return {"ok": True}
+    lock = await _locks.get(SHARED_FILE)
+    async with lock:
+        data = _load()
+        before = len(data.get("folders", []))
+        data["folders"] = [f for f in data.get("folders", []) if f.get("id") != folder_id]
+        if len(data["folders"]) == before:
+            raise HTTPException(status_code=404, detail="共享文件夹不存在")
+        await _save(data)
+        return {"ok": True}
 
 
 # ——— 文件浏览 ———

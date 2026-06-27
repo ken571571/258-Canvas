@@ -6,11 +6,12 @@ import re
 import time
 import asyncio
 import httpx
+from urllib.parse import quote
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from .. import config
 from ..logging_config import get_logger
-from ..security.network import BLOCKED_NETWORKS, is_blocked_host
+from ..security.network import BLOCKED_NETWORKS, is_blocked_host, async_is_blocked_host
 
 log = get_logger("comfyui")
 
@@ -18,7 +19,8 @@ router = APIRouter(prefix="/api", tags=["comfyui"])
 
 # ——— 本地别名：保持模块内原有引用名兼容 ———
 _BLOCKED_NETWORKS = BLOCKED_NETWORKS
-_is_blocked_host = is_blocked_host
+_is_blocked_host = is_blocked_host  # 同步版，仅用于非异步上下文
+_async_is_blocked_host = async_is_blocked_host  # 异步版，用于 async def 中
 
 
 class ComfyGenerateReq(BaseModel):
@@ -40,7 +42,7 @@ async def _get_best_backend() -> str:
 
     # 先选出在线实例
     online = []
-    async with httpx.AsyncClient(timeout=3) as cli:
+    async with httpx.AsyncClient(timeout=3, follow_redirects=False) as cli:
         for addr in config.COMFYUI_INSTANCES:
             try:
                 await cli.get(f"http://{addr}/system_stats")
@@ -95,7 +97,7 @@ async def save_instances(payload: dict):
         if not host or not port.isdigit():
             raise HTTPException(status_code=400, detail=f"地址不合法: {item}")
         # SSRF 防护：检查主机是否在云 metadata 黑名单（允许内网地址用于多机部署）
-        if _is_blocked_host(host, allow_lan=True):
+        if await async_is_blocked_host(host, allow_lan=True):
             raise HTTPException(status_code=400, detail=f"不允许注册受保护地址: {host}")
         if s not in cleaned:
             cleaned.append(s)
@@ -116,7 +118,7 @@ async def save_instances(payload: dict):
 async def comfyui_status():
     """查询所有 ComfyUI 实例状态（含负载信息）。"""
     results = []
-    async with httpx.AsyncClient(timeout=5) as cli:
+    async with httpx.AsyncClient(timeout=5, follow_redirects=False) as cli:
         for addr in config.COMFYUI_INSTANCES:
             try:
                 resp = await cli.get(f"http://{addr}/system_stats")
@@ -144,7 +146,7 @@ def get_queue_status():
 
 async def _submit_comfyui(addr: str, workflow: dict, client_id: str = "canvas571") -> str:
     """提交工作流到 ComfyUI，返回 prompt_id。"""
-    async with httpx.AsyncClient(timeout=10) as cli:
+    async with httpx.AsyncClient(timeout=10, follow_redirects=False) as cli:
         body = {"prompt": workflow, "client_id": client_id}
         try:
             resp = await cli.post(f"http://{addr}/prompt", json=body)
@@ -164,7 +166,7 @@ async def _poll_comfyui_task(addr: str, prompt_id: str, timeout_seconds: int = 3
     """
     import asyncio as _asyncio
     consecutive_errors = 0
-    async with httpx.AsyncClient(timeout=5) as cli:
+    async with httpx.AsyncClient(timeout=5, follow_redirects=False) as cli:
         for _ in range(timeout_seconds):
             try:
                 resp = await cli.get(f"http://{addr}/history/{prompt_id}")
@@ -183,23 +185,23 @@ async def _poll_comfyui_task(addr: str, prompt_id: str, timeout_seconds: int = 3
                             ext = os.path.splitext(fn)[1].lower()
                             # 视频扩展名 → 走视频下载
                             if ext in (".mp4", ".webm", ".mov", ".avi", ".mkv"):
-                                video_url = f"http://{addr}/view?filename={fn}&type=output&subfolder={sub}" if sub else f"http://{addr}/view?filename={fn}&type=output"
+                                video_url = f"http://{addr}/view?filename={quote(fn,safe='')}&type=output&subfolder={quote(sub,safe='')}" if sub else f"http://{addr}/view?filename={quote(fn,safe='')}&type=output"
                                 local_url = await _download_comfyui_media(addr, fn, sub or "video")
                                 videos.append(local_url or video_url)
                             elif ext in (".gif",):
                                 local_url = await _download_comfyui_media(addr, fn, sub or "gifs")
-                                videos.append(local_url or f"http://{addr}/view?filename={fn}&type=output&subfolder={sub}" if sub else f"http://{addr}/view?filename={fn}&type=output")
+                                videos.append(local_url or f"http://{addr}/view?filename={quote(fn,safe='')}&type=output&subfolder={quote(sub,safe='')}" if sub else f"http://{addr}/view?filename={quote(fn,safe='')}&type=output")
                             else:
                                 # 图片也下载到本地，避免局域网客户端无法直连 ComfyUI
                                 local_url = await _download_comfyui_media(addr, fn, sub or "", "images")
-                                images.append(local_url or f"http://{addr}/view?filename={fn}&type=output")
+                                images.append(local_url or f"http://{addr}/view?filename={quote(fn,safe='')}&type=output")
                         # 视频输出 —— 兼容多种 key（videos / gifs / animated）
                         for video_key in ("videos", "gifs"):
                             for item in (node_out.get(video_key) or []):
                                 fn = item.get("filename", "")
                                 if not fn: continue
                                 sub = item.get("subfolder", "") or video_key
-                                video_url = f"http://{addr}/view?filename={fn}&type=output&subfolder={sub}"
+                                video_url = f"http://{addr}/view?filename={quote(fn,safe='')}&type=output&subfolder={quote(sub,safe='')}"
                                 local_url = await _download_comfyui_media(addr, fn, sub)
                                 videos.append(local_url or video_url)
                     log.info(f"ComfyUI 轮询完成: {len(images)} 图片, {len(videos)} 视频")
@@ -227,8 +229,26 @@ async def _download_comfyui_media(addr: str, filename: str, subfolder: str, outp
     try:
         dl_url = f"http://{addr}/view?filename={filename}&type=output&subfolder={subfolder}"
         log.info(f"下载 ComfyUI 媒体: {dl_url}")
-        async with httpx.AsyncClient(timeout=120, follow_redirects=True) as cli:
+        async with httpx.AsyncClient(timeout=120, follow_redirects=False) as cli:
             dl = await cli.get(dl_url)
+            # 手动处理重定向，每跳做 SSRF 校验（防范被入侵的 ComfyUI 实例重定向到 metadata）
+            redirect_count = 0
+            from urllib.parse import urlparse as _urlparse, urljoin as _urljoin
+            original_host = _urlparse(dl_url).hostname
+            while dl.is_redirect and redirect_count < 5:
+                redirect_count += 1
+                next_url = dl.headers.get("location", "")
+                if not next_url:
+                    break
+                if next_url.startswith("/"):
+                    next_url = _urljoin(dl_url, next_url)
+                next_host = _urlparse(next_url).hostname
+                # 仅当重定向到非原始主机时才做额外校验（允许 LAN 内重定向，拦截 metadata）
+                if next_host and next_host != original_host:
+                    if await _async_is_blocked_host(next_host, allow_lan=True, allow_localhost=False):
+                        log.warning(f"SSRF 拦截（ComfyUI 重定向目标）: {next_url[:120]}")
+                        return ""
+                dl = await cli.get(next_url)
             log.info(f"ComfyUI 下载响应: HTTP {dl.status_code}, size={len(dl.content)}")
             if dl.status_code == 200 and len(dl.content) > 1000:
                 h = _hashlib.md5(dl.content).hexdigest()[:12]

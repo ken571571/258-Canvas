@@ -79,6 +79,3 @@ class AssetsTests(unittest.TestCase):
         resp = client.delete("/api/assets/delete?url=/input/%2e%2e%2fAPI/.env")
         self.assertEqual(resp.status_code, 400)
 
-
-if __name__ == "__main__":
-    unittest.main()

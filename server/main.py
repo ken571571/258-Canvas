@@ -52,7 +52,14 @@ from fastapi import WebSocket, WebSocketDisconnect
 @app.websocket("/ws")
 async def ws_endpoint(ws: WebSocket):
     # FastAPI WebSocket 不支持通过函数签名提取查询参数，需手动获取
-    client_id = ws.query_params.get("client_id", "")
+    raw_id = ws.query_params.get("client_id", "")
+    # 校验 client_id：长度 ≤64，字符集 [a-zA-Z0-9_-]，无效则自动生成
+    import re as _re
+    if raw_id and len(raw_id) <= 64 and _re.match(r'^[a-zA-Z0-9_-]+$', raw_id):
+        client_id = raw_id
+    else:
+        import uuid as _uuid
+        client_id = f"ws-{_uuid.uuid4().hex[:12]}"
     await manager.connect(ws, client_id)
     try:
         while True:
@@ -102,14 +109,17 @@ def main():
     print(f"  按 Ctrl+C 停止\n")
     # 自动获取局域网 IP
     import socket
+    s = None
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
         lan_ip = s.getsockname()[0]
-        s.close()
         print(f"  局域网访问: http://{lan_ip}:{config.APP_PORT}/\n")
     except Exception as e:
         log.debug(f"无法获取局域网 IP: {e}")
+    finally:
+        if s:
+            s.close()  # v2.5.51：确保 socket 资源释放
     uvicorn.run(app, host=config.APP_HOST, port=config.APP_PORT, log_level="info")
 
 

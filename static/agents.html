@@ -109,7 +109,7 @@
             </div>
         </div>
         <div class="designer-chat" id="designerChat">
-            <div class="designer-msg assistant" style="color:var(--muted);">选择一个 Agent 开始设计。<br>在此描述你想要的行为，AI 生成系统提示词。<br>可以多轮对话迭代："再简洁一点"、"加上这条规则..."</div>
+            <div class="designer-msg assistant" style="color:var(--muted);white-space:pre-line" data-t="agentsPage.designerWelcomeNew"></div>
         </div>
         <div class="designer-input-row">
             <input id="designerInput" type="text" data-t-placeholder="agentsPage.designerPlaceholder" placeholder="描述 Agent 需求或对提示词提出修改意见..." onkeydown="if(event.key==='Enter')designPrompt()">
@@ -179,7 +179,7 @@
     </main>
 </div>
 
-<script src="/static/js/api.js?v=5"></script>
+<script src="/static/js/api.js?v=6"></script>
 <script>
 let agents = [], currentAgentId = null, allSkills = [], allKBs = [], providerData = [], kbSelection = {};
 let runImageDataUrl = '', designerHistory = [];
@@ -246,7 +246,7 @@ function updateModelDropdown() {
     const models = [...(p?.chat_models||[])];
     const imgSet = new Set(p?.image_models||[]);
     const visionKw = ['vision','vl','multimodal','image','flash','gemini','claude','gpt-4o','qwen-vl','glm-4v'];
-    sel.innerHTML = models.map(m => `<option value="${m}">${m}${(imgSet.has(m)||visionKw.some(k=>m.toLowerCase().includes(k)))?' (多模态)':''}</option>`).join('');
+    sel.innerHTML = models.map(m => `<option value="${esc(m)}">${esc(m)}${(imgSet.has(m)||visionKw.some(k=>m.toLowerCase().includes(k)))?' (' + _t('agentsPage.multimodal','多模态') + ')':''}</option>`).join('');
     // 如果之前的模型仍在新列表中，保留选择；否则用 Agent 配置的模型
     if (prevModel && models.includes(prevModel)) { sel.value = prevModel; }
     else if (currentAgentId) {
@@ -374,9 +374,9 @@ async function createAgent() {
 
 async function saveCurrentAgent() {
     console.log('saveCurrentAgent called, currentAgentId:', currentAgentId);
-    if (!currentAgentId) { showToast('请先选择现有智能体或新建智能体', 'warn'); return; }
+    if (!currentAgentId) { showToast(_t('agentsPage.selectAgentFirst','请先选择现有智能体或新建智能体'), 'warn'); return; }
     const a = agents.find(x => x.id === currentAgentId);
-    if (!a) { showToast('Agent 数据丢失', 'err'); return; }
+    if (!a) { showToast(_t('agentsPage.dataLost','Agent 数据丢失'), 'err'); return; }
     const payload = {
         name: document.getElementById('agName').value.trim() || '未命名',
         system_prompt: document.getElementById('agPrompt').value,
@@ -401,19 +401,19 @@ async function saveCurrentAgent() {
 }
 
 async function deleteCurrentAgent() {
-    if (!currentAgentId || !confirm('确定删除？')) return;
-    try { await apiFetch(`/api/agents/${currentAgentId}`,{method:'DELETE'}); agents = agents.filter(a => a.id !== currentAgentId); currentAgentId = null; renderAgentList(); notifyRefresh(); if(agents.length>0) selectAgent(agents[0].id); else { document.getElementById('configPanels').style.display='none'; document.getElementById('emptyState').style.display=''; } } catch(e) { showToast('删除失败: '+e.message,'err'); }
+    if (!currentAgentId || !confirm(_t('agentsPage.deleteConfirm','确定删除？'))) return;
+    try { await apiFetch(`/api/agents/${currentAgentId}`,{method:'DELETE'}); agents = agents.filter(a => a.id !== currentAgentId); currentAgentId = null; renderAgentList(); notifyRefresh(); if(agents.length>0) selectAgent(agents[0].id); else { document.getElementById('configPanels').style.display='none'; document.getElementById('emptyState').style.display=''; } } catch(e) { showToast(_t('agentsPage.deleteFailed','删除失败: ')+e.message,'err'); }
 }
 
 // ===== 深度设计 =====
 async function deepDesign() {
     const input = document.getElementById('designerInput').value.trim();
-    if (!input || !currentAgentId) { showToast('请先选择 Agent 并输入描述', 'warn'); return; }
+    if (!input || !currentAgentId) { showToast(_t('agentsPage.warnSelectAgent','请先选择 Agent 并输入描述'), 'warn'); return; }
     document.getElementById('designerInput').value = '';
     const a = agents.find(x => x.id === currentAgentId);
 
-    desAddMsg('user', esc(input) + ' <span style="font-size:9px;color:var(--accent);">(深度设计)</span>');
-    desAddMsg('assistant', '<span class="loading">Agent 引擎思考中...</span>');
+    desAddMsg('user', esc(input) + ' <span style="font-size:9px;color:var(--accent);">(' + _t('agentsPage.deepDesign','深度设计') + ')</span>');
+    desAddMsg('assistant', '<span class="loading">' + _t('agentsPage.agentThinking','Agent 引擎思考中...') + '</span>');
 
     const skills = [];
     document.querySelectorAll('#skillGrid .skill-card.on').forEach((c, i) => { if (allSkills[i]) skills.push(allSkills[i].name); });
@@ -452,11 +452,11 @@ async function deepDesign() {
                     <div style="display:none;margin-top:4px;font-size:10px;color:var(--muted);white-space:pre-wrap;">${esc(output)}</div>
                 </div>`;
         } else {
-            last.innerHTML = `<span style="color:var(--bad);">深度设计失败: ${esc(d.error||'未知错误')}</span>`;
+            last.innerHTML = `<span style="color:var(--bad);">${_t('agentsPage.deepFailed','深度设计失败: ')}${esc(d.error||_t('agentsPage.unknownError','未知错误'))}</span>`;
         }
         last.classList.remove('loading');
     } catch(e) {
-        desAddMsg('assistant', `<span style="color:var(--bad);">请求失败: ${esc(e.message)}</span>`);
+        desAddMsg('assistant', `<span style="color:var(--bad);">${_t('agentsPage.requestFailed','请求失败: ')}${esc(e.message)}</span>`);
     }
 }
 
@@ -472,12 +472,12 @@ function desAddMsg(role, html) {
 
 async function designPrompt() {
     const input = document.getElementById('designerInput').value.trim();
-    if (!input || !currentAgentId) { showToast('请先选择 Agent 并输入描述','warn'); return; }
+    if (!input || !currentAgentId) { showToast(_t('agentsPage.warnSelectAgent','请先选择 Agent 并输入描述'),'warn'); return; }
     document.getElementById('designerInput').value = '';
 
     const a = agents.find(x => x.id === currentAgentId);
     desAddMsg('user', esc(input));
-    desAddMsg('assistant', '<span class="loading">思考中...</span>');
+    desAddMsg('assistant', '<span class="loading">' + _t('agentsPage.thinking','思考中...') + '</span>');
 
     const pid = document.getElementById('desProvider').value;
     const model = document.getElementById('desModel').value;
@@ -488,18 +488,20 @@ async function designPrompt() {
     document.querySelectorAll('#skillGrid .skill-card.on').forEach((c, i) => { if (allSkills[i]) skills.push(allSkills[i].name); });
     const kbs = Object.entries(kbSelection).filter(([_,v]) => v).map(([k]) => allKBs.find(x => x.id === k)?.name || k);
 
+    // v2.5.50：使用 locale 键替代硬编码中文（英文模式下发送英文 prompt 给 LLM）
+    const lang = (typeof _getLang === 'function' ? _getLang() : 'zh-CN');
+    const sysHeader = _t('agentsPage.promptEngineerSys', '你是一个专业的 Prompt Engineer。你正在帮助用户设计一个 Agent 的系统提示词。');
+    const sysRules = _t('agentsPage.promptEngineerRules',
+        '1. 每次回复必须包含一个完整的系统提示词版本，用三个反引号包裹（```）\n2. 根据用户反馈不断迭代改进提示词\n3. 提示词用中文，定义角色、能力边界、可用技能、行为规范\n4. 简短解释本次改了什么');
+    const langInstruction = lang.startsWith('en') ? 'Use English for the prompt' : '提示词用中文，定义角色、能力边界、可用技能、行为规范';
     const ctxParts = [
-        `你是一个专业的 Prompt Engineer。你正在帮助用户设计一个 Agent 的系统提示词。`,
-        `Agent 名称: ${a?.name||'未命名'}`,
-        `已勾选的技能: ${skills.join(', ')||'无'}`,
-        `已选知识库: ${kbs.join(', ')||'无'}`,
-        currentPrompt ? `当前系统提示词:\n"""\n${currentPrompt}\n"""` : '当前系统提示词: （空）',
+        sysHeader,
+        `Agent ${lang.startsWith('en')?'Name':'名称'}: ${a?.name||(lang.startsWith('en')?'Unnamed':'未命名')}`,
+        `${lang.startsWith('en')?'Enabled Skills':'已勾选的技能'}: ${skills.join(', ')||(lang.startsWith('en')?'None':'无')}`,
+        `${lang.startsWith('en')?'Selected KBs':'已选知识库'}: ${kbs.join(', ')||(lang.startsWith('en')?'None':'无')}`,
+        currentPrompt ? `${lang.startsWith('en')?'Current Prompt':'当前系统提示词'}:\n"""\n${currentPrompt}\n"""` : `${lang.startsWith('en')?'Current Prompt':'当前系统提示词'}: (${lang.startsWith('en')?'Empty':'空'})`,
         ``,
-        `规则:`,
-        `1. 每次回复必须包含一个完整的系统提示词版本，用三个反引号包裹（\`\`\`）`,
-        `2. 根据用户反馈不断迭代改进提示词`,
-        `3. 提示词用中文，定义角色、能力边界、可用技能、行为规范`,
-        `4. 简短解释本次改了什么`,
+        sysRules.replace(/3\. .*/, '3. ' + langInstruction),
     ];
     // 只在首条消息发送 system_prompt，后续轮次后端会从对话历史加载
     const sysPrompt = desConversation.length === 0 ? ctxParts.join('\n') : '';
@@ -532,7 +534,7 @@ async function designPrompt() {
             </div>`;
         last.classList.remove('loading');
     } catch(e) {
-        desAddMsg('assistant', `<span style="color:var(--bad);">生成失败: ${esc(e.message)}</span>`);
+        desAddMsg('assistant', `<span style="color:var(--bad);">${_t('agentsPage.genFailed','生成失败')}: ${esc(e.message)}</span>`);
     }
 }
 
@@ -556,7 +558,7 @@ async function uploadAgentFile(sub, input) {
     input.value = '';
 }
 async function deleteAgentFile(sub, name) {
-    if (!currentAgentId || !confirm(`删除 ${name}？`)) return;
+    if (!currentAgentId || !confirm(_t('agentsPage.deleteFileConfirm','删除 {name}？').replace('{name}', name))) return;
     try { await apiFetch('/api/agents/'+currentAgentId+'/files/'+sub+'?name='+encodeURIComponent(name),{method:'DELETE'}); showToast(_t('agentsPage.deleted','已删除')); loadAgentFiles(); } catch(e) { showToast(_t('agentsPage.deleteFailed','删除失败: ')+e.message,'err'); }
 }
 
@@ -570,8 +572,8 @@ function previewRunImage(input) {
 async function runAgent() {
     const input = document.getElementById('runInput').value.trim(); if (!input) return;
     const output = document.getElementById('runOutput'), btn = document.getElementById('runBtn');
-    if (!currentAgentId) { output.innerHTML = '<span class="error">请先选择 Agent</span>'; return; }
-    output.innerHTML = '<span class="loading">运行中...</span>'; btn.disabled = true; btn.textContent = '...';
+    if (!currentAgentId) { output.innerHTML = '<span class="error">' + _t('agentsPage.selectAgentFirst','请先选择 Agent') + '</span>'; return; }
+    output.innerHTML = '<span class="loading">' + _t('agentsPage.running','运行中...') + '</span>'; btn.disabled = true; btn.textContent = '...';
     try {
         const body = { user_input: input }; if (runImageDataUrl) body.input_images = [runImageDataUrl];
         const d = await apiJson(`/api/agents/${currentAgentId}/run`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
@@ -583,7 +585,7 @@ async function runAgent() {
             if (stepsHtml) h += ` · <span style="cursor:pointer;color:var(--accent);" onclick="var s=this.nextElementSibling;s.style.display=s.style.display==='none'?'':'none'">${d.steps.length}步思考</span></div><div style="display:none;margin-bottom:6px;font-size:10px;color:var(--muted);">${stepsHtml}</div>`;
             else h += '</div>';
             h += `<div class="final">${esc(d.final_output)}</div>`; output.innerHTML = h;
-        } else output.innerHTML = `<div class="error">${esc(d.error||'未知错误')}</div>`;
+        } else output.innerHTML = `<div class="error">${esc(d.error||_t('agentsPage.unknownError','未知错误'))}</div>`;
     } catch(e) { output.innerHTML = `<div class="error">${esc(e.message)}</div>`; }
     btn.disabled = false; btn.textContent = '运行';
 }
@@ -779,6 +781,17 @@ async function importAgentFile(input) {
 (function(){ if(localStorage.theme==='dark') document.documentElement.classList.add('dark'); })();
 init();
 window.addEventListener('message', e => { if (e.origin !== location.origin) return; if (e.data?.type === 'theme') document.documentElement.classList.toggle('dark', e.data.theme === 'dark'); if (e.data?.type === 'refresh') { loadAgents(); loadSkills(); loadKBs(); refreshProviders().then(()=>renderProviderOpts()).catch(()=>{}); } });
+// v2.5.50：语言切换时重新渲染动态内容（data-t 由 i18n.js updateDOM 自动处理）
+window._i18nUpdate = function() {
+    renderAgentList();
+    if (currentAgentId) selectAgent(currentAgentId);
+    var chat = document.getElementById('designerChat');
+    if (chat && chat.children.length > 0) {
+        // 刷新 designer 欢迎消息
+        var welcome = chat.querySelector('[data-t="agentsPage.designerWelcomeNew"]');
+        if (welcome) { var t = typeof _t !== 'undefined' ? _t('agentsPage.designerWelcomeNew','') : ''; if (t) welcome.textContent = t; }
+    }
+};
 window.addEventListener('lang-applied',function(){if(window._i18nUpdate)window._i18nUpdate();});</script>
 </body>
 </html>

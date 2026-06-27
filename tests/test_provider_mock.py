@@ -51,7 +51,8 @@ class ProviderErrorTests(unittest.TestCase):
         import asyncio
         async def _test():
             prov = FailProvider()
-            models = await prov.fetch_models()
+            models, live = await prov.fetch_models()
+            self.assertFalse(live, "API不可达时 live 应为 False")
             self.assertGreater(len(models), 0, "应回退到本地模型列表")
             ids = [m.id for m in models]
             self.assertIn("test-img-model", ids)
@@ -159,6 +160,3 @@ class ConcurrencyTests(unittest.TestCase):
         finally:
             client.delete(f"/api/boards/{cid}")
 
-
-if __name__ == "__main__":
-    unittest.main()

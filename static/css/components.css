@@ -123,6 +123,8 @@
     width: 100%;
     height: 100%;
     transform-origin: 0 0;
+    will-change: transform;       /* GPU 层提升：拖拽/缩放时避免重绘 */
+    contain: layout style;        /* 隔离布局计算：子元素变化不影响外部（不含 paint——会裁剪画布边缘） */
   }
 
   /* ——— Links / Connections ——— */
@@ -311,7 +313,8 @@
     box-shadow: 0 18px 34px rgba(39, 33, 20, 0.12);
     cursor: move; user-select: none;
     overflow: visible;
-    transition: box-shadow 0.15s, border-color 0.15s, transform 0.15s;
+    contain: layout style paint;        /* 隔离布局：节点内变化不触发兄弟节点回流 */
+    transition: box-shadow 0.15s, transform 0.15s;  /* 选中边框必须即时，不在此动画 */
   }
 
   html.dark .node {
@@ -332,7 +335,7 @@
   .node.selected {
     border-color: var(--accent);
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent), 0 0 20px color-mix(in srgb, var(--accent) 15%, transparent), 0 18px 34px rgba(39, 33, 20, 0.14);
-    transition: box-shadow .2s ease, border-color .2s ease;
+    /* v2.5.50：选中反馈必须即时，transition 导致反复点击时蓝框延迟/不准 */
   }
   html.dark .node.selected {
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 40%, transparent), 0 0 24px color-mix(in srgb, var(--accent) 20%, transparent), 0 18px 34px rgba(0,0,0,.4);
@@ -355,6 +358,9 @@
   .node.is-error {
     border-color: var(--bad);
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--bad) 20%, transparent);
+  }
+  .node.is-cancelled {
+    opacity: 0.55;
   }
 
   .node-head {
@@ -416,6 +422,10 @@
   .node-state-badge.is-error {
     background: rgba(194, 65, 12, 0.12);
     color: var(--bad);
+  }
+  .node-state-badge.is-cancelled {
+    background: rgba(128, 128, 128, 0.12);
+    color: var(--muted);
   }
 
   .node-delete {
@@ -654,12 +664,13 @@
 
   /* ——— Asset Panel ——— */
   .asset-panel {
-    position: absolute; top: 0; right: -340px; width: 340px; height: 100%;
+    position: absolute; top: 0; right: 0; width: 340px; height: 100%;
     background: var(--surface); border-left: 1px solid var(--border);
     z-index: 150; display: flex; flex-direction: column;
-    transition: right .22s ease; box-shadow: -8px 0 30px rgba(0,0,0,.08);
+    transform: translateX(100%); transition: transform .22s ease;
+    box-shadow: -8px 0 30px rgba(0,0,0,.08);
   }
-  .asset-panel.open { right: 0; }
+  .asset-panel.open { transform: translateX(0); }
   .asset-panel-head {
     display: flex; align-items: center; justify-content: space-between;
     padding: 14px 16px; border-bottom: 1px solid var(--border);
@@ -671,8 +682,6 @@
   .asset-tab { flex: 1; height: 32px; border-radius: 6px; border: none; background: transparent; color: var(--muted); font-size: 12px; font-weight: 800; cursor: pointer; transition: all .12s; }
   .asset-tab:hover { color: var(--text); background: var(--surface-2); }
   .asset-tab.active { background: var(--accent); color: var(--accent-ink); }
-  .asset-search { margin: 8px 14px; height: 34px; padding: 0 10px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 12px; outline: none; }
-  .asset-search:focus { border-color: var(--accent); }
   .asset-grid { flex: 1; overflow-y: auto; padding: 8px 10px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; align-content: start; }
   .asset-thumb {
     aspect-ratio: 1; border-radius: 8px; border: 1px solid var(--border);
@@ -682,7 +691,7 @@
   }
   .asset-thumb:hover { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent); }
   .asset-thumb:active { cursor: grabbing; }
-  .asset-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .asset-thumb img, .asset-thumb video { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
   .asset-thumb .asset-name { position: absolute; bottom: 0; left: 0; right: 0; padding: 3px 5px; background: rgba(0,0,0,.55); color: #fff; font-size: 9px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .asset-del { position: absolute; top: 3px; right: 3px; width: 22px; height: 22px; border-radius: 50%; border: none; background: rgba(0,0,0,.55); color: #fff; font-size: 14px; cursor: pointer; display: none; align-items: center; justify-content: center; line-height: 0; padding: 0; text-align: center; }
   .asset-thumb:hover .asset-del { display: flex; }
@@ -692,7 +701,7 @@
   .asset-drag-ghost img { width: 80px; height: 80px; object-fit: cover; display: block; }
 
   /* ——— Minimap ——— */
-  .minimap { position:absolute; right:16px; bottom:16px; z-index:120; width:180px; height:120px; border-radius:10px; overflow:hidden; border:1px solid var(--border); background:var(--bg); box-shadow:0 4px 16px rgba(0,0,0,.12); cursor:pointer; opacity:.85; transition:all .25s ease; }
+  .minimap { position:absolute; right:16px; bottom:16px; z-index:120; width:180px; height:120px; border-radius:10px; overflow:hidden; border:1px solid var(--border); background:var(--bg); box-shadow:0 4px 16px rgba(0,0,0,.12); cursor:pointer; opacity:.85; transition: opacity .25s ease, width .25s ease, height .25s ease, border-radius .25s ease; }
   .minimap:hover { opacity:1; }
   .minimap canvas { width:100%; height:100%; display:block; }
   .minimap-viewport { position:absolute; border:1px solid var(--accent); background:color-mix(in srgb, var(--accent) 15%, transparent); pointer-events:none; border-radius:2px; }

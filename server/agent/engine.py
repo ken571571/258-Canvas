@@ -32,7 +32,6 @@ async def run_agent(
     kb_ids = agent_config.get("knowledge_bases", [])
 
     skill_reg = get_skill_registry()
-    skill_reg._agent_config = agent_config  # 注入 Agent 配置，技能可读取
     tools = skill_reg.to_openai_tools(skill_ids)
 
     # 如果用 Gemini 且启用了 tools，打印警告（Gemini 原生协议未适配 Function Calling）
@@ -114,7 +113,7 @@ async def run_agent(
                     tool_args = tc.get("arguments", {})
                     call_id = tc.get("id", "")
 
-                    result = await skill_reg.execute(tool_name, tool_args)
+                    result = await skill_reg.execute(tool_name, tool_args, agent_config=agent_config)
                     result_str = json.dumps(result, ensure_ascii=False)
 
                     messages.append({

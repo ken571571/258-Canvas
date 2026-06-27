@@ -26,6 +26,7 @@ CanvasEngine.prototype._renderMinimap = function() {
     const vp = document.getElementById('minimap-viewport');
     if (!mc || !vp) return;
     if (!this.nodes.length) { mc.style.display='none'; vp.style.display='none'; return; }
+    if (!this.view.scale || this.view.scale <= 0) return;  // 防御：scale 无效时不渲染小地图
     mc.style.display=''; vp.style.display='';
 
     const mapW = 180, mapH = 120;
@@ -51,7 +52,7 @@ CanvasEngine.prototype._renderMinimap = function() {
     ctx.fillRect(0, 0, mapW, mapH);
 
     // 节点色块
-    const colors = {image:'#3b82f6', prompt:'#8b5cf6', image_gen:'#f59e0b', video_gen:'#ef4444', agent:'#10b981', loop:'#ec4899', output:'#6b7280'};
+    const colors = {image:'#3b82f6', prompt:'#8b5cf6', image_gen:'#f59e0b', video_gen:'#ef4444', agent:'#10b981', loop:'#ec4899', comfy:'#a855f7', output:'#6b7280'};
     this.nodes.forEach(n => {
         ctx.fillStyle = colors[n.type] || '#999';
         ctx.fillRect(ox + (n.x - minX + pad) * s, oy + (n.y - minY + pad) * s, (n.w||260) * s, (n.h||120) * s);
@@ -94,6 +95,7 @@ CanvasEngine.prototype._renderMarquee = function() {
 
 
 CanvasEngine.prototype._getPortPoint = function(node, portType, fieldId = '') {
+    if (!this.view.scale || this.view.scale <= 0) return { x: node.x, y: node.y };  // 防御：scale 无效时回退到节点坐标
     const el = this.nodesEl.querySelector(`[data-id="${node.id}"]`);
     let portEl = null;
     if (fieldId) {
@@ -142,9 +144,11 @@ CanvasEngine.prototype._curveMeta = function(start, end) {
 
 
 CanvasEngine.prototype._renderNodeStateBadge = function(node) {
-    if (node.runState === 'running') return '<span class="node-state-badge is-running">' + _tt('运行中') + '</span>';
-    if (node.runState === 'success') return '<span class="node-state-badge is-success">' + _tt('成功') + '</span>';
-    if (node.runState === 'error') return '<span class="node-state-badge is-error">' + _tt('失败') + '</span>';
+    // v2.5.52：改用 _t() 替代 _tt()，避免 _tt 映射表遗漏导致英文模式显示中文
+    if (node.runState === 'running') return '<span class="node-state-badge is-running">' + _t('nodeState.running','运行中') + '</span>';
+    if (node.runState === 'success') return '<span class="node-state-badge is-success">' + _t('nodeState.success','成功') + '</span>';
+    if (node.runState === 'error') return '<span class="node-state-badge is-error">' + _t('nodeState.error','失败') + '</span>';
+    if (node.runState === 'cancelled') return '<span class="node-state-badge is-cancelled">' + _t('nodeState.cancelled','已取消') + '</span>';
     return '';
 };
 
@@ -158,6 +162,39 @@ CanvasEngine.prototype._renderNodeMeta = function(node) {
 CanvasEngine.prototype._setNodeRunState = function(node, state, message = '') {
     node.runState = state;
     node.runMessage = message;
-    this._renderAll();
+    // 优先直接更新 DOM badge（避免 _renderAll 全量重建）
+    var el = this.nodesEl && this.nodesEl.querySelector('[data-id="' + node.id + '"]');
+    if (el) {
+        // 更新 state class
+        el.classList.remove('is-running', 'is-success', 'is-error', 'is-cancelled');
+        if (state === 'running') el.classList.add('is-running');
+        else if (state === 'success') el.classList.add('is-success');
+        else if (state === 'error') el.classList.add('is-error');
+        else if (state === 'cancelled') el.classList.add('is-cancelled');
+        // 更新 badge HTML
+        var badgeEl = el.querySelector('.node-state-badge');
+        var newBadge = this._renderNodeStateBadge(node);
+        if (badgeEl && newBadge) {
+            badgeEl.outerHTML = newBadge;
+        } else if (newBadge && !badgeEl) {
+            var titleEl = el.querySelector('.node-head-title');
+            if (titleEl) titleEl.insertAdjacentHTML('beforeend', newBadge);
+        } else if (!newBadge && badgeEl) {
+            badgeEl.remove();
+        }
+        // 更新 meta 消息
+        var metaEl = el.querySelector('.node-meta');
+        if (message && metaEl) {
+            metaEl.textContent = message;
+        } else if (message && !metaEl) {
+            var bodyEl = el.querySelector('.node-body');
+            if (bodyEl) bodyEl.insertAdjacentHTML('afterbegin', '<div class="node-meta">' + this._esc(message) + '</div>');
+        } else if (!message && metaEl) {
+            metaEl.remove();
+        }
+    } else {
+        // 节点 DOM 尚未创建 → 全量渲染
+        this._renderAll();
+    }
 };
 

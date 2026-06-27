@@ -227,8 +227,6 @@ class TaskManager:
 
     def _cancel_event(self, task_id: str) -> asyncio.Event:
         """获取或创建任务的取消事件（供长耗时任务使用）。"""
-        if not hasattr(self, '_cancel_events'):
-            self._cancel_events = {}
         if task_id not in self._cancel_events:
             self._cancel_events[task_id] = asyncio.Event()
         return self._cancel_events[task_id]

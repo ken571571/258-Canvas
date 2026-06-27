@@ -4,6 +4,7 @@
 """
 
 import os
+import asyncio
 import base64
 import uuid
 import time
@@ -15,6 +16,9 @@ from ..utils import KeyedLockManager
 
 # 对话级写锁，防止并发请求导致读-改-写竞态丢消息
 _conv_write_lock = KeyedLockManager()
+
+# 线程索引写锁，保护共享 _index.json 的读-改-写事务（v2.5.51 修复 TOCTOU）
+_index_write_lock = asyncio.Lock()
 
 # 对话元数据索引
 THREADS_INDEX = os.path.join(config.HISTORY_DIR, "_index.json")
@@ -76,14 +80,16 @@ async def save_history(conversation_id: str, messages: list, title: str = ""):
     }
     await store.write_with_timestamp(conv_path(conversation_id), data)
 
-    index = load_thread_index()
-    index.setdefault("threads", {})[conversation_id] = {
-        "id": conversation_id,
-        "title": data["title"],
-        "updated_at": data["updated_at"],
-        "message_count": len(messages),
-    }
-    await save_thread_index(index)
+    # v2.5.51：索引更新在锁内保护，防止并发写入丢失
+    async with _index_write_lock:
+        index = load_thread_index()
+        index.setdefault("threads", {})[conversation_id] = {
+            "id": conversation_id,
+            "title": data["title"],
+            "updated_at": data["updated_at"],
+            "message_count": len(messages),
+        }
+        await save_thread_index(index)
 
 
 def generate_id() -> str:
@@ -119,6 +125,8 @@ async def delete_conversation(thread_id: str):
     p = conv_path(thread_id)
     if os.path.exists(p):
         os.remove(p)
-    index = load_thread_index()
-    index.get("threads", {}).pop(thread_id, None)
-    await save_thread_index(index)
+    # v2.5.51：索引更新在锁内保护，防止并发删除丢失
+    async with _index_write_lock:
+        index = load_thread_index()
+        index.get("threads", {}).pop(thread_id, None)
+        await save_thread_index(index)

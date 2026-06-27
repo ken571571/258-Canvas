@@ -70,11 +70,16 @@
     await this.save();
   };
 
-  // 标记脏数据 → 拍快照 + 延迟保存
-  proto._markDirty = function() {
-    this._snapshot();
+  // 仅触发延迟保存（不拍快照）— 用于高频属性修改（如文本输入）
+  proto._scheduleSave = function() {
     this._setSaveIndicator(_t('canvas.pendingSave','待保存'));
     clearTimeout(this._saveDebounceTimer);
     this._saveDebounceTimer = setTimeout(() => this.save(), 800);
+  };
+
+  // 标记脏数据 → 拍快照 + 延迟保存（用于结构性变更：创建/删除/移动/连线）
+  proto._markDirty = function() {
+    this._snapshot();
+    this._scheduleSave();
   };
 })();

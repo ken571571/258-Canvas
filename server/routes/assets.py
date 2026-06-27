@@ -12,9 +12,8 @@ router = APIRouter(prefix="/api", tags=["assets"])
 
 @router.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
-    raw = await file.read()
-    if len(raw) > config.LOCAL_IMAGE_IMPORT_MAX_BYTES:
-        raise HTTPException(status_code=400, detail="文件超过 50MB 限制")
+    from ..utils import read_upload_safely
+    raw = await read_upload_safely(file, config.LOCAL_IMAGE_IMPORT_MAX_BYTES)  # v2.5.40：流式读取防 OOM
 
     ext = os.path.splitext(file.filename or ".png")[1].lower()
     if ext not in config.LOCAL_IMAGE_IMPORT_EXTS:

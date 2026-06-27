@@ -78,7 +78,7 @@
     </main>
 </div>
 
-<script src="/static/js/api.js?v=5"></script>
+<script src="/static/js/api.js?v=6"></script>
 <script>
 let workflows=[],currentWf='',currentWfData=null;
 function initTheme(){ if(localStorage.theme==='dark') document.documentElement.classList.add('dark'); }
@@ -86,11 +86,11 @@ initTheme();
 
 async function loadWorkflows(){
     try{const d=await apiJson('/api/comfyui/workflows');workflows=d.workflows||[];document.getElementById('wfCount').textContent=workflows.length;
-    document.getElementById('wfList').innerHTML=workflows.map(w=>'<div class="wf-item'+(w.name===currentWf?' active':'')+'" onclick="selectWorkflow(\''+escJs(w.name)+'\')"><div>'+esc(w.title||w.name)+'</div><div class="wf-meta">'+(w.field_count||0)+_t('comfyuiPage.params','参数')+' · '+(w.builtin?_t('comfyuiPage.builtin','内置'):_t('comfyuiPage.custom','自定义'))+'</div></div>').join('')||'<div style="color:var(--muted);font-size:11px;padding:8px;">'+_t('comfyuiPage.noWorkflows','暂无工作流')+'</div>';}catch(e){}
+    document.getElementById('wfList').innerHTML=workflows.map(w=>'<div class="wf-item'+(w.name===currentWf?' active':'')+'" onclick="selectWorkflow(\''+escJs(w.name)+'\')"><div>'+esc(w.title||w.name)+'</div><div class="wf-meta">'+(w.field_count||0)+_t('comfyuiPage.params','参数')+' · '+(w.builtin?_t('comfyuiPage.builtin','内置'):_t('comfyuiPage.custom','自定义'))+'</div></div>').join('')||'<div style="color:var(--muted);font-size:11px;padding:8px;">'+_t('comfyuiPage.noWorkflows','暂无工作流')+'</div>';}catch(e){console.error('loadWorkflows failed',e);}
 }
 
 async function selectWorkflow(name){
-    currentWf=name;loadWorkflows();
+    currentWf=name;await loadWorkflows();
     try{const d=await apiJson('/api/comfyui/workflows/'+encodeURIComponent(name));currentWfData=d.workflow||{};
     window.currentCfg=d.config||{title:'',fields:[]};
     document.getElementById('emptyState').style.display='none';document.getElementById('detailPanel').style.display='flex';
@@ -134,11 +134,13 @@ async function saveConfig(){
 }
 
 async function uploadWorkflow(input){
-    const file=input.files?.[0];if(!file) return;
-    try{const json=JSON.parse(await file.text());
-    const name=file.name.replace('.json','');
+    var file=input.files?.[0];if(!file) return;
+    try{var json=JSON.parse(await file.text());
+    // 正确去扩展名 + 清除非法字符（后端 WORKFLOW_NAME_RE 仅允许字母数字中文_-.）
+    var name=file.name.replace(/\.json$/i,'').replace(/[^a-zA-Z0-9_一-鿿.\-]/g,'_');
+    if(!name) throw new Error('文件名无效');
     await apiFetch('/api/comfyui/workflows',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name,workflow:json})});
-    showToast(_t('comfyuiPage.uploaded','上传成功'));loadWorkflows();selectWorkflow('custom/'+name+'.json');
+    showToast(_t('comfyuiPage.uploaded','上传成功'));await selectWorkflow('custom/'+name+'.json');
     }catch(e){showToast(_t('comfyuiPage.uploadFailed','上传失败: ')+e.message,'err');}input.value='';
 }
 
@@ -164,6 +166,8 @@ function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').
 function escJs(s){return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/\\/g,'\\\\').replace(/'/g,"\\'");}
 loadWorkflows();
 window.addEventListener('message',e=>{if(e.origin!==location.origin)return;if(e.data?.type==='theme')document.documentElement.classList.toggle('dark',e.data.theme==='dark');if(e.data?.type==='refresh')loadWorkflows();});
+// v2.5.50：语言切换时重新渲染工作流列表
+window._i18nUpdate = function() { loadWorkflows(); };
 window.addEventListener('lang-applied',function(){if(window._i18nUpdate)window._i18nUpdate();});</script>
 </body>
 </html>

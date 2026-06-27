@@ -1,38 +1,39 @@
-# 密钥文件
+# ——— 密钥文件 ———
 **/.env
 *.bak
 
-# Python 缓存
+# ——— Python 缓存 ———
 **/__pycache__/
 *.pyc
+*.pyo
 
-# Python 运行环境
+# ——— Python 运行环境（嵌入式） ———
 python/
 
-# 用户数据
+# ——— 用户运行时数据 ———
 data/
 skills/
 logs/
+canvases/
+input/
+output/
 
-# 日志文件
+# ——— 日志 ———
 *.log
 
-# 临时文件
-*.bak
+# ——— 临时文件 ———
 *.tmp
 *~
 
-# IDE
+# ——— IDE / 编辑器 ———
 .vscode/
 .idea/
+.DS_Store
+Thumbs.db
 
-# 输出文件
-output/
-input/
+# ——— 诊断/调试文件 ———
+*.diag
 
-# 不上传的本地文档
-项目.MD
-AIHubMix_视频模型API文档.md
-AIHubMix_图片模型API文档.md
+# ——— 测试残留 ———
 evil.json
 test_regression.json

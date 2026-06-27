@@ -26,7 +26,7 @@ class ConnectionManager:
         self.active.append(ws)
         cid = client_id or f"anon-{id(ws)}"
         self.client_map[ws] = cid
-        self._last_pong[ws] = time.time()
+        self._last_pong[ws] = time.monotonic()
         if client_id:
             self.user_map[client_id] = ws
         await self._broadcast_count()
@@ -47,7 +47,7 @@ class ConnectionManager:
         """定期 ping 所有连接，清理超时未响应 pong 的死连接。"""
         while True:
             await asyncio.sleep(HEARTBEAT_INTERVAL)
-            now = time.time()
+            now = time.monotonic()
             dead: List[WebSocket] = []
             for ws in self.active[:]:
                 try:
@@ -63,7 +63,7 @@ class ConnectionManager:
 
     def _record_pong(self, ws: WebSocket):
         """客户端响应了 pong，更新心跳时间戳。"""
-        self._last_pong[ws] = time.time()
+        self._last_pong[ws] = time.monotonic()
 
     @property
     def online_count(self) -> int:

@@ -5,19 +5,19 @@
 ## 许可条款
 
 ### ✅ 允许
-- 本无限画布产品免费开源可商用
+- 本软件免费商用，源码开放
 - 个人学习、研究、商业用途使用
 - 公司内部商业用途使用
 - 在保留本许可声明的前提下分享、转载代码
 
 ### ❌ 禁止
-- **任何形式的商业用途**（包括但不限于：将本软件或其衍生版本作为商业产品出售、出租、提供付费服务）
+- **将源码或衍生代码封装为商业产品出售、出租、提供付费服务**
 - 修改、封装后以商业产品形式发布
 - 删除或修改本许可声明
 - 个人创建的Agent,和个人创作的工作流等知识内容。不在此禁止范围
 
-### ⚠️ 商用授权
-如需商业使用此软件代码，必须联系作者取得书面授权。
+### ⚠️ 源码商用授权
+如需将源码或衍生代码作为商业产品发布，必须联系作者取得书面授权。
 
 
 ## 免责声明
@@ -32,19 +32,19 @@ Copyright © 2025 ken571571
 ## Terms
 
 ### ✅ Allowed
-- This Infinite Canvas product is free, open source, and available for commercial use
+- This software is free for commercial use, source-available
 - Personal study, research, and commercial use
 - Internal commercial use within a company
 - Sharing and redistribution of the code, provided this license notice is preserved
 
 ### ❌ Prohibited
-- **Any form of commercial use** (including but not limited to: selling, renting, or providing paid services based on this software or its derivatives)
+- **Selling, renting, or providing paid services based on the source code or its derivatives as a commercial product**
 - Modifying, repackaging, and distributing as a commercial product
 - Removing or altering this license notice
 - Personal Agents and personally created workflows are not covered by this prohibition
 
-### ⚠️ Commercial Authorization
-Commercial use of this software code requires explicit written permission from the author.
+### ⚠️ Source Commercial Authorization
+Repackaging or distributing the source code or its derivatives as a commercial product requires explicit written permission from the author.
 
 ## Disclaimer
 This software is provided "as is", without warranty of any kind, express or implied. The author shall not be liable for any damages arising from the use of this software.

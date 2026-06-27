@@ -26,8 +26,8 @@ LOCAL_IMAGE_IMPORT_MAX_BYTES = 50 * 1024 * 1024   # 50MB（可通过环境变量
 LOCAL_IMAGE_IMPORT_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 
 # ——— 视频轮询 ———
-VIDEO_POLL_TIMEOUT = 600     # 视频轮询总超时（秒）
-VIDEO_POLL_INTERVAL = 8      # 轮询间隔（秒）
+VIDEO_POLL_TIMEOUT = 1200    # 视频轮询总超时（秒）
+VIDEO_POLL_INTERVAL = 15     # 轮询间隔（秒）
 
 # ——— WebSocket 心跳 ———
 HEARTBEAT_INTERVAL = 30      # 心跳间隔（秒）

@@ -15,7 +15,7 @@ import hashlib
 import re
 from typing import List, Dict, Any, Optional
 import httpx
-from ..security.network import validate_safe_url
+from ..security.network import async_validate_safe_url
 
 from .base import BaseProvider, ImageResult, VideoResult, ChatResult
 from .. import config
@@ -167,7 +167,7 @@ class APIMartProvider(BaseProvider):
                     if isinstance(img_url, list):
                         img_url = img_url[0] if img_url else ""
                     if img_url and img_url.startswith("http"):
-                        if not validate_safe_url(img_url):
+                        if not await async_validate_safe_url(img_url):
                             log.warning(f"SSRF 拦截 — 上游返回了不安全的图片地址: {img_url[:80]}")
                             raise RuntimeError(f"APIMart 返回了不安全的图片地址（内网/云metadata），已拦截")
                         try:
@@ -249,11 +249,24 @@ class APIMartProvider(BaseProvider):
                     if img_url:
                         # 下载到本地
                         if img_url.startswith("http"):
-                            from ..security.network import validate_safe_url
-                            if not validate_safe_url(img_url):
+                            from ..security.network import async_validate_safe_url
+                            if not await async_validate_safe_url(img_url):
                                 raise RuntimeError(f"APIMart 返回了不安全的图片地址（内网/云metadata），已拦截")
                             try:
                                 dl = await cli.get(img_url, follow_redirects=False)
+                                # v2.5.50：手动处理重定向，每跳做 SSRF 校验
+                                redirect_count = 0
+                                while dl.is_redirect and redirect_count < 5:
+                                    redirect_count += 1
+                                    next_url = dl.headers.get("location", "")
+                                    if not next_url:
+                                        break
+                                    if next_url.startswith("/"):
+                                        from urllib.parse import urljoin
+                                        next_url = urljoin(img_url, next_url)
+                                    if not await async_validate_safe_url(next_url):
+                                        raise RuntimeError(f"APIMart 重定向到不安全地址，已拦截")
+                                    dl = await cli.get(next_url, follow_redirects=False)
                                 if dl.status_code == 200:
                                     path = self._save_image(dl.content, "apimart_")
                                     return ImageResult(url=path, raw=s_data)
@@ -400,6 +413,12 @@ class APIMartProvider(BaseProvider):
                     video_url = inner.get("url") or inner.get("video_url") or ""
             if not video_url:
                 video_url = result.get("url") or result.get("video_url") or ""
+            # v2.5.52：校验返回的视频 URL 非内网地址
+            if video_url:
+                from ..security.network import async_validate_safe_url
+                if not await async_validate_safe_url(video_url):
+                    log.warning(f"SSRF 拦截 — APIMart 视频 URL 指向内网: {video_url[:80]}")
+                    video_url = ""
             return VideoResult(url=video_url, task_id=task_id, raw=data)
         elif status in ("FAILED", "FAIL", "ERROR", "CANCELED", "CANCELLED"):
             raise RuntimeError(f"APIMart 视频任务失败: {result.get('error') or result.get('message') or status}")
@@ -408,8 +427,8 @@ class APIMartProvider(BaseProvider):
 
     # ——— 拉取模型 ———
 
-    async def fetch_models(self):
-        """APIMart 的 /v1/models 端点可能受限，尝试拉取，失败则返回默认列表。"""
+    async def fetch_models(self) -> tuple:
+        """APIMart 的 /v1/models 端点可能受限，尝试拉取，失败则返回默认列表。返回 (models, live)。"""
         from .base import ModelInfo
         models = []
         try:
@@ -427,7 +446,7 @@ class APIMartProvider(BaseProvider):
                     elif any(k in mid_lower for k in ("video", "veo", "sora", "seedance", "wan")):
                         m_type = "video"
                     models.append(ModelInfo(id=m_id, name=m_id, type=m_type))
-                return models
+                return models, True
         except Exception:
             pass
         # 回退：返回当前配置的默认模型
@@ -437,7 +456,7 @@ class APIMartProvider(BaseProvider):
             models.append(ModelInfo(id=m, name=m, type="chat"))
         for m in self.list_video_models():
             models.append(ModelInfo(id=m, name=m, type="video"))
-        return models
+        return models, False
 
     # ——— 测试连接 ———
 

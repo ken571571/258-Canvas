@@ -9,8 +9,11 @@ from pydantic import BaseModel
 from .. import config
 from ..storage.json_store import store
 from ..services import knowledge_service
+from ..utils import KeyedLockManager
 
 router = APIRouter(prefix="/api", tags=["knowledge"])
+
+_kb_locks = KeyedLockManager()
 
 
 class KbUploadPayload(BaseModel):
@@ -80,26 +83,30 @@ class KbCreatePayload(BaseModel):
 
 @router.post("/knowledge-bases")
 async def create_kb(payload: KbCreatePayload):
-    idx = _load_index()
     kbid = f"kb_{uuid.uuid4().hex[:8]}"
-    idx[kbid] = {
-        "name": (payload.name or "默认知识库")[:80],
-        "description": (payload.description or "")[:500],
-        "documents": [],
-        "created_at": int(time.time() * 1000),
-        "updated_at": int(time.time() * 1000),
-    }
-    await _save_index(idx)
+    lock = await _kb_locks.get(kbid)
+    async with lock:
+        idx = _load_index()
+        idx[kbid] = {
+            "name": (payload.name or "默认知识库")[:80],
+            "description": (payload.description or "")[:500],
+            "documents": [],
+            "created_at": int(time.time() * 1000),
+            "updated_at": int(time.time() * 1000),
+        }
+        await _save_index(idx)
     return {"knowledge_base": {"id": kbid, "name": idx[kbid]["name"], "document_count": 0}}
 
 
 @router.delete("/knowledge-bases/{kb_id}")
 async def delete_kb(kb_id: str):
-    idx = _load_index()
-    if kb_id not in idx:
-        raise HTTPException(status_code=404, detail="知识库不存在")
-    del idx[kb_id]
-    await _save_index(idx)
+    lock = await _kb_locks.get(kb_id)
+    async with lock:
+        idx = _load_index()
+        if kb_id not in idx:
+            raise HTTPException(status_code=404, detail="知识库不存在")
+        del idx[kb_id]
+        await _save_index(idx)
     # 删除文件
     kbf = _kb_file(kb_id)
     if os.path.exists(kbf):
@@ -127,24 +134,25 @@ def list_documents(kb_id: str):
 
 @router.post("/knowledge-bases/{kb_id}/documents")
 async def upload_document(kb_id: str, payload: KbUploadPayload):
-    idx = _load_index()
-    if kb_id not in idx:
-        raise HTTPException(status_code=404, detail="知识库不存在")
     if not payload.content.strip():
         raise HTTPException(status_code=400, detail="文档内容不能为空")
 
-    # 分片
-    chunks = _chunk_text(payload.content)
-    doc = {
-        "id": f"doc_{uuid.uuid4().hex[:8]}",
-        "filename": payload.filename or "未命名.md",
-        "content": payload.content,
-        "chunks": [{"index": i, "text": c} for i, c in enumerate(chunks)],
-        "created_at": int(time.time() * 1000),
-    }
-    idx[kb_id].setdefault("documents", []).append(doc)
-    idx[kb_id]["updated_at"] = int(time.time() * 1000)
-    await _save_index(idx)
+    lock = await _kb_locks.get(kb_id)
+    async with lock:
+        idx = _load_index()
+        if kb_id not in idx:
+            raise HTTPException(status_code=404, detail="知识库不存在")
+        chunks = _chunk_text(payload.content)
+        doc = {
+            "id": f"doc_{uuid.uuid4().hex[:8]}",
+            "filename": payload.filename or "未命名.md",
+            "content": payload.content,
+            "chunks": [{"index": i, "text": c} for i, c in enumerate(chunks)],
+            "created_at": int(time.time() * 1000),
+        }
+        idx[kb_id].setdefault("documents", []).append(doc)
+        idx[kb_id]["updated_at"] = int(time.time() * 1000)
+        await _save_index(idx)
     return {"document": {"id": doc["id"], "filename": doc["filename"], "chunk_count": len(chunks)}}
 
 
@@ -154,17 +162,13 @@ async def upload_document_file(kb_id: str, file: UploadFile = File(...)):
 
     PDF 文件会自动提取文本内容后进行分片。
     """
-    idx = _load_index()
-    if kb_id not in idx:
-        raise HTTPException(status_code=404, detail="知识库不存在")
+    from ..utils import read_upload_safely
+    raw = await read_upload_safely(file, 50 * 1024 * 1024)  # v2.5.40：流式读取防 OOM
 
-    raw = await file.read()
-    if len(raw) > 50 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="文件过大（最大 50MB）")
     filename = os.path.basename(file.filename or "未命名.txt")
     ext = os.path.splitext(filename)[1].lower()
 
-    # 提取文本
+    # 提取文本（锁外：CPU 密集操作）
     if ext == ".pdf":
         content = _extract_pdf_text(raw, filename)
     elif ext in (".txt", ".md", ".markdown", ".rst", ".text"):
@@ -181,7 +185,6 @@ async def upload_document_file(kb_id: str, file: UploadFile = File(...)):
     if not content.strip():
         raise HTTPException(status_code=400, detail="文件内容为空")
 
-    # 分片
     chunks = _chunk_text(content)
     doc = {
         "id": f"doc_{uuid.uuid4().hex[:8]}",
@@ -190,21 +193,30 @@ async def upload_document_file(kb_id: str, file: UploadFile = File(...)):
         "chunks": [{"index": i, "text": c} for i, c in enumerate(chunks)],
         "created_at": int(time.time() * 1000),
     }
-    idx[kb_id].setdefault("documents", []).append(doc)
-    idx[kb_id]["updated_at"] = int(time.time() * 1000)
-    await _save_index(idx)
+
+    # 索引读-改-写（锁内：防止并发丢文档）
+    lock = await _kb_locks.get(kb_id)
+    async with lock:
+        idx = _load_index()
+        if kb_id not in idx:
+            raise HTTPException(status_code=404, detail="知识库不存在")
+        idx[kb_id].setdefault("documents", []).append(doc)
+        idx[kb_id]["updated_at"] = int(time.time() * 1000)
+        await _save_index(idx)
     return {"document": {"id": doc["id"], "filename": doc["filename"], "chunk_count": len(chunks)}}
 
 
 @router.delete("/knowledge-bases/{kb_id}/documents/{doc_id}")
 async def delete_document(kb_id: str, doc_id: str):
-    idx = _load_index()
-    if kb_id not in idx:
-        raise HTTPException(status_code=404, detail="知识库不存在")
-    docs = idx[kb_id].get("documents", [])
-    idx[kb_id]["documents"] = [d for d in docs if d["id"] != doc_id]
-    idx[kb_id]["updated_at"] = int(time.time() * 1000)
-    await _save_index(idx)
+    lock = await _kb_locks.get(kb_id)
+    async with lock:
+        idx = _load_index()
+        if kb_id not in idx:
+            raise HTTPException(status_code=404, detail="知识库不存在")
+        docs = idx[kb_id].get("documents", [])
+        idx[kb_id]["documents"] = [d for d in docs if d["id"] != doc_id]
+        idx[kb_id]["updated_at"] = int(time.time() * 1000)
+        await _save_index(idx)
     return {"ok": True}
 
 

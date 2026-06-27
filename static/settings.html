@@ -400,39 +400,7 @@ html.dark .platform-card:hover { box-shadow:0 6px 20px rgba(0,0,0,.3); }
                         </div>
                     </div>
                     <span class="hint" id="keyHint"></span>
-                    <script>(function(){
-                        const ki = document.getElementById('keyInput');
-                        const hint = document.getElementById('keyHint');
-                        ki.addEventListener('focus', function(){
-                            // 聚焦时切换到密码模式保护正在输入的 Key
-                            if (this.dataset.masked === 'true') {
-                                const real = localStorage.getItem(PROVIDER_CONFIG_PREFIX + 'key_' + currentProviderId) || '';
-                                this.type = 'password';
-                                this.value = real;
-                                this.dataset.masked = 'false';
-                            } else {
-                                this.type = 'password';
-                            }
-                        });
-                        ki.addEventListener('blur', function(){
-                            // 安全读取：始终通过 _readKeyFromInput 获取真实 Key，防止掩码字符串被误存
-                            const storageKey = PROVIDER_CONFIG_PREFIX + 'key_' + currentProviderId;
-                            const realKey = _readKeyFromInput('keyInput', storageKey);
-                            if (realKey && this.dataset.masked !== 'true' && currentProviderId) {
-                                // 保存真实 Key 到 localStorage（若与已存储的不同）
-                                if (realKey !== (localStorage.getItem(storageKey) || '')) {
-                                    localStorage.setItem(storageKey, realKey);
-                                    hint.textContent = _t('settings.keySaved','Key 已保存');
-                                    hint.style.color = '';
-                                }
-                            }
-                            // 切回明文显示掩码（后4位可见）
-                            const real = localStorage.getItem(storageKey) || '';
-                            this.type = 'text';
-                            this.value = real.length > 8 ? '••••' + real.slice(-4) : '••••';
-                            this.dataset.masked = 'true';
-                        });
-                    })();</script>
+                    <!-- keyInput 事件监听器已移至主脚本块 initKeyInputMasking() -->
                 </div>
                 <!-- RunningHub 余额 Key（仅 RunningHub 显示） -->
                 <div class="field full" id="walletKeyField" style="display:none;">
@@ -504,7 +472,7 @@ html.dark .platform-card:hover { box-shadow:0 6px 20px rgba(0,0,0,.3); }
             </div>
             <div class="form-grid">
                 <div class="field">
-                    <label data-t="settings.appApiKeyLabel">访问密码 (APP_API_KEY)</label> <span style="color:#f87171;font-size:11px;font-weight:400;" data-t="settings.appApiKeyLanHint">局域网其他设备访问需要输入此密码（默认 571 ）可自由更改</span>
+                    <label data-t="settings.appApiKeyLabel">访问密码 (APP_API_KEY)</label> <span style="color:#f87171;font-size:11px;font-weight:400;" data-t="settings.appApiKeyLanHint">局域网其他设备访问需要输入此密码（默认 258 ）可自由更改</span>
                     <input id="appApiKey" type="password" data-t-placeholder="settings.appApiKeyPlaceholder" placeholder="留空则不启用鉴权" autocomplete="off">
                     <span class="hint" data-t="settings.appApiKeyHint2">设置后所有 API 请求需要携带 X-API-Key，浏览器会自动存储</span>
                 </div>
@@ -606,7 +574,7 @@ html.dark .platform-card:hover { box-shadow:0 6px 20px rgba(0,0,0,.3); }
     </div>
 </div>
 
-<script src="/static/js/api.js?v=5"></script>
+<script src="/static/js/api.js?v=6"></script>
 <script>
 // ===== 数据模型 =====
 let providers = [];
@@ -621,8 +589,45 @@ const DEFAULT_BASE_URLS = {
     'deepseek':'https://api.deepseek.com'
 };
 
+// ===== 密钥输入掩码初始化 =====
+function initKeyInputMasking() {
+    const ki = document.getElementById('keyInput');
+    const hint = document.getElementById('keyHint');
+    if (!ki || !hint) return;  // 防御：DOM 元素不存在时安全退出
+    ki.addEventListener('focus', function(){
+        // 聚焦时切换到密码模式保护正在输入的 Key
+        if (this.dataset.masked === 'true') {
+            const real = localStorage.getItem(PROVIDER_CONFIG_PREFIX + 'key_' + currentProviderId) || '';
+            this.type = 'password';
+            this.value = real;
+            this.dataset.masked = 'false';
+        } else {
+            this.type = 'password';
+        }
+    });
+    ki.addEventListener('blur', function(){
+        // 安全读取：始终通过 _readKeyFromInput 获取真实 Key，防止掩码字符串被误存
+        const storageKey = PROVIDER_CONFIG_PREFIX + 'key_' + currentProviderId;
+        const realKey = _readKeyFromInput('keyInput', storageKey);
+        if (realKey && this.dataset.masked !== 'true' && currentProviderId) {
+            // 保存真实 Key 到 localStorage（若与已存储的不同）
+            if (realKey !== (localStorage.getItem(storageKey) || '')) {
+                localStorage.setItem(storageKey, realKey);
+                hint.textContent = _t('settings.keySaved','Key 已保存');
+                hint.style.color = '';
+            }
+        }
+        // 切回明文显示掩码（后4位可见）
+        const real = localStorage.getItem(storageKey) || '';
+        this.type = 'text';
+        this.value = real.length > 8 ? '••••' + real.slice(-4) : '••••';
+        this.dataset.masked = 'true';
+    });
+}
+
 // ===== 初始化 =====
 async function init() {
+    initKeyInputMasking();  // 密钥输入框掩码逻辑（使用 PROVIDER_CONFIG_PREFIX + currentProviderId）
     // 从后端加载 Provider 列表，同步到本地
     // 已有平台的模型列表更新；API 发现但本地未收录的平台自动加入列表
     try {
@@ -1095,10 +1100,14 @@ function removeProvider(id) {
         refreshProviders().catch(() => {});
         notifyRefresh();
     }).catch(e => { console.error('清除平台配置失败:', e); });
-    // 清理前端 localStorage
+    // 清理前端 localStorage：遍历所有 canvas571_cfg_ 前缀的 key，匹配平台 ID 的全部清除
     providers = providers.filter(p => p.id !== id);
-    localStorage.removeItem(PROVIDER_CONFIG_PREFIX + 'key_' + id);
-    localStorage.removeItem(PROVIDER_CONFIG_PREFIX + 'wallet_key_' + id);
+    for (var i = localStorage.length - 1; i >= 0; i--) {
+        var key = localStorage.key(i);
+        if (key && key.indexOf(PROVIDER_CONFIG_PREFIX) === 0 && key.indexOf(id) !== -1) {
+            localStorage.removeItem(key);
+        }
+    }
     saveLocalProviders(providers);
 
     if (currentProviderId === id) {
@@ -1144,6 +1153,7 @@ function openKeyPage() {
         'modelscope': 'https://www.modelscope.cn/my/access/token',
         'runninghub': 'https://www.runninghub.cn/enterprise-api/consumerApi',
                 'deepseek':   'https://platform.deepseek.com/api_keys',
+        'xmmimo':     'https://platform.xiaomimimo.com/console/api-keys',
     };
     let url = keyUrls[currentProviderId];
     if (!url) {
@@ -1159,8 +1169,8 @@ function openRegister() {
         'apimart':    'https://apimart.ai/zh/register',
         'gemini':     'https://aistudio.google.com/',
         'volcengine': 'https://console.volcengine.com/ark/region:ark+cn-beijing/overview',
-        'modelscope': 'https://www.modelscope.cn/',
-        'runninghub': 'https://www.runninghub.cn/',
+        'modelscope': 'https://www.modelscope.cn/register?inviteCode=ken571&invitorName=ken571',
+        'runninghub': 'https://www.runninghub.cn/?inviteCode=ilkbkjpt',
                 'deepseek':   'https://platform.deepseek.com/',
         'xmmimo':     'https://platform.xiaomimimo.com?ref=RMU2DB',
     };
@@ -1235,13 +1245,21 @@ async function saveKeyOnly() {
     // 保存到 localStorage（始终存真 Key）
     localStorage.setItem(storageKey, val);
 
-    // 同时保存到后端 .env
+    // 同时保存到后端 .env（Key + 模型列表）
     const envKey = providerEnvKey(p.id);
+    const pid = p.id.toUpperCase();
+    const updates = { [envKey]: val };
+    if ((p.image_models || []).length) updates[pid + '_IMAGE_MODELS'] = p.image_models.join(',');
+    else updates[pid + '_IMAGE_MODELS'] = '';
+    if ((p.chat_models || []).length) updates[pid + '_CHAT_MODELS'] = p.chat_models.join(',');
+    else updates[pid + '_CHAT_MODELS'] = '';
+    if ((p.video_models || []).length) updates[pid + '_VIDEO_MODELS'] = p.video_models.join(',');
+    else updates[pid + '_VIDEO_MODELS'] = '';
     try {
         await apiFetch('/api/settings/api-keys', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ [envKey]: val })
+            body: JSON.stringify(updates)
         });
         document.getElementById('keyHint').textContent = _t('settings.keySavedBackend','Key 已保存到后端');
         document.getElementById('keyHint').className = 'hint';
@@ -1460,7 +1478,12 @@ async function fetchModels() {
             pickerState.selected[id] = existing.image.has(id) || existing.chat.has(id) || existing.video.has(id);
         });
 
-        status.innerHTML = '<span style=\"color:var(--good);font-weight:800\">' + _t('settings.fetchedModels','✓ 已拉取 # 个模型').replace('#',data.total) + '</span>';
+        // v2.5.51：区分 API 实时拉取 vs 本地默认模型
+        if (data.live) {
+            status.innerHTML = '<span style=\"color:var(--good);font-weight:800\">' + _t('settings.fetchedModels','✓ 已拉取 # 个模型').replace('#',data.total) + '</span>';
+        } else {
+            status.innerHTML = '<span style=\"color:#f59e0b;font-weight:800\">' + _t('settings.fallbackModels','⚠ API 不可达，已加载 # 个默认模型').replace('#',data.total) + '</span>';
+        }
 
         // 打开模型选择器
         openModelPicker();
@@ -1538,7 +1561,7 @@ function renderModelPicker() {
         if (el) { el.textContent = `${k==='Image'?'生图':k==='Chat'?'LLM':'视频'} ${si[k.toLowerCase()]||0}`; el.classList.toggle('empty', !si[k.toLowerCase()]); }
     });
     const unsel = document.getElementById('sumUnsel');
-    if (unsel) unsel.textContent = `未选 ${totals.all - selecteds.all}`;
+    if (unsel) unsel.textContent = _t('settings.unselected','未选') + ' ' + (totals.all - selecteds.all);
 }
 
 function togglePickerRowByIndex(index) {
@@ -1563,6 +1586,22 @@ function applyModelPicker() {
     p.chat_models = chat;
     p.video_models = video;
     saveLocalProviders(providers);
+    // 同步模型列表到 .env，确保 Chat/Agent/画布 下拉框可见
+    const pid = p.id.toUpperCase();
+    const modelUpdates = {};
+    modelUpdates[pid + '_IMAGE_MODELS'] = image.join(',');
+    modelUpdates[pid + '_CHAT_MODELS'] = chat.join(',');
+    modelUpdates[pid + '_VIDEO_MODELS'] = video.join(',');
+    if (Object.keys(modelUpdates).length) {
+        apiFetch('/api/settings/api-keys', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(modelUpdates)
+        }).then(() => {
+            refreshProviders().catch(() => {});
+            notifyRefresh();
+        }).catch(() => {});
+    }
     renderModelLists();
     renderProviderList();
     closeModelPicker();
@@ -1590,9 +1629,9 @@ async function saveCurrent() {
     if (baseUrl) updates[providerBaseUrlEnvKey(p.id)] = baseUrl;
     // 同步模型列表到 .env，确保其他页面（生图/对话/画布）能获取到正确的模型
     const pid = p.id.toUpperCase();
-    if ((p.image_models || []).length) updates[pid + '_IMAGE_MODELS'] = p.image_models.join(',');
-    if ((p.chat_models || []).length) updates[pid + '_CHAT_MODELS'] = p.chat_models.join(',');
-    if ((p.video_models || []).length) updates[pid + '_VIDEO_MODELS'] = p.video_models.join(',');
+    updates[pid + '_IMAGE_MODELS'] = (p.image_models || []).join(',');
+    updates[pid + '_CHAT_MODELS'] = (p.chat_models || []).join(',');
+    updates[pid + '_VIDEO_MODELS'] = (p.video_models || []).join(',');
 
     if (!Object.keys(updates).length) {
         status.innerHTML = '<span style=\"color:var(--muted)\">' + _t('settings.noNeedSave','无需保存') + '</span>';
@@ -1609,8 +1648,10 @@ async function saveCurrent() {
         // 失效所有页面的 Provider 缓存
         refreshProviders().catch(() => {});
         notifyRefresh();
-        status.innerHTML = '<span style=\"color:var(--good)\">' + _t('settings.savedStatus','✓ 已保存 ') + p.name + '</span>';
-        setTimeout(() => { if (status.innerHTML.includes('已保存')) status.innerHTML = ''; }, 2500);
+        status.innerHTML = '<span style="color:var(--good)">' + _t('settings.savedStatus','✓ 已保存 ') + p.name + '</span>';
+        // v2.5.50：data 属性标记替代硬编码中文匹配（英文模式下 includes('已保存') 永远为 false）
+        status.dataset.autoClear = '1';
+        setTimeout(() => { if (status.dataset.autoClear) { status.innerHTML = ''; delete status.dataset.autoClear; } }, 2500);
     } catch (e) {
         status.innerHTML = '<span style=\"color:var(--bad)\">' + _t('settings.saveFailed','保存失败: ') + esc(e.message) + '</span>';
     }
@@ -1647,9 +1688,9 @@ async function saveAll() {
         }
         // 同步模型列表到 .env
         const pid = p.id.toUpperCase();
-        if ((p.image_models || []).length) updates[pid + '_IMAGE_MODELS'] = p.image_models.join(',');
-        if ((p.chat_models || []).length) updates[pid + '_CHAT_MODELS'] = p.chat_models.join(',');
-        if ((p.video_models || []).length) updates[pid + '_VIDEO_MODELS'] = p.video_models.join(',');
+        updates[pid + '_IMAGE_MODELS'] = (p.image_models || []).join(',');
+        updates[pid + '_CHAT_MODELS'] = (p.chat_models || []).join(',');
+        updates[pid + '_VIDEO_MODELS'] = (p.video_models || []).join(',');
     }
 
     // 安全设置
@@ -1717,6 +1758,8 @@ window.addEventListener('message', e => {
         init().catch(() => {});
     }
 });
+// v2.5.50：语言切换时重新渲染设置面板
+window._i18nUpdate = function() { if (typeof renderProviderList === 'function') renderProviderList(); if (typeof selectProvider === 'function' && typeof currentProviderId !== 'undefined' && currentProviderId) selectProvider(currentProviderId); };
 window.addEventListener('lang-applied',function(){if(window._i18nUpdate)window._i18nUpdate();});</script>
 </body>
 </html>

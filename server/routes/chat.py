@@ -21,6 +21,18 @@ _log = logging.getLogger("canvas571")
 router = APIRouter(prefix="/api", tags=["chat"])
 
 
+def _build_user_content(message: str, reference_images: list):
+    """构建用户消息内容，支持图片的多模态格式。"""
+    if not reference_images:
+        return message or ""
+    content = []
+    if message:
+        content.append({"type": "text", "text": message})
+    for img in reference_images:
+        content.append({"type": "image_url", "image_url": {"url": img}})
+    return content
+
+
 # ——— 非流式对话（向后兼容） ———
 
 
@@ -36,17 +48,20 @@ async def chat(req: ChatRequest):
     async with chat_service.lock_conversation(conv_id):
         messages = chat_service.load_history(conv_id)
 
+        # 构建用户消息（支持图片）
+        user_content = _build_user_content(req.message, req.reference_images)
+
         if not messages:
             if req.system_prompt:
                 messages.append({"role": "system", "content": req.system_prompt})
-            messages.append({"role": "user", "content": req.message})
+            messages.append({"role": "user", "content": user_content})
         else:
-            messages.append({"role": "user", "content": req.message})
+            messages.append({"role": "user", "content": user_content})
 
         # 限制历史长度
         messages = chat_service.trim_history(messages, config.MAX_HISTORY_MESSAGES)
 
-        result = await prov.chat(messages=messages, model=req.model)
+        result = await prov.chat(messages=messages, model=req.model or "gpt-4o-mini")
 
         # 保存历史
         messages.append({"role": "assistant", "content": result.content})
@@ -81,12 +96,13 @@ async def chat_stream(req: ChatRequest):
     async with chat_service.lock_conversation(conv_id):
         messages = chat_service.load_history(conv_id)
 
+        user_content = _build_user_content(req.message, req.reference_images)
         if not messages:
             if req.system_prompt:
                 messages.append({"role": "system", "content": req.system_prompt})
-            messages.append({"role": "user", "content": req.message})
+            messages.append({"role": "user", "content": user_content})
         else:
-            messages.append({"role": "user", "content": req.message})
+            messages.append({"role": "user", "content": user_content})
 
         messages = chat_service.trim_history(messages, config.MAX_HISTORY_MESSAGES)
 

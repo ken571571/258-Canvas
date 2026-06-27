@@ -1,4 +1,4 @@
-# 无限画布 v1.0.0 — Python 依赖
+# 无限画布 v2.5.46 — Python 依赖
 #
 # 安装: pip install -r requirements.txt
 # 注意: 内置 python/ 环境已包含所有这些包，此文件供环境迁移/CI 使用。
@@ -6,17 +6,18 @@
 # ——— Web 框架 ———
 fastapi>=0.100.0,<1.0.0
 uvicorn>=0.20.0,<1.0.0
-starlette>=0.30.0
+starlette>=0.30.0,<1.0.0
 
 # ——— HTTP 客户端（AI API 调用） ———
-httpx>=0.25.0
+httpx>=0.25.0,<1.0.0
 
 # ——— 数据验证 ———
-pydantic>=2.0.0
+pydantic>=2.0.0,<3.0.0
 
 # ——— 图片处理（尺寸解析） ———
 Pillow>=10.0.0
 
 # ——— 辅助 ———
 python-multipart>=0.0.5     # FastAPI UploadFile 支持
-cryptography>=41.0.0
+cryptography>=41.0.0,<45.0
+websockets>=10.0,<15.0     # WebSocket 支持

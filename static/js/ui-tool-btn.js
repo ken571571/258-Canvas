@@ -5,11 +5,6 @@
 // Light DOM 确保全局 CSS (.tool-btn, .toolbar-divider 等) 正常生效
 
 class UIToolBtn extends HTMLElement {
-  // HTML 属性转义（防 XSS）
-  _escAttr(s) { return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-  // HTML 内容转义
-  _escHtml(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-
   connectedCallback() {
     if (this._rendered) return;
     this._rendered = true;

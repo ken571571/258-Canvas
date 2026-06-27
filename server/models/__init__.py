@@ -28,9 +28,9 @@ class VideoGenerateRequest(BaseModel):
     prompt: str = Field(min_length=1, max_length=4000)
     provider_id: str = "openai"
     model: str = ""
-    duration: int = 5
-    aspect_ratio: str = "16:9"
-    resolution: str = "720p"
+    duration: int = Field(default=5, ge=1, le=30)  # v2.5.50：添加上下界约束
+    aspect_ratio: str = Field(default="16:9", min_length=1)
+    resolution: str = Field(default="720p", min_length=1)
     reference_images: List[str] = Field(default_factory=list)
     generate_audio: bool = True
 
@@ -67,7 +67,7 @@ class AgentUpdateRequest(BaseModel):
 
 
 class AgentRunRequest(BaseModel):
-    user_input: str = ""
+    user_input: str = Field(default="", max_length=50000)  # v2.5.50：添加长度约束
     input_images: List[str] = Field(default_factory=list)
     prompt_vars: Optional[dict] = None
 

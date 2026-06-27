@@ -132,7 +132,23 @@ CanvasEngine.prototype._initEvents = function() {
                 item.node.x = item.startX + dx;
                 item.node.y = item.startY + dy;
             });
-            self._renderAll();
+            // 拖拽中：仅更新 transform + 节点位置 + 连线 + 组边框，跳过 minimap 重建
+            self._renderTransform();
+            self._renderNodes();
+            self._renderLinks();
+            // 组边框实时跟随（直接 CSS，不重建 DOM）
+            if (self.groups.length > 0 && self.groupsEl) {
+                var draggedIds = {};
+                self._dragNodes.items.forEach(function(item) { draggedIds[item.node.id] = true; });
+                self.groups.forEach(function(g) {
+                    if (!self._dragNodes.groupId && !g.childIds.some(function(cid) { return draggedIds[cid]; })) return;
+                    var gel = self.groupsEl.querySelector('[data-group-id="' + g.id + '"]');
+                    if (!gel) return;
+                    var b = self._getGroupBounds(g);
+                    if (b) { gel.style.left = b.x + 'px'; gel.style.top = b.y + 'px'; gel.style.width = b.w + 'px'; gel.style.height = b.h + 'px'; }
+                });
+            }
+            self._renderTempLine();
         }
         if (self._marquee) {
             var rect = self.board.getBoundingClientRect();
@@ -338,10 +354,10 @@ CanvasEngine.prototype._finishConnectionDrag = function(event) {
             return worldPt.x>=n.x-15 && worldPt.x<=n.x+5 && worldPt.y>=n.y && worldPt.y<=n.y+nh;
         });
         if (comfyNode) {
-            const wf=(this._comfyWfList||[]).find(w=>w.name===comfyNode.comfyWorkflow);
-            const fields=wf?._fields||[];
-            const relY=worldPt.y-comfyNode.y;
-            const idx=Math.round((relY-48)/34);
+            var wf=(this._comfyWfList||[]).find(function(w){return w.name===comfyNode.comfyWorkflow;});
+            var fields=wf?._fields||[];
+            var relY=worldPt.y-comfyNode.y;
+            var idx=Math.round((relY-48)/34);  // 48=端口起始偏移, 34=端口间距（与 renderer-nodes.js 保持同步）
             if (idx>=0 && idx<fields.length) {
                 // 创建虚拟 port 数据
                 targetPort = {dataset:{node:comfyNode.id, port:'in', fieldId:fields[idx].id}};
@@ -443,14 +459,14 @@ CanvasEngine.prototype._onBoardDrop = function(event) {
         if (hitImg) {
             hitImg.url = url;
             hitImg.imageName = name || hitImg.imageName || '';
-            hitImg.imageWidth = 0;
-            hitImg.imageHeight = 0;
+            // 保留旧尺寸直到异步加载完成（避免中间态显示错误）
+            // imageWidth/imageHeight 保持原值不变
+            this.store.updateNode(hitImg.id, { url, imageName: hitImg.imageName });
             this._renderAll();
             this._markDirty();
             this._loadImageSize(url).then(size => {
                 if (hitImg.url === url && size.w) {
-                    hitImg.imageWidth = size.w;
-                    hitImg.imageHeight = size.h;
+                    this._syncImageNodeSize(hitImg, size.w, size.h);
                     this._renderAll();
                 }
             });
@@ -458,24 +474,17 @@ CanvasEngine.prototype._onBoardDrop = function(event) {
         }
 
         // 检查是否拖到了组中
-        const hitGroup = this._findGroupAt(worldPt);
-        if (hitGroup) {
-            worldPt.x = Math.max(worldPt.x, hitGroup.x + 10);
-            worldPt.y = Math.max(worldPt.y, hitGroup.y + 10);
+        const hit = this._findGroupAt(worldPt);
+        if (hit) {
+            worldPt.x = Math.max(worldPt.x, hit.bounds.x + 10);
+            worldPt.y = Math.max(worldPt.y, hit.bounds.y + 10);
         }
 
-        // 创建新节点
-        const node = this.createNode('image', worldPt);
-        node.url = url;
-        node.imageName = name || '';
-        node.imageWidth = 0;
-        node.imageHeight = 0;
-        this._renderAll();
-        this._markDirty();
+        // 创建新节点（URL 直接传入，首次 render 已有 src）
+        const node = this.createNode('image', worldPt, { url, imageName: name || '', imageWidth: 0, imageHeight: 0 });
         this._loadImageSize(url).then(size => {
             if (node.url === url && size.w) {
-                node.imageWidth = size.w;
-                node.imageHeight = size.h;
+                this._syncImageNodeSize(node, size.w, size.h);
                 this._renderAll();
             }
         });
@@ -485,21 +494,18 @@ CanvasEngine.prototype._onBoardDrop = function(event) {
 CanvasEngine.prototype._findImageNodeAt = function(point) {
     return this.nodes.find(n => {
         if (n.type !== 'image') return false;
-        const w = n.w || 260, h = n.h || 120;
+        const w = n.w || 260, h = n.h || 100;
         return point.x >= n.x && point.x <= n.x + w && point.y >= n.y && point.y <= n.y + h;
     });
 };
 
 CanvasEngine.prototype._findGroupAt = function(point) {
     for (const g of this.groups) {
-        const children = this.nodes.filter(n => g.childIds.includes(n.id));
-        if (!children.length) continue;
-        const pad = g.padding || 18;
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-        children.forEach(n => { const w = n.w||260, h = n.h||120; if(n.x<minX)minX=n.x; if(n.y<minY)minY=n.y; if(n.x+w>maxX)maxX=n.x+w; if(n.y+h>maxY)maxY=n.y+h; });
-        if (point.x >= minX - pad && point.x <= maxX + pad && point.y >= minY - pad && point.y <= maxY + pad) {
-            g.x = minX - pad; g.y = minY - pad;
-            return g;
+        const bounds = this._getGroupBounds(g);
+        if (!bounds) continue;
+        if (point.x >= bounds.x && point.x <= bounds.x + bounds.w &&
+            point.y >= bounds.y && point.y <= bounds.y + bounds.h) {
+            return { group: g, bounds: bounds };
         }
     }
     return null;
@@ -588,6 +594,8 @@ CanvasEngine.prototype.destroy = function() {
     }
     // 清理定时器
     if (this._saveIndicatorTimer) { clearTimeout(this._saveIndicatorTimer); this._saveIndicatorTimer = null; }
+    if (this._outputClickTimer) { clearTimeout(this._outputClickTimer); this._outputClickTimer = null; }
+    if (this._assetClickTimer) { clearTimeout(this._assetClickTimer); this._assetClickTimer = null; }  // v2.5.50
     if (this._saveDebounceTimer) { clearTimeout(this._saveDebounceTimer); this._saveDebounceTimer = null; }
     // 清除全局引用
     if (window._canvas === this) { window._canvas = null; }

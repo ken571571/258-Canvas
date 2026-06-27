@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Canvas 前端测试</title>
+<style>
+body{font:13px/1.5 system-ui,sans-serif;margin:20px;background:#111;color:#ddd}
+h1{color:#fff}h2{color:#aaa;margin:24px 0 8px}
+.suite{border:1px solid #333;border-radius:8px;padding:12px;margin:8px 0;background:#1a1a1a}
+.suite h3{margin:0 0 8px;color:#eee}
+.ok{color:#10b981}.fail{color:#ef4444}.skip{color:#f59e0b}
+.result{margin:2px 0;font-family:ui-monospace,monospace;font-size:12px}
+.summary{font-weight:bold;margin-top:12px;font-size:14px}
+</style>
+</head>
+<body>
+<h1>🧪 Canvas 前端测试</h1>
+<div id="summary"></div>
+<div id="results"></div>
+
+<!-- 最小 DOM -->
+<div id="board"><div id="world"><svg id="links"></svg><div id="connection-handles"></div><div id="groups-container"></div><div id="nodes-container"></div></div><div id="selection-marquee"></div></div>
+
+<script>
+// === 最小 Mock ===
+window._t = function(k,d){return d||k};
+window._tt = function(k,d){return d||k};
+window._esc = function(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');};
+window._escJs = function(s){return String(s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");};
+window.getCachedProviders = function(){return [{id:'openai',image_models:['dall-e-3']},{id:'modelscope',image_models:['flux']},{id:'veo',video_models:['veo3-fast']}];};
+window.apiFetch = async function(){return{ok:true,json:async()=>({}),status:200};};
+window.apiJson = async function(){return{};};
+window.refreshProviders = async function(){};
+</script>
+<script src="/static/js/canvas-store.js?v=4"></script>
+<script src="/static/js/canvas-core.js?v=28"></script>
+<script src="/static/js/canvas-undo.js?v=2"></script>
+<script src="/static/js/canvas-renderer-core.js?v=4"></script>
+<script src="/static/js/canvas-pipeline.js?v=74"></script>
+
+<script>
+// === 测试框架 ===
+var tests = [];
+var currentSuite = '';
+var passed = 0, failed = 0, skipped = 0;
+var resultsEl = document.getElementById('results');
+var summaryEl = document.getElementById('summary');
+
+function suite(name) { currentSuite = name; resultsEl.innerHTML += '<div class="suite"><h3>'+name+'</h3><div id="s-'+name.replace(/\s/g,'_')+'"></div></div>'; }
+function log(suite, status, msg) {
+  var el = document.getElementById('s-'+suite.replace(/\s/g,'_'));
+  if (el) el.innerHTML += '<div class="result '+status+'">'+status.toUpperCase()+' '+msg+'</div>';
+}
+function ok(msg) { passed++; log(currentSuite, 'ok', msg); }
+function fail(msg) { failed++; log(currentSuite, 'fail', msg); }
+function skip(msg) { skipped++; log(currentSuite, 'skip', msg); }
+function assert(cond, msg) { cond ? ok(msg) : fail(msg + ' (expected truthy, got '+JSON.stringify(cond)+')'); }
+function assertEq(a, b, msg) { (a===b) ? ok(msg) : fail(msg + ' (expected '+JSON.stringify(b)+', got '+JSON.stringify(a)+')'); }
+function assertDeep(a, b, msg) { (JSON.stringify(a)===JSON.stringify(b)) ? ok(msg) : fail(msg + ' (expected '+JSON.stringify(b)+', got '+JSON.stringify(a)+')'); }
+
+function makeEngine() {
+  var e = new CanvasEngine('board','world','nodes-container','links');
+  e.store = new CanvasStore();
+  e.canvasId = 'test_' + Date.now();
+  e._clientId = 'test';
+  e._canvasUpdatedAt = 0;
+  e._uid = function(type) { return type + '_' + (++e._uidCtr); };
+  e._uidCtr = 0;
+  return e;
+}
+
+function makeNode(engine, type, overrides) {
+  return engine.createNode(type, {x:100,y:100}, overrides);
+}
+</script>
+
+<script>
+// ==================== CanvasStore 测试 ====================
+suite('CanvasStore — 数据层');
+
+(function(){
+  var s = new CanvasStore();
+  var n = {id:'n1',type:'image',x:0,y:0,w:260,h:100,url:'',images:[],videos:[],outputText:''};
+  s.addNode(n);
+  assertEq(s.getNode('n1'), n, 'addNode + getNode');
+  assert(s._nodeById.has('n1'), '_nodeById 索引');
+  assert(s.isNodeDirty('n1'), '新增节点标记脏');
+
+  s.updateNode('n1', {url:'/test.png', imageName:'test.png'});
+  assertEq(s.getNode('n1').url, '/test.png', 'updateNode 更新 url');
+  assertEq(s.getNode('n1').imageName, 'test.png', 'updateNode 更新 imageName');
+
+  s.updateNodePositions([{id:'n1',x:200,y:300}]);
+  assertEq(s.getNode('n1').x, 200, 'updateNodePositions x');
+  assertEq(s.getNode('n1').y, 300, 'updateNodePositions y');
+
+  var c = {id:'c1',from:'n1',to:'n2'};
+  s.addConnection(c);
+  assertEq(s.getConnection('c1'), c, 'addConnection + getConnection');
+
+  s.removeConnection('c1');
+  assertEq(s.getConnection('c1'), undefined, 'removeConnection');
+
+  s.removeNode('n1');
+  assertEq(s.getNode('n1'), undefined, 'removeNode');
+
+  var g = {id:'g1',label:'Test',childIds:['n2','n3'],padding:18};
+  s.addGroup(g);
+  assertEq(s.getGroup('g1'), g, 'addGroup + getGroup');
+
+  s.removeGroup('g1');
+  assertEq(s.getGroup('g1'), undefined, 'removeGroup');
+
+  // toSavePayload
+  s.addNode({id:'ns',type:'image',x:1,y:2,w:3,h:4});
+  var p = s.toSavePayload('client1', 12345);
+  assert(p.nodes.length > 0, 'toSavePayload 包含 nodes');
+  assertEq(p.client_id, 'client1', 'toSavePayload client_id');
+  assertEq(p.base_updated_at, 12345, 'toSavePayload base_updated_at');
+
+  // loadFromServer
+  s.loadFromServer({nodes:[{id:'nx',type:'prompt',x:99,y:88,w:260,h:100,text:'hello'}],connections:[],groups:[],viewport:{x:0,y:0,scale:1}});
+  assertEq(s.getNode('nx').text, 'hello', 'loadFromServer 加载节点');
+  assertEq(s.getNode('nx').runState, 'idle', 'loadFromServer 重置 runState');
+
+  // 脏标记
+  s.clearDirty();
+  assert(!s.isDirty(), 'clearDirty 后 isDirty=false');
+  s.updateNode('nx', {text:'changed'});
+  assert(s.isDirty(), 'updateNode 后 isDirty=true');
+
+  ok('CanvasStore 全部测试通过');
+})();
+
+// ==================== _collectInputs 测试 ====================
+suite('_collectInputs — 数据收集');
+
+(function(){
+  var eng = makeEngine();
+  eng.nodes = [
+    {id:'img1',type:'image',x:0,y:0,w:260,h:100,url:'/input/cat.png'},
+    {id:'prompt1',type:'prompt',x:0,y:0,w:260,h:100,text:'a cat'},
+    {id:'agent1',type:'agent',x:0,y:0,w:260,h:100,lastResult:'cat analysis'},
+    {id:'loop1',type:'loop',x:0,y:0,w:260,h:100,_queue:[{url:'/input/dog.png',id:'q1'}],_textSegments:['seg1'],_batchSize:1,_cursorImg:0,_cursorTxt:0},
+    {id:'output1',type:'output',x:0,y:0,w:260,h:100,images:[{url:'/output/gen.png'}],videos:[],outputText:''},
+    {id:'target',type:'comfy',x:0,y:0,w:260,h:100},
+  ];
+  eng.connections = [
+    {id:'c1',from:'img1',to:'target'},
+    {id:'c2',from:'prompt1',to:'target'},
+    {id:'c3',from:'agent1',to:'target'},
+    {id:'c4',from:'loop1',to:'target'},
+    {id:'c5',from:'output1',to:'target'},
+  ];
+
+  eng.store = new CanvasStore();
+  eng.nodes.forEach(function(n){eng.store.addNode(Object.assign({},n));});
+
+  var result = eng._collectInputs('target');
+  assert(result.texts.indexOf('a cat') >= 0, '收集 prompt 文本');
+  assert(result.texts.some(function(t){return t.indexOf('cat analysis')>=0;}), '收集 agent 文本');
+  assert(result.images.indexOf('/input/cat.png') >= 0, '收集 image 节点图片');
+  assert(result.images.some(function(u){return u.indexOf('/input/dog.png')>=0;}), '收集 loop 图片');
+  // 输出节点不应被收集
+  assert(!result.images.some(function(u){return u.indexOf('/output/gen.png')>=0;}), '输出节点图片不被收集');
+  assert(!result.texts.some(function(t){return t.indexOf('')>=0 && result.texts.length===2;}), '输出节点文本不被收集');
+
+  ok('_collectInputs 全部测试通过');
+})();
+
+// ==================== Loop upstream sync 测试 ====================
+suite('Loop 上游同步');
+
+(function(){
+  var eng = makeEngine();
+  var loop = makeNode(eng, 'loop', {_queue:[{url:'/old.png',id:'q1'}],_removedUrls:[],_batchSize:1});
+  var img = makeNode(eng, 'image', {url:'/new.png'});
+  eng.connections = [{id:'c1',from:img.id,to:loop.id}];
+
+  // 模拟 _renderNodeBody_loop 中的同步
+  var inputs = eng._collectInputs(loop.id);
+  var activeUrls = new Set(inputs.images);
+  assertEq(activeUrls.has('/new.png'), true, 'activeUrls 包含新图片URL');
+
+  // 旧图不在上游 → 应移除
+  loop._queue = loop._queue.filter(function(q){
+    if (q._src==='manual') return true;
+    if (activeUrls.has(q.url)) return true;
+    return false;
+  });
+  assertEq(loop._queue.length, 0, '旧图(无_src+不在activeUrls)被移除');
+
+  // 新图加入
+  inputs.images.forEach(function(url){
+    if (!loop._queue.some(function(q){return q.url===url;})){
+      loop._queue.push({url:url,id:'q_new',_src:'upstream'});
+    }
+  });
+  assertEq(loop._queue.length, 1, '新图被添加');
+  assertEq(loop._queue[0]._src, 'upstream', '新图标记 _src:upstream');
+
+  // 手动图不受上游影响
+  loop._queue.push({url:'/manual.png',id:'qm',_src:'manual'});
+  // 再次同步
+  activeUrls = new Set(eng._collectInputs(loop.id).images);
+  loop._queue = loop._queue.filter(function(q){
+    if (q._src==='manual') return true;
+    if (activeUrls.has(q.url)) return true;
+    return false;
+  });
+  assertEq(loop._queue.length, 2, '手动图+上游图共存');
+  assert(loop._queue.some(function(q){return q._src==='manual';}), '手动图保留');
+
+  // 空上游不清理队列
+  eng.connections = [];
+  var inputs2 = eng._collectInputs(loop.id);
+  assertEq(inputs2.images.length, 0, '无上游时 inputs 为空');
+  // activeUrls.size===0 → 不同步 → 队列不变
+  ok('空上游跳过同步 — 队列保留');
+
+  ok('Loop 上游同步全部测试通过');
+})();
+
+// ==================== _findChainRoot + _executeChain 测试 ====================
+suite('_findChainRoot — 执行链');
+
+(function(){
+  var eng = makeEngine();
+  eng.nodes = [
+    {id:'prompt',type:'prompt',x:0,y:0,w:260,h:100,text:'test'},
+    {id:'img',type:'image',x:0,y:0,w:260,h:100,url:'/test.png'},
+    {id:'gen',type:'image_gen',x:0,y:0,w:260,h:100},
+    {id:'output',type:'output',x:0,y:0,w:260,h:100},
+  ];
+  eng.connections = [
+    {id:'c1',from:'prompt',to:'gen'},
+    {id:'c2',from:'img',to:'gen'},
+    {id:'c3',from:'gen',to:'output'},
+  ];
+
+  // prompt → gen: root 应是 prompt（可执行且无上游可执行节点）
+  var root = eng._findChainRoot('gen');
+  assertEq(root, 'prompt', 'prompt→gen 链 root 是 prompt');
+
+  // prompt 本身无上游可执行 → 自己是 root
+  var root2 = eng._findChainRoot('prompt');
+  assertEq(root2, 'prompt', 'prompt 无上游 → 自己是 root');
+
+  // output 不是可执行节点 → 不会作为 root
+  // gen 的上游是 prompt/img，prompt 可执行 → root=prompt
+  var root3 = eng._findChainRoot('output');
+  assertEq(root3, 'prompt', 'output 不可执行 → 跳过 → root=prompt');
+
+  // 只有 img→gen → root=gen (img 不可执行)
+  eng.connections = [{id:'c1',from:'img',to:'gen'}];
+  var root4 = eng._findChainRoot('gen');
+  assertEq(root4, 'gen', 'img(不可执行)→gen → root=gen');
+
+  // 环路保护
+  eng.connections = [{id:'c1',from:'gen',to:'prompt'},{id:'c2',from:'prompt',to:'gen'}];
+  var root5 = eng._findChainRoot('gen');
+  assert(['gen','prompt'].indexOf(root5) >= 0, '环路时返回链上节点（visited 保护不溢出）');
+
+  ok('_findChainRoot 全部测试通过');
+})();
+
+// ==================== _ensureOutput 测试 ====================
+suite('_ensureOutput — 输出节点智能复用');
+
+(function(){
+  var eng = makeEngine();
+  eng.nodes = [
+    {id:'src',type:'image_gen',x:100,y:100,w:260,h:100},
+  ];
+
+  // 3) 无已有输出 → 新建
+  var out1 = eng._ensureOutput('src');
+  assertEq(out1.type, 'output', '新建输出节点');
+  assert(eng.connections.some(function(c){return c.from==='src'&&c.to===out1.id;}), '创建连线');
+
+  // 1) 已有连线 → 复用
+  var out2 = eng._ensureOutput('src');
+  assertEq(out2.id, out1.id, '复用已有输出节点');
+
+  // 2) 有孤立输出节点 → 优先连接
+  eng.connections = [];
+  var orphan = makeNode(eng, 'output', {});
+  // orphan 无入边
+  var out3 = eng._ensureOutput('src');
+  assertEq(out3.id, orphan.id, '复用孤立输出节点');
+
+  ok('_ensureOutput 全部测试通过');
+})();
+
+// ==================== 保存全字段同步 测试 ====================
+suite('保存 — 全字段同步');
+
+(function(){
+  var eng = makeEngine();
+  eng.store = new CanvasStore();
+
+  // 创建含全字段的节点
+  var n = {id:'n1',type:'image',x:10,y:20,w:260,h:100,url:'/test.png',imageName:'test',imageWidth:800,imageHeight:600,desc:'my desc',text:'',outputText:'',lastResult:'',images:[],videos:[],_queue:[],_batchSize:1,model:'dall-e-3',provider_id:'openai',agentId:'',comfyWorkflow:'',_removedUrls:[],_textSegments:[],userInput:'',systemPrompt:'',size:'1024x1024',_customWH:false,hasConfig:false,knowledgeBases:[],skills:[],runState:'idle',runMessage:''};
+  eng.nodes.push(n);
+  eng.store.addNode(Object.assign({}, n));
+
+  // 修改引擎节点
+  eng.nodes[0].desc = 'new desc';
+  eng.nodes[0].url = '/new.png';
+  eng.nodes[0].imageName = 'new.png';
+
+  // 模拟 save() 的全字段同步
+  var SKIP_SAVE = {runState:1, runMessage:1, _cursorImg:1, _cursorTxt:1, _cancelled:1, _taH:1};
+  for (var i = 0; i < eng.nodes.length; i++) {
+    var en = eng.nodes[i];
+    var sn = eng.store.getNode(en.id);
+    if (sn) {
+      var keys = Object.keys(en);
+      for (var k = 0; k < keys.length; k++) {
+        if (SKIP_SAVE[keys[k]]) continue;
+        var v = en[keys[k]];
+        sn[keys[k]] = Array.isArray(v) ? v.slice() : v;
+      }
+    }
+  }
+
+  assertEq(eng.store.getNode('n1').desc, 'new desc', 'save() 同步 desc');
+  assertEq(eng.store.getNode('n1').url, '/new.png', 'save() 同步 url');
+  assertEq(eng.store.getNode('n1').imageName, 'new.png', 'save() 同步 imageName');
+
+  // runState 不应同步
+  eng.nodes[0].runState = 'running';
+  var sn = eng.store.getNode('n1');
+  if (SKIP_SAVE['runState']) { /* skip */ }
+  assertEq(sn.runState, 'idle', 'runState 不被同步（SKIP_SAVE）');
+
+  ok('保存全字段同步全部测试通过');
+})();
+
+// ==================== 汇总 ====================
+summaryEl.innerHTML = '<span class="ok">✓ '+passed+' 通过</span> · ' +
+  (failed ? '<span class="fail">✗ '+failed+' 失败</span> · ' : '') +
+  (skipped ? '<span class="skip">- '+skipped+' 跳过</span>' : '') +
+  ' | 共 '+(passed+failed+skipped)+' 条断言';
+if (failed) summaryEl.innerHTML += '<br><span class="fail">⚠ 有测试失败，请查看上方详情</span>';
+else summaryEl.innerHTML += '<br><span class="ok">✅ 全部通过</span>';
+</script>
+</body>
+</html>

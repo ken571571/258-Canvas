@@ -44,26 +44,33 @@ class JsonStore:
 
         读取时会检查内存缓存（TTL 30s），缓存命中则跳过磁盘 I/O。
         新增 async 代码请优先使用 async_read() 避免阻塞事件循环。
+
+        双重检查模式：仅持锁读写 _cache dict，磁盘 I/O 在锁外执行。
+        避免在 asyncio 事件循环中因持锁做 I/O 导致全局停滞。
         """
         now = time.time()
+        # 第一阶段：持锁仅查缓存（O(1) dict 操作，不阻塞事件循环）
         with self._cache_lock:
             cached = self._cache.get(path)
             if cached is not None:
                 data, expiry = cached
                 if now < expiry:
                     return data
-            # 缓存未命中或过期：在锁内读磁盘并写缓存（消除 TOCTOU 竞态）
-            try:
-                if not os.path.exists(path):
-                    self._cache[path] = (default, now + _CACHE_TTL)
-                    return default
+
+        # 第二阶段：锁外执行磁盘 I/O（不阻塞其他协程/线程）
+        try:
+            if not os.path.exists(path):
+                data = default
+            else:
                 with open(path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
-                self._cache[path] = (data, now + _CACHE_TTL)
-                return data
-            except (json.JSONDecodeError, IOError, OSError):
-                self._cache[path] = (default, now + _CACHE_TTL)
-                return default
+        except (json.JSONDecodeError, IOError, OSError):
+            data = default
+
+        # 第三阶段：持锁写缓存（O(1) dict 操作）
+        with self._cache_lock:
+            self._cache[path] = (data, now + _CACHE_TTL)
+        return data
     async def async_read(self, path: str, default: dict | list = None) -> dict | list:
         """异步读取 JSON 文件（在线程池中执行，不阻塞事件循环）。
 
@@ -87,6 +94,8 @@ class JsonStore:
             tmp = path + ".tmp"
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
+                f.flush()
+                os.fsync(f.fileno())   # 确保持久化到磁盘后再原子替换
             os.replace(tmp, path)
         # 失效缓存（写入后下次读取必须从磁盘获取最新数据，线程安全）
         with self._cache_lock:

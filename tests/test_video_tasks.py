@@ -55,6 +55,3 @@ class VideoTasksTests(unittest.TestCase):
         self.assertIn("task_id", data)
         self.assertEqual(data["status"], "queued")
 
-
-if __name__ == "__main__":
-    unittest.main()

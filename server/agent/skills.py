@@ -46,19 +46,28 @@ class SkillRegistry:
                 })
         return tools
 
-    async def execute(self, skill_id: str, arguments: dict) -> dict:
+    async def execute(self, skill_id: str, arguments: dict, agent_config: dict = None) -> dict:
         skill = self._skills.get(skill_id)
         if not skill or not skill.handler:
             return {"error": f"未知技能: {skill_id}"}
         try:
-            result = await skill.handler(arguments)
+            # 仅当 handler 接受 agent_config 参数时才传递（向后兼容自定义技能）
+            import inspect
+            try:
+                params = inspect.signature(skill.handler).parameters
+            except (ValueError, TypeError):
+                params = {}
+            if 'agent_config' in params:
+                result = await skill.handler(arguments, agent_config=agent_config)
+            else:
+                result = await skill.handler(arguments)
             if isinstance(result, dict):
                 return result
             return {"result": result}
         except Exception as e:
             return {"error": str(e)}
 
-    async def _skill_generate_image(self, arguments: dict) -> dict:
+    async def _skill_generate_image(self, arguments: dict, agent_config: dict = None) -> dict:
         from ..routes.providers_cfg import resolve_provider
 
         prompt = str(arguments.get("prompt") or "").strip()
@@ -82,7 +91,7 @@ class SkillRegistry:
         )
         return {"url": result.url, "size": size, "model": model or ""}
 
-    async def _skill_search_knowledge(self, arguments: dict) -> dict:
+    async def _skill_search_knowledge(self, arguments: dict, agent_config: dict = None) -> dict:
         from ..routes.knowledge import _load_index, search_kb_chunks
 
         query = str(arguments.get("query") or "").strip()
@@ -92,7 +101,7 @@ class SkillRegistry:
             return {"results": []}
         return {"results": search_kb_chunks(kb_ids, query, top_k)}
 
-    async def _skill_web_search(self, arguments: dict) -> dict:
+    async def _skill_web_search(self, arguments: dict, agent_config: dict = None) -> dict:
         """联网搜索：使用 DuckDuckGo 或 Google 搜索。"""
         query = str(arguments.get("query") or "").strip()
         num = int(arguments.get("num_results") or 5)
@@ -102,7 +111,7 @@ class SkillRegistry:
         try:
             import httpx
             # 使用 DuckDuckGo Instant Answer API（免费，无需 Key）
-            async with httpx.AsyncClient(timeout=15) as cli:
+            async with httpx.AsyncClient(timeout=15, follow_redirects=False) as cli:
                 resp = await cli.get(
                     "https://api.duckduckgo.com/",
                     params={"q": query, "format": "json", "no_html": 1, "skip_disambig": 1},
@@ -125,7 +134,7 @@ class SkillRegistry:
         except Exception as e:
             return {"error": f"搜索失败: {e}", "results": []}
 
-    async def _skill_chat(self, arguments: dict) -> dict:
+    async def _skill_chat(self, arguments: dict, agent_config: dict = None) -> dict:
         from ..routes.providers_cfg import resolve_provider
 
         message = str(arguments.get("message") or "").strip()
@@ -133,7 +142,7 @@ class SkillRegistry:
             return {"error": "message 不能为空"}
 
         # 默认用 Agent 配置的平台和模型
-        agent_cfg = getattr(self, '_agent_config', {}) or {}
+        agent_cfg = agent_config or {}
         provider_id = str(arguments.get("provider_id") or agent_cfg.get("provider_id") or "openai")
         model = str(arguments.get("model") or agent_cfg.get("model") or "gpt-4o-mini")
         system_prompt = str(arguments.get("system_prompt") or "")
@@ -278,6 +287,8 @@ class SkillRegistry:
                     )
                     tmp_file.write(plain)
                     tmp_file.close()
+                    # v2.5.51：限制临时文件权限，仅当前用户可读写
+                    os.chmod(tmp_file.name, 0o600)
                     import_path = tmp_file.name
             except Exception as e:
                 log.warning(f"检测加密状态失败 {fn}: {e}")

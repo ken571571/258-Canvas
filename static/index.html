@@ -63,20 +63,20 @@
             </div>
             <!-- 语言选择 -->
             <div class="lang-dropdown" id="langDropdown">
-                <button class="side-pill lang-btn" onclick="toggleLangMenu()" title="切换语言">
+                <button class="side-pill lang-btn" onclick="toggleLangMenu()" data-t-title="sidebar.lang" title="切换语言">
                     <span class="lang-flag">🌐</span>
-                    <span class="nav-label lang-label" id="langLabel">中文</span>
+                    <span class="nav-label lang-label" id="langLabel" data-t="sidebar.langLabel">中文</span>
                 </button>
                 <div class="lang-menu" id="langMenu" style="display:none">
                     <button class="lang-item active" onclick="selectLang('zh-CN')">中文</button>
                     <button class="lang-item" onclick="selectLang('en')">English</button>
                 </div>
             </div>
-            <button class="sidebar-mode-toggle" onclick="cycleSidebarMode()" title="切换侧边栏模式">
+            <button class="sidebar-mode-toggle" onclick="cycleSidebarMode()" data-t-title="sidebar.switchSidebar" title="切换侧边栏模式">
                 <span class="mode-icon" id="mode-icon">↔</span>
                 <span class="mode-label" id="mode-label">Auto</span>
             </button>
-            <button class="side-pill" onclick="toggleTheme()" title="切换主题">
+            <button class="side-pill" onclick="toggleTheme()" data-t-title="sidebar.switchTheme" title="切换主题">
                 <!-- 太阳图标（亮色模式显示） -->
                 <ui-icon name="sun" size="16" class="theme-icon-sun"></ui-icon>
                 <!-- 月亮图标（暗色模式显示） -->
@@ -90,8 +90,8 @@
         <iframe id="frame-canvas-gate" data-src="/static/canvas-gate.html" scrolling="yes"></iframe>
         <iframe id="frame-canvas" data-src="/static/canvas.html?v=15" scrolling="yes"></iframe>
         <iframe id="frame-chat" data-src="/static/chat.html?v=3" scrolling="yes"></iframe>
-        <iframe id="frame-settings" data-src="/static/settings.html?v=5" scrolling="yes"></iframe>
-        <iframe id="frame-agents" data-src="/static/agents.html" scrolling="yes"></iframe>
+        <iframe id="frame-settings" data-src="/static/settings.html?v=7" scrolling="yes"></iframe>
+        <iframe id="frame-agents" data-src="/static/agents.html?v=2" scrolling="yes"></iframe>
         <iframe id="frame-comfyui" data-src="/static/comfyui.html" scrolling="yes"></iframe>
         <iframe id="frame-about" data-src="/static/about.html" scrolling="yes"></iframe>
     </main>
@@ -149,20 +149,23 @@ function toggleTheme() {
 
 // 侧边栏三态切换: auto → narrow → wide → auto
 const SIDEBAR_MODES = ['auto', 'narrow', 'wide'];
-const MODE_META = {
-    auto:   { icon: '↔', label: 'Auto' },
-    narrow: { icon: '🔒', label: '固定窄边' },
-    wide:   { icon: '🔓', label: '固定宽边' },
+const MODE_LABELS = {
+    auto:   'sidebar.modeAuto',
+    narrow: 'sidebar.modeNarrow',
+    wide:   'sidebar.modeWide',
 };
+const MODE_ICONS = { auto: '↔', narrow: '🔒', wide: '🔓' };
 function applySidebarMode(mode) {
     if (!SIDEBAR_MODES.includes(mode)) { mode = 'auto'; }
-    const meta = MODE_META[mode];
     const sidebar = document.getElementById('sidebar');
     if (sidebar) sidebar.setAttribute('data-mode', mode);
     const iconEl = document.getElementById('mode-icon');
     const labelEl = document.getElementById('mode-label');
-    if (iconEl) iconEl.textContent = meta.icon;
-    if (labelEl) labelEl.textContent = meta.label;
+    if (iconEl) iconEl.textContent = MODE_ICONS[mode];
+    if (labelEl) {
+        const key = MODE_LABELS[mode];
+        labelEl.textContent = (typeof _t === 'function') ? _t(key, key) : key;
+    }
     localStorage.sidebarMode = mode;
 }
 function cycleSidebarMode() {

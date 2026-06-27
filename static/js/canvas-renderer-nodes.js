@@ -1,9 +1,9 @@
 CanvasEngine.prototype._renderNodes = function() {
     // ——— 快速路径：仅位置更新（拖拽后） ———
-    // 当只有节点坐标变化、无内容/数量/连线变化时，跳过 DOM 重建，只更新 CSS
     var store = this.store;
+    var hasDragNodes = !!this._dragNodes;
     if (store && !store._dirty.all &&
-        store._dirty.nodes.size > 0 &&
+        (store._dirty.nodes.size > 0 || hasDragNodes) &&
         store._dirty.connections.size === 0 &&
         store._dirty.groups.size === 0) {
         var positionOnly = true;
@@ -20,6 +20,16 @@ CanvasEngine.prototype._renderNodes = function() {
                 positionOnly = false;  // 新节点，需要全量渲染
             }
         });
+        // 拖拽中：直接从引擎节点更新 CSS 位置（不经 Store dirty 追踪）
+        if (hasDragNodes && self._dragNodes) {
+            self._dragNodes.items.forEach(function(item) {
+                var el = self.nodesEl.querySelector('[data-id="' + item.node.id + '"]');
+                if (el) {
+                    el.style.left = item.node.x + 'px';
+                    el.style.top = item.node.y + 'px';
+                }
+            });
+        }
         if (positionOnly) {
             store.clearDirty();
             // 仍需更新连线（连线端点跟随节点移动）
@@ -29,6 +39,21 @@ CanvasEngine.prototype._renderNodes = function() {
     }
 
     // ——— 完整路径：内容变化时走原有逻辑 ———
+    // v2.5.52：渲染前保存 prompt textarea 焦点，渲染后恢复（避免 _renderAll 导致光标丢失）
+    var savedFocusId = null, savedSelStart = 0, savedSelEnd = 0;
+    var ae = document.activeElement;
+    if (ae && ae.tagName === 'TEXTAREA') {
+        var promptEl = ae.closest('[data-id]');
+        if (promptEl) {
+            var promptNode = this.store.getNode(promptEl.dataset.id);
+            if (promptNode && promptNode.type === 'prompt') {
+                savedFocusId = promptEl.dataset.id;
+                savedSelStart = ae.selectionStart;
+                savedSelEnd = ae.selectionEnd;
+            }
+        }
+    }
+
     this.nodesEl.innerHTML = '';
 
     this.nodes.forEach(node => {
@@ -39,13 +64,14 @@ CanvasEngine.prototype._renderNodes = function() {
             node.runState === 'running' ? 'is-running' : '',
             node.runState === 'success' ? 'is-success' : '',
             node.runState === 'error' ? 'is-error' : '',
+            node.runState === 'cancelled' ? 'is-cancelled' : '',
         ].filter(Boolean).join(' ');
         el.style.left = `${node.x}px`;
         el.style.top = `${node.y}px`;
         el.style.width = `${node.w || 260}px`;
         el.dataset.id = node.id;
 
-        const hasInput = ['image_gen', 'video_gen', 'agent', 'output', 'loop'].includes(node.type);
+        const hasInput = ['image_gen', 'video_gen', 'agent', 'output', 'loop', 'prompt'].includes(node.type);
         const isComfy = node.type === 'comfy';
         const hasOutput = ['image', 'prompt', 'image_gen', 'video_gen', 'agent', 'loop', 'output', 'comfy'].includes(node.type);
         const badge = this._renderNodeStateBadge(node);
@@ -65,7 +91,14 @@ CanvasEngine.prototype._renderNodes = function() {
             const pointerStart=this._screenToWorld(event.clientX,event.clientY);
             this._dragNodes={pointerStart,items:this.nodes.filter(item=>ids.includes(item.id)).map(item=>({node:item,startX:item.x,startY:item.y}))};
             this._ensureDragListeners();
-            this._renderAll();
+            // 直接更新 classList 替代 _renderAll（仅选中变化，无需重建 DOM/minimap/SVG）
+            var allEls = this.nodesEl.children;
+            for (var i = 0; i < allEls.length; i++) {
+                var cel = allEls[i];
+                if (this.selected.has(cel.dataset.id)) cel.classList.add('selected');
+                else cel.classList.remove('selected');
+            }
+            if (this.store) this.store.clearDirty();
         });
 
         el.querySelector('[data-del]')?.addEventListener('click',event=>{event.stopPropagation();this._deleteNode(node.id);});
@@ -76,11 +109,18 @@ CanvasEngine.prototype._renderNodes = function() {
 
         this.nodesEl.appendChild(el);
         // 收集元素引用，循环结束后批量读取 offsetHeight（避免逐个读取触发多次同步布局）
-        // 列队 X 按钮
-        el.querySelectorAll('.loop-thumb-x').forEach(btn=>{btn.addEventListener('mousedown',e=>{e.stopPropagation();e.stopImmediatePropagation();e.preventDefault();const nid=btn.dataset.loopRm;const idx=parseInt(btn.dataset.loopRmIdx);if(nid&&!isNaN(idx)){this._removeLoopItem(nid,idx);}});});
         // ComfyUI 多端口动态添加
-        if(node.type==='comfy'){const wf=(this._comfyWfList||[]).find(w=>w.name===node.comfyWorkflow);(wf?._fields||[]).forEach((f,i)=>{const p=document.createElement('div');p.className='port port-in comfy-port';p.dataset.port='in';p.dataset.node=node.id;p.dataset.fieldId=f.id;p.style.cssText='top:'+(48+i*34)+'px;left:-9px;width:18px;height:18px;pointer-events:auto;';p.title=f.name||f.input;p.addEventListener('mousedown',e=>{e.stopPropagation();e.preventDefault();this.selectedConnectionId='';this._linkFrom={nodeId:node.id,portType:'in'};this._tempPointer=this._screenToWorld(e.clientX,e.clientY);this._ensureDragListeners();this._renderLinks();});el.appendChild(p);});}
+        if(node.type==='comfy'){const wf=(this._comfyWfList||[]).find(w=>w.name===node.comfyWorkflow);var portOffset=48+(node.comfyWorkflow&&!wf?14:0);(wf?._fields||[]).forEach((f,i)=>{const p=document.createElement('div');p.className='port port-in comfy-port';p.dataset.port='in';p.dataset.node=node.id;p.dataset.fieldId=f.id;p.style.cssText='top:'+(portOffset+i*34)+'px;left:-9px;width:18px;height:18px;pointer-events:auto;';p.title=f.name||f.input;p.addEventListener('mousedown',e=>{e.stopPropagation();e.preventDefault();this.selectedConnectionId='';this._linkFrom={nodeId:node.id,portType:'in'};this._tempPointer=this._screenToWorld(e.clientX,e.clientY);this._ensureDragListeners();this._renderLinks();});el.appendChild(p);});}
     });
+
+    // v2.5.52：渲染后恢复 prompt textarea 焦点和光标位置
+    if (savedFocusId) {
+        var restored = this.nodesEl.querySelector('[data-id="' + savedFocusId + '"] textarea');
+        if (restored) {
+            restored.focus();
+            restored.setSelectionRange(savedSelStart, savedSelEnd);
+        }
+    }
 
     // ——— 批量读取 offsetHeight（避免在循环内逐个读取触发多次同步布局） ———
     // 使用 Store 的 Map 索引 O(1) 查找，替代 nodes.find() 的 O(n²)
@@ -155,6 +195,23 @@ CanvasEngine.prototype._renderNodeBody_image = function(node, meta) {
 };
 
 CanvasEngine.prototype._renderNodeBody_prompt = function(node, meta) {
+    // 收集上游连线传入的文本，合并到可编辑的 textarea 中
+    try {
+        var inputs = this._collectInputs(node.id);
+        if (inputs.texts.length) {
+            var upstream = inputs.texts.join('\n');
+            // 只在上游文本变化时更新，避免重复拼接
+            if ((upstream && !node._upstreamLast) || node._upstreamLast !== upstream) {
+                node._upstreamLast = upstream;
+                var current = node.text || '';
+                // 精确前缀匹配：current 不以 upstream 开头时才拼接
+                if (current !== upstream && current.indexOf(upstream + '\n') !== 0) {
+                    node.text = upstream + (current ? '\n' + current : '');
+                    this.store.updateNode(node.id, { text: node.text });
+                }
+            }
+        }
+    } catch(e) { console.warn('prompt node upstream merge failed', e); }
     return `
                 <textarea class="node-input" placeholder="${_t('node.inputPrompt','输入提示词...')}" oninput="window._canvas._updateNodeProp('${node.id}', 'text', this.value)" style="${node._taH ? 'height:'+node._taH+'px;' : ''}">${this._esc(node.text || '')}</textarea>
                 ${meta}
@@ -171,7 +228,7 @@ CanvasEngine.prototype._renderGenBody = function(node, gap, h, mod) {
 
     // provider + model selects
     var html = '<div style="display:flex;gap:' + gap + ';margin-bottom:' + gap + ';min-width:0;">' +
-        '<select onchange="window._canvas._updateNodeProp(\'' + node.id + '\',\'provider_id\',this.value);window._canvas._updateNodeProp(\'' + node.id + '\',\'model\',\'\');window._canvas._renderAllDeferred()" style="flex:1;min-width:0;' + selOpts + '">' +
+        '<select onchange="window._canvas._switchProvider(\'' + node.id + '\',this.value)" style="flex:1;min-width:0;' + selOpts + '">' +
             this._renderProviderOpts(node.provider_id || '', mod) +
         '</select>' +
         '<select onchange="window._canvas._updateNodeProp(\'' + node.id + '\',\'model\',this.value);window._canvas._renderAllDeferred()" style="flex:1.5;min-width:0;' + selOpts + '">' +
@@ -217,7 +274,7 @@ CanvasEngine.prototype._renderNodeBody_image_gen = function(node, meta) {
         return this._renderGenBody(node, '4px', '28px', 'image') +
             (meta || '<div class="node-meta" style="margin-bottom:2px;">' + _t('pipeline.imgGenHint','连接提示词或图片后生成结果') + '</div>') +
             '<div class="node-actions" style="margin-top:0;">' +
-                '<button class="tool-btn" style="font-size:11px;padding:4px 8px;" onclick="window._canvas._runPipeline(\'' + node.id + '\')">🖼 ' + _t('nodeType.imageGen','图片生成') + '</button>' +
+                '<button class="tool-btn" style="font-size:11px;padding:4px 8px;" onclick="window._canvas._executeChain(\'' + node.id + '\')">🖼 ' + _t('nodeType.imageGen','图片生成') + '</button>' +
             '</div>';
     }
 };
@@ -236,7 +293,7 @@ CanvasEngine.prototype._renderNodeBody_video_gen = function(node, meta) {
             const selOpts = 'height:28px;padding:0 6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);font-size:11px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
             return `
                 <div style="display:flex;gap:4px;margin-bottom:4px;min-width:0;">
-                    <select onchange="window._canvas._updateNodeProp('${node.id}','provider_id',this.value);window._canvas._updateNodeProp('${node.id}','model','');window._canvas._renderAllDeferred()" style="flex:1;min-width:0;${selOpts}">
+                    <select onchange="window._canvas._switchProvider('${node.id}',this.value)" style="flex:1;min-width:0;${selOpts}">
                         ${this._renderProviderOpts(node.provider_id || '', 'video')}
                     </select>
                     <select onchange="window._canvas._updateNodeProp('${node.id}','model',this.value);window._canvas._renderAllDeferred()" style="flex:1.5;min-width:0;${selOpts}">
@@ -258,7 +315,7 @@ CanvasEngine.prototype._renderNodeBody_video_gen = function(node, meta) {
                 })()}
                 ${meta || '<div class="node-meta" style="margin-bottom:2px;">' + _t('pipeline.vidGenHint','连接提示词或图片后生成视频') + '</div>'}
                 <div class="node-actions" style="margin-top:0;">
-                    <button class="tool-btn" style="font-size:11px;padding:4px 8px;" onclick="window._canvas._runPipeline('${node.id}')">🎬 ${_t('nodeType.videoGen','视频生成')}</button>
+                    <button class="tool-btn" style="font-size:11px;padding:4px 8px;" onclick="window._canvas._executeChain('${node.id}')">🎬 ${_t('nodeType.videoGen','视频生成')}</button>
                 </div>
             `;
         }
@@ -266,7 +323,7 @@ CanvasEngine.prototype._renderNodeBody_video_gen = function(node, meta) {
 
 CanvasEngine.prototype._renderNodeBody_agent = function(node, meta) {
     return `
-                <select onchange="window._canvas._updateNodeProp('${node.id}','agentId',this.value)" style="width:100%;height:32px;margin-bottom:8px;padding:0 6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);font-size:11px;color:var(--text);">
+                <select onchange="window._canvas._switchAgent('${node.id}',this.value)" style="width:100%;height:32px;margin-bottom:8px;padding:0 6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);font-size:11px;color:var(--text);">
                     <option value="">${_t('pipeline.selectAgent','选择智能体...')}</option>
                     ${(this._agentList||[]).map(a => `<option value="${a.id}" ${a.id===node.agentId?'selected':''}>${this._esc(a.name||a.id)}</option>`).join('')}
                 </select>
@@ -325,17 +382,28 @@ CanvasEngine.prototype._renderNodeBody_loop = function(node, meta) {
             if (!node._removedUrls || typeof node._removedUrls[Symbol.iterator] !== 'function') node._removedUrls = [];
             const activeUrls = new Set(inputs.images);
             node._removedUrls = node._removedUrls.filter(u => activeUrls.has(u));
-            // 追加新连线（跳过用户手动移除的）
+            // 移除上游已不存在的项（上游图片替换/删除后自动清理）
+            node._queue = node._queue.filter(function(q) {
+                if (q._src === 'manual') return true;          // 保留手动拖入的项
+                if (activeUrls.has(q.url)) return true;        // 仍在上游连线中
+                return false;                                   // 上游已移除 → 清除
+            });
+            // 追加新上游图片（标记 _src: 'upstream'，跳过用户手动移除的）
             for (const url of inputs.images) {
                 if (!node._queue.some(q => q.url === url) && !node._removedUrls.includes(url)) {
-                    node._queue.push({ url, id: 'q_' + Date.now() + Math.random() });
+                    node._queue.push({ url: url, id: 'q_' + Date.now() + Math.random(), _src: 'upstream' });
                 }
             }
             const queue = node._queue;
             return `
-                <div style="display:flex;gap:8px;overflow-x:auto;padding:8px 0;min-height:172px;align-items:center;" id="loop-queue-${node.id}">
+                <div style="display:flex;gap:8px;overflow-x:auto;padding:8px 0;min-height:172px;align-items:center;"
+                     id="loop-queue-${node.id}"
+                     ondragover="event.preventDefault();"
+                     ondrop="window._canvas._onLoopDrop(event,'${node.id}')">
                     ${queue.length ? queue.map((item, i) => `
-                        <div style="flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:4px;">
+                        <div class="loop-thumb" style="flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:4px;"
+                             draggable="true"
+                             ondragstart="window._canvas._onLoopDragStart(event,'${node.id}',${i})">
                             <div style="display:flex;gap:0;">
                                 <button style="width:36px;height:28px;border:none;background:var(--surface-2);color:var(--text);font-size:14px;cursor:pointer;border-radius:8px 0 0 8px;padding:0;line-height:1;" onclick="event.stopPropagation();window._canvas._moveLoopItem('${node.id}',${i},-1)" ${i===0?'disabled':''}>◀</button>
                                 <button style="width:36px;height:28px;border:none;background:var(--surface-2);color:var(--text);font-size:14px;cursor:pointer;border-radius:0 8px 8px 0;padding:0;line-height:1;" onclick="event.stopPropagation();window._canvas._moveLoopItem('${node.id}',${i},1)" ${i===queue.length-1?'disabled':''}>▶</button>
@@ -347,8 +415,17 @@ CanvasEngine.prototype._renderNodeBody_loop = function(node, meta) {
                         </div>
                     `).join('') : '<span style="color:var(--muted);font-size:12px;">' + _t('loop.emptyHint','连接图片后显示') + '</span>'}
                 </div>
-                <div class="node-meta">${_t('loop.segHint','文本分段')}: <code>----</code> / <code>1. 2. 3.</code> · ${_t('loop.count','共 # 张').replace('#',queue.length||0)}</div>
+                ${(() => { try { var allTexts = (inputs.texts||[]).slice(); if (allTexts.length) { var segs = allTexts.join('\n').split('----').map(function(s){return s.trim();}).filter(Boolean); if (segs.length) return '<div style="margin-top:8px;"><div style="font-weight:700;margin-bottom:4px;font-size:10px;color:var(--muted);">' + _t('loop.segPreview','文本段预览') + ' · ' + segs.length + ' ' + _t('loop.segCount','段') + '</div><div style="display:flex;gap:6px;overflow-x:auto;padding:4px 0;">' + segs.map(function(s,i){ return '<div style="flex-shrink:0;padding:4px 8px;background:var(--surface-2);border-radius:6px;font-size:10px;color:var(--text);max-width:80px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + window._canvas._esc(s) + '"><span style="color:var(--accent);font-weight:700;">' + _t('loop.seg','段') + (i+1) + '</span> ' + window._canvas._esc(s.slice(0,4)) + (s.length>4?'…':'') + '</div>'; }).join('') + '</div></div>'; } } catch(_){} return ''; })()}
+                ${(() => { try { var bs = node._batchSize || 1; var ic = queue.length; var tc = (() => { var t = (inputs.texts||[]).join('\n'); return t.split('----').map(function(s){return s.trim();}).filter(Boolean).length; })(); var txtDriven = tc > 0; var imgDriven = tc === 0 && ic > 0; var batches = txtDriven ? tc : (imgDriven ? Math.floor(ic / bs) : 0); var rem = (ic > 0 && ic % bs !== 0) ? ic % bs : 0; var remHtml = rem > 0 ? '<span style="color:#f87171;font-weight:900;">' + _t('loop.remainder','剩余{rem}张').replace('{rem}',rem) + '</span>' : ''; var parts = []; if (ic > 0 && tc > 0) parts.push(_t('loop.batchSummary','{img}张图/{txt}段文本').replace('{img}',ic).replace('{txt}',tc)); else if (ic > 0) parts.push(_t('loop.imgOnly','{img}张图').replace('{img}',ic)); else if (tc > 0) parts.push(_t('loop.txtOnly','{txt}段文本').replace('{txt}',tc)); parts.push(_t('loop.perBatch','{bs}张/批').replace('{bs}',bs)); parts.push(_t('loop.totalBatches','共{batches}批').replace('{batches}',batches)); if (remHtml) parts.push(remHtml); return '<div style="margin-top:6px;font-size:10px;color:var(--accent);font-weight:600;">' + parts.join(' · ') + '</div>'; } catch(_){return '';} })()}
+                <div style="display:flex;gap:6px;align-items:center;margin-top:4px;">
+                    <span style="font-size:10px;color:var(--muted);">${_t('loop.batchSize','每批')}</span>
+                    <select onchange="window._canvas._updateNodeProp('${node.id}','_batchSize',parseInt(this.value));window._canvas._renderAll()" style="height:24px;padding:0 4px;border-radius:4px;border:1px solid var(--border);background:var(--bg);font-size:11px;color:var(--text);">
+                        ${[1,2,3,4,5].map(function(n){return '<option value="'+n+'" '+(node._batchSize===n?'selected':'')+'>'+n+' ' + _t('loop.perBatchUnit','张/批') + '</option>';}).join('')}
+                    </select>
+                </div>
+                <div class="node-meta" style="color:#f87171;font-weight:600;">${_t('loop.segHint','上游文本用 ---- 分隔多段，连接 prompt 节点传入')} · ${_t('loop.count','共 # 张').replace('#',queue.length||0)}</div>
                 ${meta}
+                ${node.runState==='running'?'<div class="node-actions"><button class="tool-btn" style="background:#ef4444;color:#fff;" onclick="window._canvas._cancelLoop(\''+node.id+'\')">⏹ '+_t('common.cancel','取消')+'</button></div>':''}
             `;
         }
 };
@@ -378,7 +455,7 @@ CanvasEngine.prototype._renderNodeBody_comfy = function(node, meta) {
                 </div>
                 ` : ''}
                 <div class="node-meta">${_t('comfy.hint','连接上游节点后点运行，自动按类型映射：图片→图片字段，文本→提示词字段。')}</div>
-                <div class="node-actions"><button class="tool-btn" onclick="window._canvas._runComfyUI('${node.id}')">${_t('common.run','运行')}</button></div>
+                <div class="node-actions">${node.runState==='running'?'<button class="tool-btn" style="background:#ef4444;color:#fff;" onclick="window._canvas._cancelComfyUI(\''+node.id+'\')">⏹ '+_t('common.cancel','取消')+'</button>':'<button class="tool-btn" onclick="window._canvas._executeChain(\''+this._escJs(node.id)+'\')">'+_t('common.run','运行')+'</button>'}</div>
                 ${meta}
             `;
         }

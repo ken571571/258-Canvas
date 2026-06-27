@@ -22,26 +22,28 @@ class ProvidersCfgTests(unittest.TestCase):
         self.assertIn("keys", data)
 
     def test_save_and_masked_display(self):
-        # 保存一个测试 Key（使用白名单内的键名前缀）
-        resp = client.post("/api/settings/api-keys", json={
-            "API_PROVIDER_TEST_KEY": "sk-this-is-a-secret-key-1234",
-        })
-        self.assertEqual(resp.status_code, 200)
-        self.assertTrue(resp.json()["ok"])
+        # v2.5.51：保存断言移入 try 块，防止断言失败时 Key 残留
+        try:
+            # 保存一个测试 Key（使用白名单内的键名前缀）
+            resp = client.post("/api/settings/api-keys", json={
+                "API_PROVIDER_TEST_KEY": "sk-this-is-a-secret-key-1234",
+            })
+            self.assertEqual(resp.status_code, 200)
+            self.assertTrue(resp.json()["ok"])
 
-        # 读取时应该被脱敏
-        resp = client.get("/api/settings/api-keys")
-        self.assertEqual(resp.status_code, 200)
-        keys = resp.json()["keys"]
-        self.assertIn("API_PROVIDER_TEST_KEY", keys)
-        # 敏感 Key 应显示为 **** 开头
-        displayed = keys["API_PROVIDER_TEST_KEY"]
-        self.assertTrue(displayed.startswith("****"), f"Key 未脱敏: {displayed}")
-
-        # 清理
-        client.post("/api/settings/api-keys", json={
-            "API_PROVIDER_TEST_KEY": "",
-        })
+            # 读取时应该被脱敏
+            resp = client.get("/api/settings/api-keys")
+            self.assertEqual(resp.status_code, 200)
+            keys = resp.json()["keys"]
+            self.assertIn("API_PROVIDER_TEST_KEY", keys)
+            # 敏感 Key 应显示为 **** 开头
+            displayed = keys["API_PROVIDER_TEST_KEY"]
+            self.assertTrue(displayed.startswith("****"), f"Key 未脱敏: {displayed}")
+        finally:
+            # v2.5.40：try/finally 确保测试中断时 Key 始终被清除
+            client.post("/api/settings/api-keys", json={
+                "API_PROVIDER_TEST_KEY": "",
+            })
 
     def test_save_rejects_disallowed_key(self):
         """非白名单键名应被拒绝"""
@@ -76,6 +78,3 @@ class ProvidersCfgTests(unittest.TestCase):
         data = resp.json()
         self.assertIn("models", data)
 
-
-if __name__ == "__main__":
-    unittest.main()

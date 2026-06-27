@@ -93,6 +93,3 @@ class WorkflowTests(unittest.TestCase):
         resp = client.get("/api/comfyui/workflows/..\\evil.json")
         self.assertNotEqual(resp.status_code, 200)
 
-
-if __name__ == "__main__":
-    unittest.main()

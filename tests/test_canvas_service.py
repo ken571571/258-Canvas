@@ -151,6 +151,3 @@ class CanvasServiceTests(unittest.TestCase):
         # groups 应深拷贝
         self.assertIsNot(new_canvas["groups"], existing["groups"])
 
-
-if __name__ == "__main__":
-    unittest.main()

@@ -67,6 +67,3 @@ class UpdateTests(unittest.TestCase):
         resp = client.post("/api/update/rollback?backup_id=20990101-000000")
         self.assertEqual(resp.status_code, 404)
 
-
-if __name__ == "__main__":
-    unittest.main()

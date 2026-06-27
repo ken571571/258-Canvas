@@ -166,7 +166,26 @@ var CanvasStore = (function() {
     CanvasStore.prototype.addGroup = function(group) {
         this.groups.push(group);
         this._groupById.set(group.id, group);
+        this._dirty.groups.add(group.id);
         this._notify({ type: 'group-added', id: group.id });
+    };
+
+    CanvasStore.prototype.removeGroup = function(id) {
+        this.groups = this.groups.filter(function(g) { return g.id !== id; });
+        this._groupById.delete(id);
+        this._dirty.all = true;
+        this._notify({ type: 'group-removed', id: id });
+    };
+
+    /** 批量替换全部 groups（深拷贝），同步索引 */
+    CanvasStore.prototype.syncGroups = function(groups) {
+        var self = this;
+        this.groups = groups.map(function(g) {
+            return Object.assign({}, g, { childIds: (g.childIds || []).slice() });
+        });
+        this._groupById.clear();
+        this.groups.forEach(function(g) { self._groupById.set(g.id, g); });
+        this._dirty.all = true;
     };
 
     // ——— 删除 ———
@@ -186,7 +205,9 @@ var CanvasStore = (function() {
     CanvasStore.prototype.removeConnection = function(id) {
         this.connections = this.connections.filter(function(c) { return c.id !== id; });
         this._connById.delete(id);
-        this._dirty.connections.add(id);
+        // v2.5.40：连线删除影响全局布局（链接线移除、端口 handle 变化），标记全量重建
+        // 原 _dirty.connections.add(id) 指向已删除 ID，增量渲染找不到 → DOM 残留
+        this._dirty.all = true;
         this._notify({ type: 'connection-removed', id: id });
     };
 

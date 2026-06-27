@@ -2,6 +2,7 @@
 
 import os
 import json
+from json import JSONDecodeError
 import time
 import base64
 import hashlib
@@ -11,6 +12,7 @@ import httpx
 from .base import BaseProvider, ImageResult, VideoResult, ChatResult
 from .. import config
 from ..logging_config import get_logger
+from ..security.network import async_validate_safe_url
 
 log = get_logger("openai")
 
@@ -102,10 +104,10 @@ class OpenAIProvider(BaseProvider):
                 "n": 1,
                 "size": size,
                 "response_format": "b64_json",
-                "image": self._load_image_b64(refs[0]),
+                "image": await self._load_image_b64(refs[0]),
             }
             if len(refs) > 1:
-                body["mask"] = self._load_image_b64(refs[1])
+                body["mask"] = await self._load_image_b64(refs[1])
         else:
             url = self.build_url("images/generations")
             body = {
@@ -116,9 +118,12 @@ class OpenAIProvider(BaseProvider):
                 "response_format": "b64_json",
             }
 
-        async with httpx.AsyncClient(timeout=config.AI_REQUEST_TIMEOUT) as cli:
+        async with httpx.AsyncClient(timeout=config.AI_REQUEST_TIMEOUT, follow_redirects=False) as cli:
             resp = await cli.post(url, headers=self.build_headers(), json=body)
-            data = resp.json()
+            try:
+                data = resp.json()
+            except JSONDecodeError:
+                raise RuntimeError(f"OpenAI 返回非 JSON 响应 ({resp.status_code}): {resp.text[:500]}")
 
             # 自动降级重试（最多 2 轮），逐步适配第三方中转 API 的参数差异
             for _retry in range(2):
@@ -171,11 +176,16 @@ class OpenAIProvider(BaseProvider):
                             form_files["mask"] = (f"mask.{ext}", _io.BytesIO(base64.b64decode(b64_m)), mime)
                     else:
                         # 从本地路径读取
-                        local = os.path.join(config.BASE_DIR, ref_data.lstrip("/").replace("/", os.sep))
-                        if os.path.isfile(local):
+                        try:
+                            from ..security.paths import safe_join
+                            local = safe_join(config.BASE_DIR, ref_data.lstrip("/"))
+                        except ValueError:
+                            local = None
+                        if local and os.path.isfile(local):
                             ext = os.path.splitext(local)[1].lower()
                             mime = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}.get(ext, "image/png")
-                            form_files["image"] = (os.path.basename(local), open(local, "rb"), mime)
+                            with open(local, "rb") as _fref:
+                                form_files["image"] = (os.path.basename(local), _io.BytesIO(_fref.read()), mime)
                             if not form_fields.get("size"):
                                 try:
                                     from PIL import Image as PILImage
@@ -236,13 +246,16 @@ class OpenAIProvider(BaseProvider):
                         img_url = imgs.get("url", "")
                 if img_url:
                     if img_url.startswith("http"):
-                        try:
-                            dl = await cli.get(img_url)
-                            if dl.status_code == 200:
-                                path = self._save_image(dl.content, "openai_")
-                                return ImageResult(url=path, raw=data)
-                        except Exception:
-                            pass
+                        if await async_validate_safe_url(img_url):
+                            try:
+                                dl = await cli.get(img_url)
+                                if dl.status_code == 200:
+                                    path = self._save_image(dl.content, "openai_")
+                                    return ImageResult(url=path, raw=data)
+                            except Exception:
+                                pass
+                        else:
+                            log.warning(f"SSRF 拦截 — 降级图片 URL: {img_url[:80]}")
                     return ImageResult(url=img_url, raw=data)
                 raise RuntimeError(f"OpenAI 生图失败：降级后无图片 URL")
 
@@ -273,7 +286,7 @@ class OpenAIProvider(BaseProvider):
             body["tool_choice"] = "auto"
 
         url = self.build_url("chat/completions")
-        async with httpx.AsyncClient(timeout=config.AI_REQUEST_TIMEOUT) as cli:
+        async with httpx.AsyncClient(timeout=config.AI_REQUEST_TIMEOUT, follow_redirects=False) as cli:
             resp = await cli.post(url, headers=self.build_headers(), json=body)
             if resp.status_code != 200:
                 raise RuntimeError(f"OpenAI 对话失败 ({resp.status_code}): {resp.text[:500]}")
@@ -325,7 +338,7 @@ class OpenAIProvider(BaseProvider):
             body["tool_choice"] = "auto"
 
         url = self.build_url("chat/completions")
-        async with httpx.AsyncClient(timeout=config.AI_REQUEST_TIMEOUT) as cli:
+        async with httpx.AsyncClient(timeout=config.AI_REQUEST_TIMEOUT, follow_redirects=False) as cli:
             async with cli.stream("POST", url, headers=self.build_headers(), json=body) as resp:
                 if resp.status_code != 200:
                     error_text = await resp.aread()
@@ -377,7 +390,7 @@ class OpenAIProvider(BaseProvider):
         ref_b64 = ""
         ref_url = ""
         if refs:
-            ref_b64 = self._load_image_b64(refs[0])
+            ref_b64 = await self._load_image_b64(refs[0])
             ref_url = refs[0]  # 保留原始 URL，用于不支持 base64 的平台
             body["input_reference"] = ref_b64
             if not size or size.lower() == "auto":
@@ -386,9 +399,14 @@ class OpenAIProvider(BaseProvider):
                         _, b64 = ref_b64.split(",", 1)
                         img_bytes = base64.b64decode(b64)
                     else:
-                        local = os.path.join(config.BASE_DIR, ref_b64.lstrip("/").replace("/", os.sep))
-                        with open(local, "rb") as f:
-                            img_bytes = f.read()
+                        try:
+                            from ..security.paths import safe_join
+                            local = safe_join(config.BASE_DIR, ref_b64.lstrip("/"))
+                        except ValueError:
+                            local = None
+                        if local and os.path.isfile(local):
+                            with open(local, "rb") as f:
+                                img_bytes = f.read()
                     from PIL import Image as PILImage
                     import io as _io2
                     w, h = PILImage.open(_io2.BytesIO(img_bytes)).size
@@ -404,9 +422,12 @@ class OpenAIProvider(BaseProvider):
             body["generate_audio"] = False
 
         url = self.build_url("videos")
-        async with httpx.AsyncClient(timeout=config.AI_REQUEST_TIMEOUT * 2) as cli:
+        async with httpx.AsyncClient(timeout=config.AI_REQUEST_TIMEOUT * 2, follow_redirects=False) as cli:
             resp = await cli.post(url, headers=self.build_headers(), json=body)
-            data = resp.json()
+            try:
+                data = resp.json()
+            except JSONDecodeError:
+                raise RuntimeError(f"OpenAI 返回非 JSON 响应 ({resp.status_code}): {resp.text[:500]}")
 
             # 自动降级重试（适配不同平台的参数差异）
             for _retry in range(2):
@@ -456,7 +477,7 @@ class OpenAIProvider(BaseProvider):
         异步流程: POST /v1/videos → 轮询 GET /v1/videos/{id} → 下载 /v1/videos/{id}/content
         """
         url = self.build_url(f"videos/{task_id}")
-        async with httpx.AsyncClient(timeout=30) as cli:
+        async with httpx.AsyncClient(timeout=30, follow_redirects=False) as cli:
             resp = await cli.get(url, headers=self.build_headers())
             if resp.status_code != 200:
                 raise RuntimeError(f"OpenAI 查询视频任务失败 ({resp.status_code}): {resp.text[:300]}")
@@ -492,15 +513,36 @@ class OpenAIProvider(BaseProvider):
 
             last_err = ""
             for dl_url in download_urls:
+                if not await async_validate_safe_url(dl_url):
+                    log.warning(f"SSRF 拦截 — 视频下载 URL: {dl_url[:120]}")
+                    last_err = f"SSRF blocked: {dl_url[:80]}"
+                    continue
                 log.info(f"尝试下载视频: {dl_url[:120]}")
                 for attempt_i, (wait_s, headers, desc) in enumerate(strategies):
                     try:
                         if attempt_i == 0:
                             log.info(f"等待 CDN 就绪 {wait_s}s...")
-                        await _asyncio.sleep(wait_s if attempt_i > 0 else wait_s)
-                        async with httpx.AsyncClient(timeout=180, follow_redirects=True) as cli:
+                        await _asyncio.sleep(2 if attempt_i == 0 else wait_s)  # v2.5.52：首次尝试仅 2s，避免无意义等待
+                        async with httpx.AsyncClient(timeout=180, follow_redirects=False) as cli:
                             dl = await cli.get(dl_url, headers=headers)
-                            if dl.status_code == 200 and len(dl.content) > 1000:
+                            # 手动处理重定向，每跳做 SSRF 校验
+                            redirect_count = 0
+                            while dl.is_redirect and redirect_count < 5:
+                                redirect_count += 1
+                                next_url = dl.headers.get("location", "")
+                                if not next_url:
+                                    break
+                                if next_url.startswith("/"):
+                                    from urllib.parse import urljoin
+                                    next_url = urljoin(dl_url, next_url)
+                                if not await async_validate_safe_url(next_url):
+                                    log.warning(f"SSRF 拦截（视频 CDN 重定向）: {next_url[:120]}")
+                                    last_err = f"SSRF blocked (redirect): {next_url[:80]}"
+                                    break
+                                dl = await cli.get(next_url, headers=headers)
+                            if last_err and last_err.startswith("SSRF"):
+                                break  # v2.5.50：退出策略循环 → 外层 for 跳到下一个 dl_url
+                            if isinstance(dl, httpx.Response) and dl.status_code == 200 and len(dl.content) > 1000:
                                 h = _hashlib.md5(dl.content).hexdigest()[:12]
                                 ts = int(time.time())
                                 filename = f"video_{ts}_{h}.mp4"

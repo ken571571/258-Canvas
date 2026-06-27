@@ -17,7 +17,7 @@ import httpx
 
 from .base import BaseProvider, ImageResult, VideoResult, ChatResult
 from .. import config
-from ..security.network import validate_safe_url
+from ..security.network import async_validate_safe_url
 
 
 class RunningHubProvider(BaseProvider):
@@ -182,10 +182,23 @@ class RunningHubProvider(BaseProvider):
                                 img_url = images[0].get("url", "")
                                 if img_url:
                                     # SSRF 防护：验证所有 URL 的下载地址安全
-                                    if not validate_safe_url(img_url):
+                                    if not await async_validate_safe_url(img_url):
                                         raise RuntimeError(f"RunningHub 返回了不安全的图片地址（内网/云metadata），已拦截")
                                     try:
                                         dl_resp = await cli.get(img_url, follow_redirects=False)
+                                        # v2.5.50：手动处理重定向，每跳做 SSRF 校验
+                                        redirect_count = 0
+                                        while dl_resp.is_redirect and redirect_count < 5:
+                                            redirect_count += 1
+                                            next_url = dl_resp.headers.get("location", "")
+                                            if not next_url:
+                                                break
+                                            if next_url.startswith("/"):
+                                                from urllib.parse import urljoin
+                                                next_url = urljoin(img_url, next_url)
+                                            if not await async_validate_safe_url(next_url):
+                                                raise RuntimeError(f"RunningHub 重定向到不安全地址，已拦截")
+                                            dl_resp = await cli.get(next_url, follow_redirects=False)
                                         if dl_resp.status_code == 200:
                                             path = self._save_image(dl_resp.content, f"rh_{task_id[:8]}_")
                                             return ImageResult(url=path, raw=data)
@@ -198,13 +211,13 @@ class RunningHubProvider(BaseProvider):
 
         raise RuntimeError("RunningHub 任务轮询超时")
 
-    async def fetch_models(self):
-        """RunningHub 不提供模型列表 API，直接返回默认模型。"""
+    async def fetch_models(self) -> tuple:
+        """RunningHub 不提供模型列表 API，直接返回默认模型。live=False。"""
         from .base import ModelInfo
         models = []
         for m in self.list_image_models():
             models.append(ModelInfo(id=m, name=m, type="image"))
-        return models
+        return models, False
 
     async def generate_video(
         self, prompt: str, duration: int = 5, aspect_ratio: str = "16:9",

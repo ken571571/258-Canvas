@@ -110,6 +110,3 @@ class KnowledgeTests(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertIn("results", resp.json())
 
-
-if __name__ == "__main__":
-    unittest.main()

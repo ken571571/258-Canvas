@@ -1,12 +1,14 @@
 @echo off
 setlocal enabledelayedexpansion
 chcp 65001 >nul
+cd /d "%~dp0.." 2>nul
+if not exist "python\python.exe" cd /d "%~dp0"
 echo ========================================
 echo  无限画布 — 一键测试脚本
 echo ========================================
 echo.
 
-set PYTHON=..\python\python.exe
+if exist "python\python.exe" (set PYTHON=python\python.exe) else (set PYTHON=..\python\python.exe)
 set PASS=0
 set FAIL=0
 

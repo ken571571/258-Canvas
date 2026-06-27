@@ -21,24 +21,33 @@ CanvasEngine.prototype._refreshAssetLibrary = function() {
     if (this._assetDir === 'output') this._loadAssets('output');
 };
 
-CanvasEngine.prototype._filterAssets = function() {
-    this._renderAssetGrid();
-};
-
 CanvasEngine.prototype._renderAssetGrid = function() {
     const grid = document.getElementById('asset-grid');
     if (!grid) return;
-    const q = (document.getElementById('asset-search')?.value || '').toLowerCase();
-    const files = (this._assetFiles || []).filter(f => !q || f.name.toLowerCase().includes(q));
+    const files = this._assetFiles || [];
     grid.innerHTML = files.map(f => {
         const isImg = /\.(png|jpg|jpeg|webp|gif)$/i.test(f.name);
+        const isVideo = /\.(mp4|webm|mov)$/i.test(f.name);
+        var thumbHtml;
+        if (isImg) {
+            thumbHtml = `<img src="${this._esc(f.url)}" alt="${this._esc(f.name)}" onerror="this.style.display='none'">`;
+        } else if (isVideo) {
+            thumbHtml = `<div style="width:100%;height:100%;position:relative;">
+                <video src="${this._esc(f.url)}" preload="metadata" muted disablePictureInPicture onerror="this.style.display='none'" style="width:100%;height:100%;object-fit:cover;display:block;"></video>
+                <div style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;pointer-events:none;">
+                    <span style="font-size:22px;color:#fff;text-shadow:0 2px 6px rgba(0,0,0,.7);opacity:.9;">▶</span>
+                </div>
+            </div>`;
+        } else {
+            thumbHtml = '📁';
+        }
         return `<div class="asset-thumb" draggable="true"
             data-asset-url="${this._esc(f.url)}"
             data-asset-name="${this._esc(f.name)}"
             ondragstart="window._canvas._onAssetDragStart(event)"
             ondragend="window._canvas._onAssetDragEnd(event)"
             onclick="window._canvas._onAssetClick(event)">
-            ${isImg ? `<img src="${this._esc(f.url)}" alt="${this._esc(f.name)}" onerror="this.style.display='none'">` : '📁'}
+            ${thumbHtml}
             <span class="asset-name">${this._esc(f.name)}</span>
             <button class="asset-del" onclick="event.stopPropagation();event.preventDefault();window._canvas._deleteAsset('${this._escJs(f.url)}')" title="${_t('node.delete','删除')}">×</button>
         </div>`;
@@ -56,7 +65,11 @@ CanvasEngine.prototype._onAssetDragStart = function(event) {
     const ghost = document.createElement('div');
     ghost.className = 'asset-drag-ghost';
     ghost.style.display = 'block';
-    ghost.innerHTML = `<img src="${url}" alt="${name}">`;
+    // v2.5.50：DOM API 代替 innerHTML，消除 XSS 攻击面
+    var ghostImg = document.createElement('img');
+    ghostImg.src = url;
+    ghostImg.alt = name;
+    ghost.appendChild(ghostImg);
     document.body.appendChild(ghost);
     event.dataTransfer.setDragImage(ghost, 40, 40);
     this._dragGhost = ghost;
@@ -89,23 +102,47 @@ CanvasEngine.prototype._onAssetClick = function(event) {
     if (!thumb) return;
     const url = thumb.dataset.assetUrl;
     const name = thumb.dataset.assetName;
-    if (event.detail === 1) {
-        // 单击：在视口中心创建图片节点
-        const center = this._screenToWorld(window.innerWidth / 2, window.innerHeight / 2);
-        const node = this.createNode('image', center);
-        node.url = url;
-        node.imageName = name || '';
-        node.imageWidth = 0;
-        node.imageHeight = 0;
-        this._renderAll();
-        this._markDirty();
-        // 异步加载尺寸
-        this._loadImageSize(url).then(size => {
+    const isVideo = /\.(mp4|webm|mov)$/i.test(name);
+
+    // 视频只响应双击灯箱
+    if (isVideo) {
+        if (event.detail === 2) this._showLightbox(url, 'video');
+        return;
+    }
+
+    if (event.detail === 2) {
+        // 双击：取消待定的创建 + 打开灯箱
+        clearTimeout(this._assetClickTimer);
+        if (this._assetClickPending) {
+            // 节点已创建 → 删掉
+            this._deleteNode(this._assetClickPending);
+            this._assetClickPending = null;
+        }
+        this._assetClickTimer = null;
+        this._showLightbox(url, 'image');
+        return;
+    }
+
+    // 单击：立即创建节点，设 300ms 窗口 — 若期间双击则回滚
+    var self = this;
+    // 清理上次单击的待定节点（快速连点不同资产时）
+    clearTimeout(self._assetClickTimer);
+    if (self._assetClickPending) {
+        self._deleteNode(self._assetClickPending);
+        self._assetClickPending = null;
+    }
+    var center = self._screenToWorld(window.innerWidth / 2, window.innerHeight / 2);
+    var node = self.createNode('image', center, { url, imageName: name || '', imageWidth: 0, imageHeight: 0 });
+    self._assetClickPending = node.id;
+    self._assetClickTimer = setTimeout(function() {
+        // 300ms 后无双击 → 确认保留
+        self._assetClickTimer = null;
+        self._assetClickPending = null;
+        self._loadImageSize(url).then(function(size) {
             if (node.url === url && size.w) {
-                node.imageWidth = size.w;
-                node.imageHeight = size.h;
-                this._renderAll();
+                self._syncImageNodeSize(node, size.w, size.h);
+                self._renderAll();
             }
         });
-    }
+    }, 300);
 };

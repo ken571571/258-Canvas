@@ -26,7 +26,13 @@ function withAuthHeaders(options = {}) {
 
 async function apiFetch(url, options = {}, retrying = false) {
     const silent = options.silent === true;
-    const response = await fetch(url, withAuthHeaders(options));
+    // v2.5.51：构建 fetch 专用 options 副本，不修改调用方原始对象
+    // 默认 60s 超时（仅当调用方未传 AbortController/signal 时注入）
+    var fetchOpts = { ...options };
+    if (!fetchOpts.signal) {
+        fetchOpts.signal = AbortSignal.timeout(60000);
+    }
+    const response = await fetch(url, withAuthHeaders(fetchOpts));
     if (response.status !== 401 || retrying || silent) {
         return response;
     }
@@ -56,7 +62,10 @@ async function apiFetch(url, options = {}, retrying = false) {
     }
 
     setStoredApiKey(key);
-    const retryResponse = await apiFetch(url, options, true);
+    // v2.5.51：重试时去掉原有 signal，避免复用已超时的 AbortSignal 导致立即失败
+    var retryOpts = { ...options };
+    delete retryOpts.signal;
+    const retryResponse = await apiFetch(url, retryOpts, true);
     // 密码验证成功后通知父窗口刷新所有 iframe
     if (retryResponse.status !== 401) {
         try { window.parent.postMessage({type: 'auth-ready'}, location.origin); } catch(e) {}
@@ -66,7 +75,13 @@ async function apiFetch(url, options = {}, retrying = false) {
 
 async function apiJson(url, options = {}) {
     const response = await apiFetch(url, options);
-    const data = await response.json().catch(() => ({}));
+    let data;
+    try {
+        data = await response.json();
+    } catch (e) {
+        console.warn('apiJson: JSON 解析失败', url, e);
+        data = {};
+    }
     if (!response.ok) {
         throw new Error(data.detail || data.error || `HTTP ${response.status}`);
     }

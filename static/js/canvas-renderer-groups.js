@@ -1,5 +1,35 @@
 CanvasEngine.prototype._renderGroups = function() {
     if (!this.groupsEl) return;
+    // ——— 快速路径：仅位置/尺寸更新（子节点拖拽后分组包围盒改变） ———
+    var store = this.store;
+    if (store && !store._dirty.all && store._dirty.groups.size === 0 && !this._dragNodes) {
+        // 快速路径仅在非拖拽状态生效（拖拽时 engine 节点坐标更新而 Store 未同步，会导致分组 bounds 计算错误）
+        var positionOnly = true;
+        var self = this;
+        store._dirty.nodes.forEach(function(id) {
+            if (!positionOnly) return;
+            var node = store.getNode(id);
+            if (!node) return;
+            self.groups.forEach(function(g) {
+                if (g.childIds.indexOf(id) >= 0) {
+                    var b = self._getGroupBounds(g);
+                    if (b) {
+                        var gel = self.groupsEl.querySelector('[data-group-id="' + g.id + '"]');
+                        if (gel) {
+                            gel.style.left = b.x + 'px';
+                            gel.style.top = b.y + 'px';
+                            gel.style.width = b.w + 'px';
+                            gel.style.height = b.h + 'px';
+                        } else {
+                            positionOnly = false;
+                        }
+                    }
+                }
+            });
+        });
+        if (positionOnly) return;  // ← 跳过全量重建！
+    }
+
     this.groupsEl.innerHTML = '';
 
     // 预建 nodeId→node 索引，O(N) 替代 O(N²) 的 filter+includes
@@ -13,30 +43,16 @@ CanvasEngine.prototype._renderGroups = function() {
         });
         if (children.length === 0) return;
 
-        const padding = group.padding || 18;
-
-        // Compute bounding box from children
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-        children.forEach(node => {
-            const w = node.w || 260;
-            const h = node.h || 120;
-            if (node.x < minX) minX = node.x;
-            if (node.y < minY) minY = node.y;
-            if (node.x + w > maxX) maxX = node.x + w;
-            if (node.y + h > maxY) maxY = node.y + h;
-        });
-
-        const x = minX - padding;
-        const y = minY - padding;
-        const w = maxX - minX + padding * 2;
-        const h = maxY - minY + padding * 2;
+        // Compute bounding box from children（复用共享方法）
+        const bounds = this._getGroupBounds(group);
+        if (!bounds) return;
 
         const div = document.createElement('div');
         div.className = 'group-container';
-        div.style.left = `${x}px`;
-        div.style.top = `${y}px`;
-        div.style.width = `${w}px`;
-        div.style.height = `${h}px`;
+        div.style.left = `${bounds.x}px`;
+        div.style.top = `${bounds.y}px`;
+        div.style.width = `${bounds.w}px`;
+        div.style.height = `${bounds.h}px`;
         div.setAttribute('data-group-id', group.id);
         div.innerHTML = `
             <div class="group-label-wrap">
@@ -58,6 +74,7 @@ CanvasEngine.prototype._renderGroups = function() {
             event.stopPropagation();
             const childIds = [...group.childIds];
             this.groups = this.groups.filter(g => g.id !== group.id);
+            this.store.removeGroup(group.id);  // 同步 Store
             this.selected = new Set(childIds);
             this._renderAll();
             this._markDirty();
@@ -72,13 +89,12 @@ CanvasEngine.prototype._renderGroups = function() {
             this.selectedConnectionId = '';
             group.childIds.forEach(cid => this.selected.add(cid));
             const pointerStart = this._screenToWorld(event.clientX, event.clientY);
-            this._dragNodes = {
-                pointerStart,
-                groupId: group.id,
-                items: this.nodes
-                    .filter(item => group.childIds.includes(item.id))
-                    .map(item => ({ node: item, startX: item.x, startY: item.y })),
-            };
+            const dragItems = [];
+            group.childIds.forEach(cid => {
+                const item = nodeMap[cid];
+                if (item) dragItems.push({ node: item, startX: item.x, startY: item.y });
+            });
+            this._dragNodes = { pointerStart, groupId: group.id, items: dragItems };
             this._ensureDragListeners();
             this._renderAll();
         });
@@ -91,7 +107,9 @@ CanvasEngine.prototype._renderGroups = function() {
                 const corner = handle.dataset.corner;
                 const startX = event.clientX;
                 const startY = event.clientY;
-                const startPadding = padding;
+                const startPadding = group.padding || 18;
+                // 捕获初始包围盒（resize 过程中子节点可能移动，用原始值更稳定）
+                const bMinX = bounds.minX, bMinY = bounds.minY, bMaxX = bounds.maxX, bMaxY = bounds.maxY;
 
                 const onMove = moveEvent => {
                     const dx = (moveEvent.clientX - startX) / this.view.scale;
@@ -103,10 +121,10 @@ CanvasEngine.prototype._renderGroups = function() {
                     else if (corner === 'sw') delta = Math.max(-dx, dy);
                     group.padding = Math.max(4, startPadding + delta);
                     // 直接更新当前分组的 CSS，避免每像素重建全部 DOM
-                    var newX = minX - group.padding;
-                    var newY = minY - group.padding;
-                    var newW = maxX - minX + group.padding * 2;
-                    var newH = maxY - minY + group.padding * 2;
+                    var newX = bMinX - group.padding;
+                    var newY = bMinY - group.padding;
+                    var newW = bMaxX - bMinX + group.padding * 2;
+                    var newH = bMaxY - bMinY + group.padding * 2;
                     div.style.left = newX + 'px';
                     div.style.top = newY + 'px';
                     div.style.width = newW + 'px';
@@ -116,6 +134,9 @@ CanvasEngine.prototype._renderGroups = function() {
                 const onUp = () => {
                     window.removeEventListener('mousemove', onMove);
                     window.removeEventListener('mouseup', onUp);
+                    // 同步 Store：resize 只修改了 group.padding
+                    var storeGroup = this.store.getGroup(group.id);
+                    if (storeGroup) storeGroup.padding = group.padding;
                     this._markDirty();
                 };
 

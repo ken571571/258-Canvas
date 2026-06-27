@@ -14,7 +14,7 @@ import time
 import base64
 from typing import List, Dict, Any
 import httpx
-from ..security.network import validate_safe_url
+from ..security.network import async_validate_safe_url
 
 from .base import BaseProvider, ImageResult, VideoResult, ChatResult
 from .. import config
@@ -184,10 +184,23 @@ class ModelScopeProvider(BaseProvider):
                     if img_url:
                         if img_url.startswith("http"):
                             # SSRF 防护：验证下载地址安全
-                            if not validate_safe_url(img_url):
+                            if not await async_validate_safe_url(img_url):
                                 raise RuntimeError(f"ModelScope 返回了不安全的图片地址（内网/云metadata），已拦截")
                             # 下载远程图片到本地
                             dl_resp = await cli.get(img_url, follow_redirects=False)
+                            # v2.5.50：手动处理重定向，每跳做 SSRF 校验
+                            redirect_count = 0
+                            while dl_resp.is_redirect and redirect_count < 5:
+                                redirect_count += 1
+                                next_url = dl_resp.headers.get("location", "")
+                                if not next_url:
+                                    break
+                                if next_url.startswith("/"):
+                                    from urllib.parse import urljoin
+                                    next_url = urljoin(img_url, next_url)
+                                if not await async_validate_safe_url(next_url):
+                                    raise RuntimeError(f"ModelScope 重定向到不安全地址，已拦截")
+                                dl_resp = await cli.get(next_url, follow_redirects=False)
                             if dl_resp.status_code == 200:
                                 path = self._save_image(dl_resp.content, f"ms_{task_id[:8]}_")
                                 return ImageResult(url=path, raw=data)

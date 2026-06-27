@@ -24,6 +24,13 @@
 .chat-input-row textarea:focus { border-color:var(--accent); box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent); }
 .chat-input-row .stream-toggle { min-width:40px; padding:8px 10px; border-radius:var(--radius); border:1px solid var(--border); background:var(--surface-2); color:var(--muted); cursor:pointer; font-size:12px; font-weight:800; }
 .chat-input-row .stream-toggle.active { color:var(--good); border-color:color-mix(in srgb, var(--good) 50%, var(--border)); background:color-mix(in srgb, var(--good) 10%, var(--surface)); }
+.chat-input-row .img-btn { min-width:40px; padding:8px 10px; border-radius:var(--radius); border:1px solid var(--border); background:var(--surface-2); color:var(--muted); cursor:pointer; font-size:14px; font-weight:800; transition:all .12s; }
+.chat-input-row .img-btn:hover { color:var(--accent); border-color:var(--accent); }
+.chat-input-row .img-btn.has-img { color:var(--good); border-color:color-mix(in srgb, var(--good) 50%, var(--border)); background:color-mix(in srgb, var(--good) 10%, var(--surface)); }
+.chat-img-preview { display:flex; gap:6px; padding:4px 16px 0; flex-wrap:wrap; }
+.chat-img-preview .img-thumb { width:48px; height:48px; border-radius:6px; object-fit:cover; border:1px solid var(--border); position:relative; }
+.chat-img-preview .img-thumb-wrap { position:relative; display:inline-block; }
+.chat-img-preview .img-thumb-x { position:absolute; top:-6px; right:-6px; width:18px; height:18px; border-radius:50%; background:var(--bad); color:#fff; border:none; font-size:10px; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0; line-height:1; }
 
 .conv-list { display:flex; flex-direction:column; gap:3px; }
 .conv-item {
@@ -67,15 +74,18 @@
         <div class="chat-log" id="chat-log">
             <div class="welcome" data-t="chat.welcome">输入消息开始对话，Enter 发送</div>
         </div>
+        <div class="chat-img-preview" id="img-preview"></div>
         <div class="chat-input-row">
             <button class="stream-toggle active" id="stream-btn" onclick="toggleStream()" title="流式输出">⚡</button>
-            <textarea id="chat-input" rows="1" data-t-placeholder="chat.typeMessage" placeholder="输入消息... (Enter 发送, Shift+Enter 换行)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();send()}"></textarea>
+            <button class="img-btn" id="img-btn" onclick="document.getElementById('img-file').click()" title="添加图片">🖼</button>
+            <input type="file" id="img-file" accept="image/*" style="display:none" onchange="handleImageSelect(this.files)" multiple>
+            <textarea id="chat-input" rows="1" data-t-placeholder="chat.typeMessage" placeholder="输入消息... (Enter 发送, Shift+Enter 换行)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();send()}" onpaste="handlePaste(event)"></textarea>
             <button class="btn btn-primary" data-t="chat.send" onclick="send()">发送</button>
         </div>
     </main>
 </div>
 
-<script src="/static/js/api.js?v=5"></script>
+<script src="/static/js/api.js?v=6"></script>
 <script>
 const log = document.getElementById('chat-log');
 const input = document.getElementById('chat-input');
@@ -84,6 +94,7 @@ let currentConvId = '';
 let useStream = true;
 let currentModel = '';
 let currentProvider = '';
+let chatImages = [];  // base64 图片数组
 
 function initTheme() { if(localStorage.theme==='dark') document.documentElement.classList.add('dark'); }
 initTheme();
@@ -174,11 +185,15 @@ async function deleteConv(id) {
 }
 
 // ===== 消息 =====
-function addMsg(role, text) {
-    if (!text) return;
+function addMsg(role, text, images) {
     const div = document.createElement('div');
     div.className = 'chat-msg ' + role;
-    div.textContent = text;
+    if (images && images.length) {
+        var imgs = images.map(function(b64) { return '<img src="' + esc(b64) + '" style="max-width:200px;max-height:200px;border-radius:8px;margin:4px 0;display:block;">'; }).join('');
+        div.innerHTML = (text || '') + imgs;
+    } else if (text) {
+        div.textContent = text;
+    }
     log.appendChild(div);
     log.scrollTop = log.scrollHeight;
 }
@@ -190,22 +205,67 @@ function addStreamMsg(role) {
     return div;
 }
 
+function toggleStream() { useStream = !useStream; document.getElementById('stream-btn').classList.toggle('active', useStream); }
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function escJs(s) { return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
+
+// ===== 图片处理 =====
+function handleImageSelect(files) {
+    if (!files || !files.length) return;
+    Array.from(files).forEach(readAndAddImage);
+    document.getElementById('img-file').value = '';
+}
+function handlePaste(e) {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+        if (item.type.startsWith('image/')) {
+            e.preventDefault();
+            readAndAddImage(item.getAsFile());
+        }
+    }
+}
+function readAndAddImage(file) {
+    if (!file || !file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = function() {
+        chatImages.push(reader.result);
+        renderImagePreview();
+        document.getElementById('img-btn').classList.add('has-img');
+    };
+    reader.readAsDataURL(file);
+}
+function removeChatImage(i) {
+    chatImages.splice(i, 1);
+    renderImagePreview();
+    if (!chatImages.length) document.getElementById('img-btn').classList.remove('has-img');
+}
+function renderImagePreview() {
+    const el = document.getElementById('img-preview');
+    el.innerHTML = chatImages.map(function(b64, i) {
+        return '<span class="img-thumb-wrap"><img class="img-thumb" src="' + esc(b64) + '"><button class="img-thumb-x" onclick="removeChatImage(' + i + ')">×</button></span>';
+    }).join('');
+}
+
 // ===== 发送 =====
 async function send() {
     const text = input.value.trim();
-    if (!text) return;
-    addMsg('user', text);
+    if (!text && !chatImages.length) return;
+    addMsg('user', text, chatImages);
+    var images = chatImages.slice();  // 快照，发送后清空
+    chatImages = []; renderImagePreview();
+    document.getElementById('img-btn').classList.remove('has-img');
     input.value = '';
-    if (useStream) await sendStream(text);
-    else await sendNormal(text);
+    if (useStream) await sendStream(text, images);
+    else await sendNormal(text, images);
     loadConversations();
 }
 
-async function sendNormal(text) {
+async function sendNormal(text, images) {
     try {
         const resp = await apiFetch('/api/llm', {
             method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({ message: text, provider_id: currentProvider, model: currentModel, conversation_id: currentConvId })
+            body: JSON.stringify({ message: text, provider_id: currentProvider, model: currentModel, conversation_id: currentConvId, reference_images: images })
         });
         const data = await resp.json();
         addMsg('assistant', data.reply || _t('chat.noReply','无回复'));
@@ -213,13 +273,13 @@ async function sendNormal(text) {
     } catch (e) { addMsg('assistant', _t('chat.error','错误: ')+e.message); }
 }
 
-async function sendStream(text) {
+async function sendStream(text, images) {
     const streamDiv = addStreamMsg('assistant');
     let fullContent = '';
     try {
         const resp = await apiFetch('/api/llm/stream', {
             method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({ message: text, provider_id: currentProvider, model: currentModel, conversation_id: currentConvId })
+            body: JSON.stringify({ message: text, provider_id: currentProvider, model: currentModel, conversation_id: currentConvId, reference_images: images })
         });
         const reader = resp.body.getReader(); const decoder = new TextDecoder(); let buffer = '';
         while (true) {
@@ -244,10 +304,6 @@ async function sendStream(text) {
     if (streamDiv.id === 'stream-msg') streamDiv.removeAttribute('id');
 }
 
-function toggleStream() { useStream = !useStream; document.getElementById('stream-btn').classList.toggle('active', useStream); }
-function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
-function escJs(s) { return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
-
 (async function() {
     try {
         await refreshProviders();
@@ -259,6 +315,8 @@ function escJs(s) { return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&qu
     try { input.focus(); } catch(e) { /* 输入框可能不存在 */ }
 })();
 window.addEventListener('message', e => { if (e.origin !== location.origin) return; if (e.data?.type === 'theme') document.documentElement.classList.toggle('dark', e.data.theme === 'dark'); if (e.data?.type === 'refresh') { refreshProviders().then(() => loadProviders()); } });
+// v2.5.50：语言切换时重新渲染对话列表
+window._i18nUpdate = function() { if (typeof loadConversations === 'function') loadConversations(); if (typeof loadProviders === 'function') loadProviders(); };
 window.addEventListener('lang-applied',function(){if(window._i18nUpdate)window._i18nUpdate();});</script>
 </body>
 </html>

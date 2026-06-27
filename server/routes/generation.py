@@ -1,6 +1,5 @@
 """API 路由：生图 —— 薄路由层，业务逻辑委托给 services/image_service.py"""
 
-import asyncio
 from fastapi import APIRouter, HTTPException
 from ..models import GenerateRequest
 from ..providers.registry import get_provider_registry
@@ -102,88 +101,6 @@ async def generate_image_async(req: GenerateRequest):
     return {"task_id": tid, "status": "queued"}
 
 
-# ——— ComfyUI 异步生成 ———
-
-
-@router.post("/comfyui/generate/async")
-async def comfyui_generate_async(payload: dict):
-    """异步 ComfyUI 生图：创建任务后立即返回 task_id。"""
-
-    if not config.COMFYUI_INSTANCES:
-        raise HTTPException(status_code=400, detail="未配置 ComfyUI 地址")
-
-    tid = task_manager.create_task("comfyui")
-    task_manager.update_task(tid, status="running", progress=5, progress_message="正在连接 ComfyUI…")
-
-    async def _run():
-        import httpx
-        try:
-            # 选择在线实例
-            addr = config.COMFYUI_INSTANCES[0]
-            async with httpx.AsyncClient(timeout=10) as cli:
-                for candidate in config.COMFYUI_INSTANCES:
-                    try:
-                        await cli.get(f"http://{candidate}/system_stats")
-                        addr = candidate
-                        break
-                    except Exception:
-                        continue  # 实例健康检查失败，尝试下一个
-
-            workflow = payload.get("workflow", {})
-            client_id = payload.get("client_id", "canvas571")
-
-            body = {"prompt": workflow, "client_id": client_id}
-            async with httpx.AsyncClient(timeout=10) as cli:
-                resp = await cli.post(f"http://{addr}/prompt", json=body)
-                resp.raise_for_status()
-                prompt_id = resp.json()["prompt_id"]
-
-            task_manager.update_task(tid, progress=20, progress_message=f"ComfyUI 任务 {prompt_id} 已提交，等待渲染…")
-
-            # 轮询等待完成（基于实际时间，避免 HTTP 超时累加导致远超预期）
-            import time as _time
-            poll_started = _time.time()
-            MAX_WAIT_SEC = 300  # 5分钟硬上限
-            async with httpx.AsyncClient(timeout=3) as cli:
-                while True:
-                    elapsed = _time.time() - poll_started
-                    if elapsed > MAX_WAIT_SEC:
-                        break
-                    await asyncio.sleep(1)
-                    try:
-                        resp = await cli.get(f"http://{addr}/history/{prompt_id}")
-                        hist = resp.json()
-                        if prompt_id in hist:
-                            outputs = hist[prompt_id].get("outputs", {})
-                            images = []
-                            for node_out in outputs.values():
-                                for item in (node_out.get("images") or []):
-                                    fn = item.get("filename", "")
-                                    images.append(f"http://{addr}/view?filename={fn}&type=output")
-                            task_manager.update_task(
-                                tid,
-                                status="succeeded",
-                                progress=100,
-                                progress_message="ComfyUI 渲染完成",
-                                result={"images": images, "prompt_id": prompt_id, "backend": addr},
-                            )
-                            return
-                    except Exception:
-                        pass  # ComfyUI 轮询瞬态错误，下一轮继续
-                    if int(elapsed) % 10 == 0:
-                        progress = min(20 + int(elapsed / MAX_WAIT_SEC * 75), 95)
-                        task_manager.update_task(tid, progress=progress,
-                            progress_message=f"ComfyUI 渲染中 ({int(elapsed)}s)…")
-
-            task_manager.update_task(tid, status="failed", error="ComfyUI 渲染超时")
-
-        except Exception as e:
-            task_manager.update_task(tid, status="failed", error=str(e))
-
-    launch_background_task(_run())
-    return {"task_id": tid, "status": "queued"}
-
-
 # ——— Provider 列表 ———
 
 
@@ -193,7 +110,7 @@ def _discover_custom_providers_from_env():
     返回 {provider_id: {id, name, protocol, image_models, chat_models, video_models}} 字典。
     """
     import os as _os
-    from ..routes.providers_cfg import _read_env, _parse_env, _detect_protocol_from_url
+    from ..routes.providers_cfg import _read_env, _parse_env, _detect_protocol_from_url, _read_env_model_lists
 
     env = _parse_env(_read_env())
     registry_ids = {p.provider_id for p in get_provider_registry().list_all()}
@@ -217,16 +134,11 @@ def _discover_custom_providers_from_env():
             continue
         # 查找 Base URL
         base_url = env.get(f"{pid}_BASE_URL", "") or env.get(f"API_PROVIDER_{pid.upper()}_BASE_URL", "")
-        # 查找模型列表（大小写不敏感——.env 中的键可能是大写或小写）
-        def _get_env_val(key_suffix: str) -> str:
-            target = f"{pid}_{key_suffix}".upper()
-            for k, v in env.items():
-                if k.upper() == target:
-                    return v
-            return ""
-        image_models = [s.strip() for s in _get_env_val("IMAGE_MODELS").split(",") if s.strip()]
-        chat_models = [s.strip() for s in _get_env_val("CHAT_MODELS").split(",") if s.strip()]
-        video_models = [s.strip() for s in _get_env_val("VIDEO_MODELS").split(",") if s.strip()]
+        # 查找模型列表（共用 _read_env_model_lists，与 _inject_custom_models 保持一致）
+        models = _read_env_model_lists(pid)
+        image_models = models["image_models"]
+        chat_models = models["chat_models"]
+        video_models = models["video_models"]
         # 检测协议
         protocol = _detect_protocol_from_url(base_url) or "openai"
         # 名称：尝试从 PID 推导

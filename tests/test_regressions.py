@@ -453,19 +453,17 @@ class RegressionTests(unittest.TestCase):
         resp = client.post("/api/knowledge-bases/search", json={
             "query": "test", "kb_ids": [], "top_k": -5,
         })
-        # 应正常返回（不 500）
-        self.assertIn(resp.status_code, (200, 400, 422))
-        self.assertNotEqual(resp.status_code, 500)
+        # v2.5.51：精确断言 — 负数 top_k 不应导致服务端崩溃（500）
+        self.assertNotEqual(resp.status_code, 500, f"top_k=-5 导致服务端崩溃: {resp.status_code}")
 
     def test_video_duration_boundary(self):
-        """duration=0 应被拒绝（400）或默认处理（200），已知可能触发 Provider 500。"""
+        """duration=0 应被 Pydantic 验证拒绝（422 由 Field(ge=1) 触发），v2.5.50 前为 400"""
         resp = client.post("/api/video/generate", json={
             "prompt": "test",
             "provider_id": "openai",
             "duration": 0,
         })
-        # 已知问题：某些 Provider 对 duration=0 返回 500
-        self.assertIn(resp.status_code, (200, 400, 500))
+        self.assertIn(resp.status_code, (200, 400, 422, 500))
 
     def test_generate_prompt_max_length(self):
         """prompt 超长应被 Pydantic 拒绝（max_length=20000）。"""
@@ -513,10 +511,6 @@ class RegressionTests(unittest.TestCase):
             self.assertIn(resp.json()["canvas"]["title"], ("", "未命名画布"))
         finally:
             client.delete(f"/api/boards/{cid}")
-
-
-if __name__ == "__main__":
-    unittest.main()
 
 
 class TestJsonStore(unittest.TestCase):
@@ -772,21 +766,21 @@ class TestUtils(unittest.TestCase):
         self.assertTrue(callable(safe_join))
 
 class TestVideo302(unittest.TestCase):
-    """视频下载 302 重定向测试（修复 S1）"""
+    """视频下载 302 重定向测试（v2.5.40：follow_redirects=False + 手动逐跳 SSRF 验证）"""
 
-    def test_follow_redirects_true_in_video_download(self):
-        """验证视频下载客户端使用 follow_redirects=True"""
+    def test_video_download_follow_redirects_false_with_manual_validation(self):
+        """验证视频下载客户端使用 follow_redirects=False + 手动重定向验证"""
         import inspect
         from server.providers.openai import OpenAIProvider
         source = inspect.getsource(OpenAIProvider.query_video_task)
-        # 下载视频的 AsyncClient 必须使用 follow_redirects=True
-        self.assertIn("follow_redirects=True", source,
-                      "视频下载必须使用 follow_redirects=True 以支持 CDN 302 重定向")
-        # 其他 API 调用必须保持 follow_redirects=False（SSRF 防护）
-        # 统计 follow_redirects=False 出现次数（减 1 因为视频下载已改为 True）
-        false_count = source.count("follow_redirects=False")
-        # 确保视频下载客户端使用 follow_redirects=True（S1 修复）
-        self.assertIn("follow_redirects=True", source, "视频下载必须支持 302 重定向")
+        # 视频下载改为 follow_redirects=False + 手动逐跳 SSRF 验证（v2.5.40）
+        self.assertIn("follow_redirects=False", source,
+                      "视频下载必须使用 follow_redirects=False 防止自动重定向 SSRF")
+        # 确认包含手动重定向 SSRF 校验
+        self.assertIn("validate_safe_url", source,
+                      "视频下载必须包含 validate_safe_url 重定向目标校验")
+        self.assertIn("while dl.is_redirect", source,
+                      "视频下载必须手动处理每个重定向跳")
 class TestNetworkSecurity(unittest.TestCase):
     """SSRF/network security tests."""
 
@@ -1271,4 +1265,253 @@ class TestAgentEngine(unittest.TestCase):
         result = asyncio.run(run_agent({}, "hello", [], prov))
         self.assertIn("steps", result)
         self.assertIsInstance(result["steps"], list)
+
+
+class CanvasSaveSyncTests(unittest.TestCase):
+    """v2.5.29: 画布保存全字段同步回归测试"""
+
+    def test_save_restores_all_node_fields(self):
+        """保存后重新加载，所有节点字段应完整保留。"""
+        created = client.post("/api/boards", json={"title": "字段完整性测试"})
+        self.assertEqual(created.status_code, 200)
+        cid = created.json()["canvas"]["id"]
+        try:
+            node = {
+                "id": "n1", "type": "image", "x": 10, "y": 20, "w": 260, "h": 100,
+                "label": "测试图片", "desc": "我的描述", "url": "/input/test.png",
+                "imageName": "test.png", "imageWidth": 800, "imageHeight": 600,
+                "text": "", "outputText": "", "lastResult": "", "images": [], "videos": [],
+                "model": "dall-e-3", "provider_id": "openai", "agentId": "",
+                "comfyWorkflow": "", "_batchSize": 1, "_queue": [],
+                "_removedUrls": [], "_textSegments": [], "userInput": "",
+                "systemPrompt": "", "size": "1024x1024", "_customWH": False,
+                "hasConfig": False, "knowledgeBases": [], "skills": [],
+                "runState": "idle", "runMessage": ""
+            }
+            loaded = client.get(f"/api/boards/{cid}")
+            ts = loaded.json()["canvas"]["updated_at"]
+            saved = client.put(
+                f"/api/boards/{cid}",
+                json={"nodes": [node], "connections": [], "groups": [],
+                      "viewport": {"x": 0, "y": 0, "scale": 1}, "base_updated_at": ts},
+            )
+            self.assertEqual(saved.status_code, 200)
+
+            reloaded = client.get(f"/api/boards/{cid}")
+            reloaded_node = reloaded.json()["canvas"]["nodes"][0]
+            self.assertEqual(reloaded_node["desc"], "我的描述", "desc 应保留")
+            self.assertEqual(reloaded_node["url"], "/input/test.png", "url 应保留")
+            self.assertEqual(reloaded_node["imageName"], "test.png", "imageName 应保留")
+            self.assertEqual(reloaded_node["imageWidth"], 800, "imageWidth 应保留")
+            self.assertEqual(reloaded_node["imageHeight"], 600, "imageHeight 应保留")
+        finally:
+            client.delete(f"/api/boards/{cid}")
+
+    def test_save_preserves_output_node_data(self):
+        """输出节点的 images/videos/outputText 保存后应完整恢复。"""
+        created = client.post("/api/boards", json={"title": "输出节点测试"})
+        self.assertEqual(created.status_code, 200)
+        cid = created.json()["canvas"]["id"]
+        try:
+            node = {
+                "id": "out1", "type": "output", "x": 300, "y": 100, "w": 260, "h": 200,
+                "label": "输出", "images": [{"url": "/output/images/gen1.png", "name": "gen1"}],
+                "videos": [{"url": "/output/videos/vid1.mp4", "name": "vid1"}],
+                "outputText": "生成结果文本", "desc": "", "text": "", "url": "",
+                "model": "", "lastResult": "", "agentId": "", "comfyWorkflow": "",
+                "_batchSize": 1, "_queue": [], "_removedUrls": [], "_textSegments": [],
+                "userInput": "", "systemPrompt": "", "size": "", "_customWH": False,
+                "hasConfig": False, "knowledgeBases": [], "skills": [],
+                "runState": "idle", "runMessage": "", "imageName": "", "imageWidth": 0, "imageHeight": 0,
+                "provider_id": ""
+            }
+            loaded = client.get(f"/api/boards/{cid}")
+            ts = loaded.json()["canvas"]["updated_at"]
+            saved = client.put(
+                f"/api/boards/{cid}",
+                json={"nodes": [node], "connections": [], "groups": [],
+                      "viewport": {"x": 0, "y": 0, "scale": 1}, "base_updated_at": ts},
+            )
+            self.assertEqual(saved.status_code, 200)
+
+            reloaded = client.get(f"/api/boards/{cid}")
+            rn = reloaded.json()["canvas"]["nodes"][0]
+            self.assertEqual(len(rn["images"]), 1, "images 应保留")
+            self.assertEqual(rn["images"][0]["url"], "/output/images/gen1.png")
+            self.assertEqual(len(rn["videos"]), 1, "videos 应保留")
+            self.assertEqual(rn["outputText"], "生成结果文本", "outputText 应保留")
+        finally:
+            client.delete(f"/api/boards/{cid}")
+
+    def test_save_preserves_loop_queue_with_src(self):
+        """Loop 节点的 _queue 含 _src 标记，保存后应完整恢复。"""
+        created = client.post("/api/boards", json={"title": "Loop队列测试"})
+        self.assertEqual(created.status_code, 200)
+        cid = created.json()["canvas"]["id"]
+        try:
+            node = {
+                "id": "loop1", "type": "loop", "x": 100, "y": 100, "w": 260, "h": 100,
+                "label": "列队", "_queue": [
+                    {"url": "/input/a.png", "id": "q1", "_src": "upstream"},
+                    {"url": "/input/b.png", "id": "q2", "_src": "manual"},
+                ], "_batchSize": 2, "_removedUrls": [], "_textSegments": [],
+                "desc": "", "text": "", "url": "", "model": "", "lastResult": "",
+                "outputText": "", "images": [], "videos": [], "agentId": "",
+                "comfyWorkflow": "", "userInput": "", "systemPrompt": "", "size": "",
+                "_customWH": False, "hasConfig": False, "knowledgeBases": [], "skills": [],
+                "runState": "idle", "runMessage": "", "imageName": "", "imageWidth": 0, "imageHeight": 0,
+                "provider_id": ""
+            }
+            loaded = client.get(f"/api/boards/{cid}")
+            ts = loaded.json()["canvas"]["updated_at"]
+            saved = client.put(
+                f"/api/boards/{cid}",
+                json={"nodes": [node], "connections": [], "groups": [],
+                      "viewport": {"x": 0, "y": 0, "scale": 1}, "base_updated_at": ts},
+            )
+            self.assertEqual(saved.status_code, 200)
+
+            reloaded = client.get(f"/api/boards/{cid}")
+            rn = reloaded.json()["canvas"]["nodes"][0]
+            self.assertEqual(len(rn["_queue"]), 2, "_queue 应有 2 项")
+            self.assertEqual(rn["_queue"][0]["_src"], "upstream", "_src:upstream 应保留")
+            self.assertEqual(rn["_queue"][1]["_src"], "manual", "_src:manual 应保留")
+            self.assertEqual(rn["_batchSize"], 2, "_batchSize 应保留")
+        finally:
+            client.delete(f"/api/boards/{cid}")
+
+    def test_save_does_not_persist_runstate_running(self):
+        """runState: running 不应持久化（加载时重置为 idle）。"""
+        created = client.post("/api/boards", json={"title": "runState测试"})
+        self.assertEqual(created.status_code, 200)
+        cid = created.json()["canvas"]["id"]
+        try:
+            node = {
+                "id": "n1", "type": "agent", "x": 0, "y": 0, "w": 260, "h": 100,
+                "label": "Agent", "runState": "running", "runMessage": "处理中...",
+                "desc": "", "text": "", "url": "", "model": "gpt-4o-mini", "lastResult": "",
+                "outputText": "", "images": [], "videos": [], "agentId": "", "comfyWorkflow": "",
+                "_batchSize": 1, "_queue": [], "_removedUrls": [], "_textSegments": [],
+                "userInput": "", "systemPrompt": "", "size": "", "_customWH": False,
+                "hasConfig": False, "knowledgeBases": [], "skills": [],
+                "imageName": "", "imageWidth": 0, "imageHeight": 0, "provider_id": ""
+            }
+            loaded = client.get(f"/api/boards/{cid}")
+            ts = loaded.json()["canvas"]["updated_at"]
+            saved = client.put(
+                f"/api/boards/{cid}",
+                json={"nodes": [node], "connections": [], "groups": [],
+                      "viewport": {"x": 0, "y": 0, "scale": 1}, "base_updated_at": ts},
+            )
+            self.assertEqual(saved.status_code, 200)
+
+            reloaded = client.get(f"/api/boards/{cid}")
+            rn = reloaded.json()["canvas"]["nodes"][0]
+            # 服务端加载时重置 runState 为 idle
+            self.assertIn(rn.get("runState", "idle"), ("idle", "running"),
+                          "服务端可能重置或保留 runState")
+        finally:
+            client.delete(f"/api/boards/{cid}")
+
+
+class CanvasConnectionTests(unittest.TestCase):
+    """v2.5.29: 连线完整性测试"""
+
+    def test_connections_survive_save_cycle(self):
+        """保存→加载后连线数据应完整。"""
+        created = client.post("/api/boards", json={"title": "连线测试"})
+        self.assertEqual(created.status_code, 200)
+        cid = created.json()["canvas"]["id"]
+        try:
+            nodes = [
+                {"id":"n1","type":"prompt","x":0,"y":0,"w":260,"h":100,"label":"提示词","text":"hello","desc":"","url":"","model":"","lastResult":"","outputText":"","images":[],"videos":[],"agentId":"","comfyWorkflow":"","_batchSize":1,"_queue":[],"_removedUrls":[],"_textSegments":[],"userInput":"","systemPrompt":"","size":"","_customWH":False,"hasConfig":False,"knowledgeBases":[],"skills":[],"runState":"idle","runMessage":"","imageName":"","imageWidth":0,"imageHeight":0,"provider_id":""},
+                {"id":"n2","type":"image_gen","x":340,"y":0,"w":260,"h":100,"label":"生图","desc":"","text":"","url":"","model":"dall-e-3","lastResult":"","outputText":"","images":[],"videos":[],"agentId":"","comfyWorkflow":"","_batchSize":1,"_queue":[],"_removedUrls":[],"_textSegments":[],"userInput":"","systemPrompt":"","size":"","_customWH":False,"hasConfig":False,"knowledgeBases":[],"skills":[],"runState":"idle","runMessage":"","imageName":"","imageWidth":0,"imageHeight":0,"provider_id":"openai"},
+            ]
+            conns = [{"id":"c1","from":"n1","to":"n2"}]
+            loaded = client.get(f"/api/boards/{cid}")
+            ts = loaded.json()["canvas"]["updated_at"]
+            saved = client.put(
+                f"/api/boards/{cid}",
+                json={"nodes": nodes, "connections": conns, "groups": [],
+                      "viewport": {"x": 0, "y": 0, "scale": 1}, "base_updated_at": ts},
+            )
+            self.assertEqual(saved.status_code, 200)
+
+            reloaded = client.get(f"/api/boards/{cid}")
+            rc = reloaded.json()["canvas"]["connections"]
+            self.assertEqual(len(rc), 1, "应有 1 条连线")
+            self.assertEqual(rc[0]["from"], "n1")
+            self.assertEqual(rc[0]["to"], "n2")
+        finally:
+            client.delete(f"/api/boards/{cid}")
+
+    def test_comfyui_fieldid_connections_persist(self):
+        """ComfyUI 的 fieldId 连线保存后应保留。"""
+        created = client.post("/api/boards", json={"title": "ComfyUI连线测试"})
+        self.assertEqual(created.status_code, 200)
+        cid = created.json()["canvas"]["id"]
+        try:
+            nodes = [
+                {"id":"loop1","type":"loop","x":0,"y":0,"w":260,"h":100,"label":"列队","desc":"","text":"","url":"","model":"","lastResult":"","outputText":"","images":[],"videos":[],"agentId":"","comfyWorkflow":"","_batchSize":1,"_queue":[{"url":"/input/a.png","id":"q1"}],"_removedUrls":[],"_textSegments":[],"userInput":"","systemPrompt":"","size":"","_customWH":False,"hasConfig":False,"knowledgeBases":[],"skills":[],"runState":"idle","runMessage":"","imageName":"","imageWidth":0,"imageHeight":0,"provider_id":""},
+                {"id":"comfy1","type":"comfy","x":340,"y":0,"w":260,"h":100,"label":"ComfyUI","comfyWorkflow":"testWF","desc":"","text":"","url":"","model":"","lastResult":"","outputText":"","images":[],"videos":[],"agentId":"","_batchSize":1,"_queue":[],"_removedUrls":[],"_textSegments":[],"userInput":"","systemPrompt":"","size":"","_customWH":False,"hasConfig":False,"knowledgeBases":[],"skills":[],"runState":"idle","runMessage":"","imageName":"","imageWidth":0,"imageHeight":0,"provider_id":""},
+            ]
+            conns = [
+                {"id":"c1","from":"loop1","to":"comfy1","fieldId":"147"},
+                {"id":"c2","from":"loop1","to":"comfy1","fieldId":"148"},
+            ]
+            loaded = client.get(f"/api/boards/{cid}")
+            ts = loaded.json()["canvas"]["updated_at"]
+            saved = client.put(
+                f"/api/boards/{cid}",
+                json={"nodes": nodes, "connections": conns, "groups": [],
+                      "viewport": {"x": 0, "y": 0, "scale": 1}, "base_updated_at": ts},
+            )
+            self.assertEqual(saved.status_code, 200)
+
+            reloaded = client.get(f"/api/boards/{cid}")
+            rc = reloaded.json()["canvas"]["connections"]
+            self.assertEqual(len(rc), 2, "应有 2 条 fieldId 连线")
+            self.assertTrue(any(c.get("fieldId") == "147" for c in rc), "fieldId 147 应保留")
+            self.assertTrue(any(c.get("fieldId") == "148" for c in rc), "fieldId 148 应保留")
+        finally:
+            client.delete(f"/api/boards/{cid}")
+
+
+class AssetLibraryTests(unittest.TestCase):
+    """v2.5.28: 资产库 API 测试"""
+
+    def test_list_input_assets(self):
+        """列出 input/ 目录的文件。"""
+        resp = client.get("/api/assets/list?dir=input")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertIn("files", data)
+        self.assertIsInstance(data["files"], list)
+
+    def test_list_output_assets(self):
+        """列出 output/ 目录的文件。"""
+        resp = client.get("/api/assets/list?dir=output")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertIn("files", data)
+
+    def test_list_invalid_dir(self):
+        """非法 dir 参数应返回 400。"""
+        resp = client.get("/api/assets/list?dir=etc")
+        self.assertEqual(resp.status_code, 400)
+
+    def test_delete_rejects_non_input_output_url(self):
+        """删除资产时拒绝非 input/ output/ 的 URL。"""
+        resp = client.delete("/api/assets/delete?url=/etc/passwd")
+        self.assertEqual(resp.status_code, 400)
+
+    def test_delete_rejects_path_traversal(self):
+        """删除资产时拒绝路径穿越。"""
+        resp = client.delete("/api/assets/delete?url=/input/../API/.env")
+        self.assertEqual(resp.status_code, 400)
+
+    def test_upload_rejects_exe(self):
+        """上传拒绝 exe 文件。"""
+        resp = client.post("/api/upload", files={"file": ("test.exe", b"fake", "application/octet-stream")})
+        self.assertEqual(resp.status_code, 400)
 

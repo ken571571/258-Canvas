@@ -9,6 +9,7 @@
 
 import os
 import uuid
+import asyncio
 import time
 import json
 import re
@@ -16,7 +17,7 @@ import shutil
 import base64 as b64
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from .. import config
-from ..utils import KeyedLockManager, safe_join
+from ..utils import KeyedLockManager, safe_join, read_upload_safely
 from ..storage.json_store import store
 from ..models import AgentCreateRequest, AgentUpdateRequest, AgentRunRequest
 from ..logging_config import get_logger
@@ -102,7 +103,8 @@ def _unprotect_agent_dict(agent: dict, fingerprint: str) -> dict:
 
 
 def _protect_agent_files(agent_dir: str, fingerprint: str) -> None:
-    """加密 agent 目录下所有文件（skills/knowledge/docs + _kb_snapshot）。"""
+    """加密 agent 目录下所有文件（skills/knowledge/docs + _kb_snapshot）。
+    幂等：跳过已加密文件（AGP1 魔数），防止双重加密导致数据损坏。"""
     for sub in ["skills", "knowledge", "docs"]:
         sub_dir = os.path.join(agent_dir, sub)
         if not os.path.isdir(sub_dir):
@@ -114,6 +116,10 @@ def _protect_agent_files(agent_dir: str, fingerprint: str) -> None:
             if not os.path.isfile(fpath):
                 continue
             try:
+                # 跳过已加密文件（幂等保护）
+                with open(fpath, "rb") as _f:
+                    if _f.read(4) == b"AGP1":
+                        continue
                 crypto_encrypt_file(fpath, fingerprint)
             except Exception as e:
                 log.warning(f"加密文件失败 {fpath}: {e}")
@@ -121,7 +127,9 @@ def _protect_agent_files(agent_dir: str, fingerprint: str) -> None:
     snapshot = os.path.join(agent_dir, "_kb_snapshot.json")
     if os.path.exists(snapshot):
         try:
-            crypto_encrypt_file(snapshot, fingerprint)
+            with open(snapshot, "rb") as _f:
+                if _f.read(4) != b"AGP1":
+                    crypto_encrypt_file(snapshot, fingerprint)
         except Exception as e:
             log.warning(f"加密快照失败: {e}")
 
@@ -212,29 +220,29 @@ def _load_agent(agent_id: str, fingerprint: str = None) -> dict | None:
     return agent
 
 
-async def _save_agent(agent: dict):
+async def _write_agent_locked(agent_id: str, agent: dict) -> None:
+    """原子写入 agent.json（调用方必须持有 _locks.get(agent_id) 锁）。
+
+    不获取锁、不调 _sync_kb_snapshot。用于锁内读-改-写事务。
+    """
     agent["updated_at"] = int(time.time() * 1000)
-    d = _agent_dir(agent["id"])
+    d = _agent_dir(agent_id)
     os.makedirs(d, exist_ok=True)
     for sub in ["skills", "knowledge", "docs"]:
         os.makedirs(os.path.join(d, sub), exist_ok=True)
 
-    # protected agent: 写盘前加密（在锁内检查，避免 TOCTOU 竞态）
-    lock = await _locks.get(agent["id"])
-    async with lock:
-        write_data = agent
-        if _is_protected(agent) and "_enc" not in agent:
-            # 防御：如果字段已是占位符，说明 _enc 被误剥离，拒绝覆盖
-            if agent.get("system_prompt") == "[Encrypted]" and not agent.get("skills"):
-                raise RuntimeError("Refusing to encrypt placeholder data — _enc was accidentally stripped")
-            _protect_agent_dict(write_data, _get_fingerprint())
-        tmp = _agent_config_path(agent["id"]) + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(write_data, f, ensure_ascii=False, indent=2)
-        os.replace(tmp, _agent_config_path(agent["id"]))
-    # 快照知识库（protected agent 的快照在 _protect_agent_files 中已加密）
-    if not _is_protected(agent):
-        await _sync_kb_snapshot(agent)
+    write_data = agent
+    if _is_protected(agent) and "_enc" not in agent:
+        # 防御：如果字段已是占位符，说明 _enc 被误剥离，拒绝覆盖
+        if agent.get("system_prompt") == "[Encrypted]" and not agent.get("skills"):
+            raise RuntimeError("Refusing to encrypt placeholder data — _enc was accidentally stripped")
+        _protect_agent_dict(write_data, _get_fingerprint())
+    tmp = _agent_config_path(agent_id) + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(write_data, f, ensure_ascii=False, indent=2)
+        f.flush()
+        os.fsync(f.fileno())  # v2.5.50：确保持久化到磁盘后再原子替换
+    os.replace(tmp, _agent_config_path(agent_id))
 
 
 async def _sync_kb_snapshot(agent: dict):
@@ -263,10 +271,8 @@ async def _sync_kb_snapshot(agent: dict):
                     "documents": kb_data.get("documents", []),
                 }
         if snapshot:
-            tmp = snapshot_path + ".tmp"
-            with open(tmp, "w", encoding="utf-8") as f:
-                json.dump(snapshot, f, ensure_ascii=False, indent=2)
-            os.replace(tmp, snapshot_path)
+            # v2.5.50：使用 store.write() 替代手动 open+os.replace（自动 fsync + 原子替换 + 锁）
+            await store.write(snapshot_path, snapshot)
         elif os.path.exists(snapshot_path):
             os.remove(snapshot_path)
     except Exception as e:
@@ -419,38 +425,53 @@ def get_agent(agent_id: str):
 
 @router.put("/agents/{agent_id}")
 async def update_agent(agent_id: str, payload: AgentUpdateRequest):
-    # protected agent 需带指纹加载（解密 _enc 到内存，避免后续保存时覆盖）
+    # 锁外预读 + 快速验证（避免不必要地持有锁）
     a = _load_agent(agent_id, fingerprint=_get_fingerprint())
     if not a:
         raise HTTPException(status_code=404, detail="Agent 不存在")
 
-    # 在修改前捕获旧名字（用于后续目录重命名）
     old_dir = _agent_dir(agent_id)
     old_name = a.get("name", "")
+    is_protected = _is_protected(a)
 
-    # protected agent: 仅允许更新元数据字段
     update_fields = payload.model_dump(exclude_unset=True)
-    if _is_protected(a):
+    if is_protected:
         allowed = {"name", "model", "provider_id", "max_steps", "_trial"}
         unsafe = [k for k in update_fields if k not in allowed]
         if unsafe:
             raise HTTPException(status_code=400, detail=f"Protected agent 不允许修改: {', '.join(unsafe)}")
-        # 试用计数器写入 _trial（加密存储）
-        if "_trial" in update_fields:
-            a["_trial"] = update_fields.pop("_trial")
-    else:
+
+    # 锁内：原子化读-改-写事务
+    lock = await _locks.get(agent_id)
+    async with lock:
+        a = _load_agent(agent_id, fingerprint=_get_fingerprint())
+        if not a:
+            raise HTTPException(status_code=404, detail="Agent 不存在")
+
+        # 双重检查：agent 可能在锁外验证后变为 protected
+        if _is_protected(a):
+            allowed = {"name", "model", "provider_id", "max_steps", "_trial"}
+            unsafe = [k for k in update_fields if k not in allowed]
+            if unsafe:
+                raise HTTPException(status_code=400, detail=f"Protected agent 不允许修改: {', '.join(unsafe)}")
+            if "_trial" in update_fields:
+                a["_trial"] = update_fields.pop("_trial")
+        else:
+            for field, value in update_fields.items():
+                a[field] = value
+
         for field, value in update_fields.items():
+            if field in ("system_prompt", "skills", "knowledge_bases") and _is_protected(a):
+                continue
             a[field] = value
 
-    # 应用允许的更新
-    for field, value in update_fields.items():
-        if field in ("system_prompt", "skills", "knowledge_bases") and _is_protected(a):
-            continue
-        a[field] = value
+        await _write_agent_locked(agent_id, a)
+        # 快照同步移入锁内（v2.5.40：防止并发 update_agent 导致快照与 agent.json 不一致）
+        if not _is_protected(a):
+            await _sync_kb_snapshot(a)
 
-    await _save_agent(a)
+    # 锁外：目录重命名
 
-    # 重命名（名字变化时）
     new_name = a.get("name", "")
     if new_name != old_name and os.path.isdir(old_dir):
         new_dir = os.path.join(config.AGENTS_ROOT, f"{_safe_name(new_name)}_{agent_id[:8]}")
@@ -500,9 +521,7 @@ async def upload_agent_file(agent_id: str, sub: str, file: UploadFile = File(...
         raise HTTPException(status_code=400, detail="路径不合法")
     os.makedirs(target_dir, exist_ok=True)
 
-    raw = await file.read()
-    if len(raw) > 50 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="文件过大（最大 50MB）")
+    raw = await read_upload_safely(file, 50 * 1024 * 1024)  # v2.5.40：流式读取防 OOM
     filename = file.filename or "未命名"
     # 安全处理文件名
     safe_name = re.sub(r"[\\/:*?\"<>|]", "_", filename)
@@ -748,13 +767,21 @@ async def run_agent_endpoint(agent_id: str, payload: AgentRunRequest):
     if not a:
         raise HTTPException(status_code=404, detail="Agent 不存在")
 
-    # 试用次数检查
+    # v2.5.52：试用计数器在锁内检查+递增，防止并发突破限制
     trial = a.get("_trial")
+    trial_ok = True
     if trial and isinstance(trial, dict) and trial.get("type") == "trial":
-        used = trial.get("used", 0)
-        limit = trial.get("limit", 5)
-        if used >= limit:
-            return {"success": False, "error": f"Agent 试用次数已用尽（{used}/{limit}）"}
+        lock = await _locks.get(agent_id)
+        async with lock:
+            a2 = _load_agent(agent_id, fingerprint=fp)
+            if a2 and a2.get("_trial"):
+                used = a2["_trial"].get("used", 0)
+                limit = a2["_trial"].get("limit", 5)
+                if used >= limit:
+                    return {"success": False, "error": f"Agent 试用次数已用尽（{used}/{limit}）"}
+                a2["_trial"]["used"] = used + 1
+                await _write_agent_locked(agent_id, a2)
+                trial_ok = False  # 已递增，下方不再重复递增
 
     pid = a.get("provider_id", "openai")
     prov = resolve_provider(pid)
@@ -767,44 +794,39 @@ async def run_agent_endpoint(agent_id: str, payload: AgentRunRequest):
         if data_url:
             input_images.append(data_url)
 
-    # 加载 agent 自己的 skills 目录（protected 需要指纹解密）
+    # v2.5.52：仅加载当前 Agent 的技能，避免全局 _load_external 扫描所有 Agent 导致技能互相覆盖
     skills_dir = _agent_skills_dir(agent_id)
     if os.path.isdir(skills_dir):
         reg = get_skill_registry()
-        reg._load_external(fingerprint=fp)
+        reg._scan_skills_dir(skills_dir, fingerprint=fp)
 
     user_input = str(payload.user_input or "")
 
-    result = await run_agent(
-        agent_config=a,
-        user_input=user_input,
-        input_images=input_images,
-        provider=prov,
-        docs_dir=_agent_docs_dir(agent_id),
-        agent_dir=_agent_dir(agent_id),
-        fingerprint=fp,
-    )
+    try:
+        result = await asyncio.wait_for(
+            run_agent(
+                agent_config=a,
+                user_input=user_input,
+                input_images=input_images,
+                provider=prov,
+                docs_dir=_agent_docs_dir(agent_id),
+                agent_dir=_agent_dir(agent_id),
+                fingerprint=fp,
+            ),
+            timeout=600,  # v2.5.52：全局超时 600s（max_steps×单次超时的两倍）
+        )
+    except asyncio.TimeoutError:
+        return {"success": False, "error": "Agent 执行超时（600s）", "steps": [], "final_output": ""}
 
-    # 试用计数器原子递增（锁内读-改-写，避免 fire-and-forget 竞态）
-    # 注意：不可调用 _save_agent — 其内部对同一 agent_id 再次获取 asyncio.Lock 会导致死锁
-    if trial and result.get("success"):
-        lock = await _locks.get(agent_id)
-        async with lock:
-            a2 = _load_agent(agent_id, fingerprint=fp)
-            if a2 and a2.get("_trial"):
-                a2["_trial"]["used"] = a2["_trial"].get("used", 0) + 1
-                a2["updated_at"] = int(time.time() * 1000)
-                d = _agent_dir(agent_id)
-                os.makedirs(d, exist_ok=True)
-                write_data = a2
-                if _is_protected(a2) and "_enc" not in a2:
-                    if a2.get("system_prompt") == "[Encrypted]" and not a2.get("skills"):
-                        raise RuntimeError("Refusing to encrypt placeholder data — _enc was accidentally stripped")
-                    _protect_agent_dict(write_data, _get_fingerprint())
-                tmp = _agent_config_path(agent_id) + ".tmp"
-                with open(tmp, "w", encoding="utf-8") as f:
-                    json.dump(write_data, f, ensure_ascii=False, indent=2)
-                os.replace(tmp, _agent_config_path(agent_id))
+    # v2.5.52：已在前置锁内递增；失败时退还试用次数
+    if trial and not trial_ok:
+        if not result.get("success"):
+            lock = await _locks.get(agent_id)
+            async with lock:
+                a3 = _load_agent(agent_id, fingerprint=fp)
+                if a3 and a3.get("_trial"):
+                    a3["_trial"]["used"] = max(0, a3["_trial"].get("used", 0) - 1)
+                    await _write_agent_locked(agent_id, a3)
 
     return result
 
@@ -814,6 +836,7 @@ async def run_agent_endpoint(agent_id: str, payload: AgentRunRequest):
 @router.post("/agents/{agent_id}/protect")
 async def protect_agent(agent_id: str):
     """将明文 Agent 转为受保护模式（不可逆）。"""
+    # 锁外预读 + 快速验证
     a = _load_agent(agent_id)
     if not a:
         raise HTTPException(status_code=404, detail="Agent 不存在")
@@ -826,12 +849,21 @@ async def protect_agent(agent_id: str):
 
     agent_dir = _agent_dir(agent_id)
 
-    # 先加密文件（skills/knowledge/docs/snapshot）
-    _protect_agent_files(agent_dir, fp)
+    # 锁内：原子化保护操作（文件加密 + agent.json 加密写入在同一锁内完成）
+    lock = await _locks.get(agent_id)
+    async with lock:
+        a = _load_agent(agent_id)
+        if not a:
+            raise HTTPException(status_code=404, detail="Agent 不存在")
+        if _is_protected(a):
+            raise HTTPException(status_code=400, detail="Agent 已是受保护模式")
 
-    # 加密 agent.json 敏感字段并保存
-    _protect_agent_dict(a, fp)
-    await _save_agent(a)
+        # 加密 skills/knowledge/docs 文件 + 知识库快照
+        _protect_agent_files(agent_dir, fp)
+
+        # 加密 agent.json 敏感字段并原子写入
+        _protect_agent_dict(a, fp)
+        await _write_agent_locked(agent_id, a)
 
     return {"ok": True, "agent": {"id": agent_id, "protected": True}}
 
@@ -859,6 +891,8 @@ async def export_agent(agent_id: str, payload: dict):
         raise HTTPException(status_code=400, detail="永久密码至少 8 个字符")
 
     trial_pw = str(payload.get("trial_password", "")).strip()
+    if trial_pw and len(trial_pw) < 8:
+        raise HTTPException(status_code=400, detail="试用密码至少 8 个字符")  # v2.5.50
     trial_limit = int(payload.get("trial_limit", 5))
     expires_hours = int(payload.get("expires_hours", 24))  # 0=永不过期
 
@@ -930,9 +964,9 @@ async def import_agent(file: UploadFile = File(...), password: str = Form("")):
     if not password:
         raise HTTPException(status_code=400, detail="密码不能为空")
 
-    raw = await file.read()
-    if len(raw) > 100 * 1024 * 1024:
+    if file.size and file.size > 100 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="文件过大（最大 100MB）")
+    raw = await read_upload_safely(file, 100 * 1024 * 1024)  # v2.5.40：流式读取防 OOM
 
     try:
         bundle = import_bundle(raw, password)
@@ -952,56 +986,67 @@ async def import_agent(file: UploadFile = File(...), password: str = Form("")):
     dir_name = f"{slug}_{aid[:8]}"
     d = os.path.join(config.AGENTS_ROOT, dir_name)
     os.makedirs(d, exist_ok=True)
-    for sub in ["skills", "knowledge", "docs"]:
-        os.makedirs(os.path.join(d, sub), exist_ok=True)
+    success = False
 
-    fp = _get_fingerprint()
+    try:
+        for sub in ["skills", "knowledge", "docs"]:
+            os.makedirs(os.path.join(d, sub), exist_ok=True)
 
-    # 写入文件（加密）
-    for rel_path, content in files.items():
-        target = safe_join(d, rel_path)
-        os.makedirs(os.path.dirname(target), exist_ok=True)
+        fp = _get_fingerprint()
+
+        # 写入文件（加密）
         import hashlib as _hashlib
         fkey = _hashlib.sha256(("agent_fingerprint:" + fp).encode()).digest()
         from ..security.agent_crypto import encrypt_bytes
-        with open(target, "wb") as fout:
-            fout.write(encrypt_bytes(content.encode("utf-8", errors="replace"), fkey))
+        for rel_path, content in files.items():
+            target = safe_join(d, rel_path)
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            with open(target, "wb") as fout:
+                fout.write(encrypt_bytes(content.encode("utf-8", errors="replace"), fkey))
 
-    # 写入知识库快照（加密）
-    if kb_snapshot:
-        import hashlib as _hashlib
-        fkey = _hashlib.sha256(("agent_fingerprint:" + fp).encode()).digest()
-        from ..security.agent_crypto import encrypt_bytes
-        snap_data = json.dumps(kb_snapshot, ensure_ascii=False).encode("utf-8")
-        with open(os.path.join(d, "_kb_snapshot.json"), "wb") as fout:
-            fout.write(encrypt_bytes(snap_data, fkey))
+        # 写入知识库快照（加密）
+        if kb_snapshot:
+            snap_data = json.dumps(kb_snapshot, ensure_ascii=False).encode("utf-8")
+            with open(os.path.join(d, "_kb_snapshot.json"), "wb") as fout:
+                fout.write(encrypt_bytes(snap_data, fkey))
 
-    # 构建 agent 配置
-    agent_config["id"] = aid
-    agent_config["protected"] = True
-    agent_config["fingerprint_hash"] = fingerprint_hash(fp)
-    agent_config["_enc"] = {
-        "system_prompt": encrypt_with_fingerprint(agent_config.get("system_prompt", ""), fp),
-        "skills": encrypt_with_fingerprint(json.dumps(agent_config.get("skills") or [], ensure_ascii=False), fp),
-        "knowledge_bases": encrypt_with_fingerprint(json.dumps(agent_config.get("knowledge_bases") or [], ensure_ascii=False), fp),
-    }
-    # 试用信息存入 _trial
-    if slot_type == "trial" and trial_limit:
-        agent_config["_trial"] = {"type": "trial", "limit": trial_limit, "used": 0}
-        agent_config["_enc"]["_trial"] = encrypt_with_fingerprint(json.dumps(agent_config["_trial"], ensure_ascii=False), fp)
+        # 构建 agent 配置
+        agent_config["id"] = aid
+        agent_config["protected"] = True
+        agent_config["fingerprint_hash"] = fingerprint_hash(fp)
+        agent_config["_enc"] = {
+            "system_prompt": encrypt_with_fingerprint(agent_config.get("system_prompt", ""), fp),
+            "skills": encrypt_with_fingerprint(json.dumps(agent_config.get("skills") or [], ensure_ascii=False), fp),
+            "knowledge_bases": encrypt_with_fingerprint(json.dumps(agent_config.get("knowledge_bases") or [], ensure_ascii=False), fp),
+        }
+        # 试用信息存入 _trial
+        if slot_type == "trial" and trial_limit:
+            agent_config["_trial"] = {"type": "trial", "limit": trial_limit, "used": 0}
+            agent_config["_enc"]["_trial"] = encrypt_with_fingerprint(json.dumps(agent_config["_trial"], ensure_ascii=False), fp)
 
-    # 清除明文
-    agent_config["system_prompt"] = "[Encrypted]"
+        # 清除明文
+        agent_config["system_prompt"] = "[Encrypted]"
 
-    now = int(time.time() * 1000)
-    agent_config["created_at"] = now
-    agent_config["updated_at"] = now
+        now = int(time.time() * 1000)
+        agent_config["created_at"] = now
+        agent_config["updated_at"] = now
 
-    config_path = os.path.join(d, "agent.json")
-    await store.write_with_timestamp(config_path, agent_config)
+        config_path = os.path.join(d, "agent.json")
+        await store.write_with_timestamp(config_path, agent_config)
 
-    return {"ok": True, "agent": {"id": aid, "name": agent_config.get("name"), "protected": True}, "dir": dir_name,
-            "slot_type": slot_type, "trial_limit": trial_limit}
+        success = True
+        return {"ok": True, "agent": {"id": aid, "name": agent_config.get("name"), "protected": True}, "dir": dir_name,
+                "slot_type": slot_type, "trial_limit": trial_limit}
+    except Exception:
+        raise  # 保留原始异常信息
+    finally:
+        # 导入失败 → 清理已创建的目录，不留残留（v2.5.40：从 except 移入 finally）
+        if not success and os.path.isdir(d):
+            try:
+                shutil.rmtree(d)
+                log.info(f"Agent 导入失败，已清理目录: {dir_name}")
+            except Exception as cleanup_err:
+                log.warning(f"Agent 导入回滚：清理目录失败 {d}: {cleanup_err}")
 
 
 @router.post("/agents/{agent_id}/verify-fingerprint")

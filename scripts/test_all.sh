@@ -6,7 +6,14 @@ echo " 无限画布 — 一键测试脚本"
 echo "========================================"
 echo ""
 
-PYTHON="./python/python.exe"
+# v2.5.40: 自动检测平台（Windows → 内置 python.exe，其他 → 系统 python3）
+if [ -f "./python/python.exe" ]; then
+    PYTHON="./python/python.exe"
+elif command -v python3 &>/dev/null; then
+    PYTHON="python3"
+else
+    PYTHON="python"
+fi
 PASS=0
 FAIL=0
 
@@ -54,7 +61,13 @@ var zh=JSON.parse(require('fs').readFileSync('static/locales/zh-CN.json','utf8')
 en=JSON.parse(require('fs').readFileSync('static/locales/en.json','utf8'));
 function dk(o,p){var k=[];for(var c in o){var f=p?p+'.'+c:c;if(typeof o[c]==='object'&&o[c]&&!Array.isArray(o[c]))k=k.concat(dk(o[c],f));else k.push(f);}return k;}
 var zz=dk(zh),ee=dk(en);
-if(zz.length===ee.length){console.log('PASS: '+zz.length+' keys matched');}else{console.log('FAIL: zh='+zz.length+' en='+ee.length);process.exit(1);}
+var zs=new Set(zz),es=new Set(ee);
+var onlyZh=zz.filter(function(k){return !es.has(k)});
+var onlyEn=ee.filter(function(k){return !zs.has(k)});
+var total=zs.size;
+var common=zz.filter(function(k){return es.has(k)}).length;
+if(onlyZh.length===0&&onlyEn.length===0){console.log('PASS: '+total+' keys matched');}
+else{console.log('FAIL: only zh-CN='+JSON.stringify(onlyZh)+' only en='+JSON.stringify(onlyEn));process.exit(1);}
 " 2>&1; then
     echo "  PASS"; ((PASS++))
 else

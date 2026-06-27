@@ -6,7 +6,7 @@ if not exist "%PYEXE%" set "PYEXE=python"
 
 echo.
 echo ============================================
-echo       Infinite Canvas  v1.0
+echo       Infinite Canvas  v2.5.54
 echo ============================================
 echo.
 echo   URL: http://127.0.0.1:3571

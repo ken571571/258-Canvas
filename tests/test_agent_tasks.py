@@ -200,6 +200,3 @@ class AssetsListTests(unittest.TestCase):
         self.assertIn("files", data)
         self.assertIsInstance(data["files"], list)
 
-
-if __name__ == "__main__":
-    unittest.main()

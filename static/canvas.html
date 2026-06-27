@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>无限画布</title>
 <link rel="stylesheet" href="/static/css/style.css?v=10">
-<link rel="stylesheet" href="/static/css/components.css?v=2">
+<link rel="stylesheet" href="/static/css/components.css?v=5">
 </head>
 <body>
 <div class="canvas-shell">
@@ -68,7 +68,6 @@
             <button class="asset-tab active" onclick="engine._loadAssets('input')"><span data-t="assets.input">输入</span></button>
             <button class="asset-tab" onclick="engine._loadAssets('output')"><span data-t="assets.output">输出</span></button>
         </div>
-        <input class="asset-search" type="text" data-t-placeholder="assets.search" placeholder="搜索..." id="asset-search" oninput="engine._filterAssets()">
         <div class="asset-grid" id="asset-grid"></div>
         <div class="asset-hint" data-t="assets.hint">点击创建于视口中心 · 拖拽到画布上精准放置 · 拖到图片节点上替换</div>
     </div>
@@ -77,21 +76,21 @@
 <script src="/static/js/ui-icon.js?v=2"></script>
 <script src="/static/js/ui-tool-btn.js?v=2"></script>
 <script src="/static/js/i18n.js?v=2"></script>
-<script src="/static/js/api.js?v=13"></script>
-<script src="/static/js/canvas-store.js?v=3"></script>
-<script src="/static/js/canvas-core.js?v=17"></script>
+<script src="/static/js/api.js?v=14"></script>
+<script src="/static/js/canvas-store.js?v=4"></script>
+<script src="/static/js/canvas-core.js?v=28"></script>
 <script src="/static/js/canvas-undo.js?v=2"></script>
 <script src="/static/js/canvas-viewport.js?v=1"></script>
 <!-- 渲染器模块（按依赖顺序加载） -->
-<script src="/static/js/canvas-renderer-core.js?v=2"></script>
+<script src="/static/js/canvas-renderer-core.js?v=4"></script>
 <script src="/static/js/canvas-renderer-providers.js?v=2"></script>
-<script src="/static/js/canvas-renderer-nodes.js?v=7"></script>
+<script src="/static/js/canvas-renderer-nodes.js?v=23"></script>
 <script src="/static/js/canvas-renderer-groups.js?v=5"></script>
-<script src="/static/js/canvas-renderer-links.js?v=2"></script>
-<script src="/static/js/canvas-renderer-lightbox.js?v=3"></script>
-<script src="/static/js/canvas-renderer-assets.js?v=2"></script>
-<script src="/static/js/canvas-pipeline.js?v=4"></script>
-<script src="/static/js/canvas-events.js?v=2"></script>
+<script src="/static/js/canvas-renderer-links.js?v=3"></script>
+<script src="/static/js/canvas-renderer-lightbox.js?v=4"></script>
+<script src="/static/js/canvas-renderer-assets.js?v=4"></script>
+<script src="/static/js/canvas-pipeline.js?v=74"></script>
+<script src="/static/js/canvas-events.js?v=3"></script>
 <script>
 const engine = new CanvasEngine('board', 'world', 'nodes-container', 'links');
 engine.init().then(() => {
@@ -113,8 +112,8 @@ engine.init().then(() => {
     overlay.innerHTML = '<div style="font-size:16px;font-weight:700;color:var(--bad);margin-bottom:8px;">画布加载失败</div>' +
         '<div style="font-size:12px;color:var(--muted);margin-bottom:16px;word-break:break-all;">' + safeMsg + '</div>' +
         '<div style="display:flex;gap:8px;justify-content:center;">' +
-        '<button onclick="localStorage.removeItem(\'canvas_current_id\');location.reload()" style="padding:6px 16px;border:1px solid var(--bad);border-radius:8px;background:var(--bg);color:var(--bad);cursor:pointer;font-size:13px;">重置画布 ID 并刷新</button>' +
-        '<button onclick="location.reload()" style="padding:6px 16px;border:none;border-radius:8px;background:var(--accent);color:var(--accent-ink);cursor:pointer;font-size:13px;">直接刷新</button>' +
+        '<button onclick="localStorage.removeItem(\'canvas_current_id\');location.reload()" style="padding:6px 16px;border:1px solid var(--bad);border-radius:8px;background:var(--bg);color:var(--bad);cursor:pointer;font-size:13px;">' + (typeof _t !== 'undefined' ? _t('canvas.resetAndReload','重置画布 ID 并刷新') : '重置画布 ID 并刷新') + '</button>' +
+        '<button onclick="location.reload()" style="padding:6px 16px;border:none;border-radius:8px;background:var(--accent);color:var(--accent-ink);cursor:pointer;font-size:13px;">' + (typeof _t !== 'undefined' ? _t('canvas.reload','直接刷新') : '直接刷新') + '</button>' +
         '</div>';
     board.appendChild(overlay);
 });

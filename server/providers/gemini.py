@@ -65,17 +65,14 @@ class GeminiProvider(BaseProvider):
     # ——— 认证 ———
 
     def build_headers(self) -> Dict[str, str]:
-        return {"Content-Type": "application/json"}
+        return {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": self._api_key,  # Gemini 推荐方式，避免 Key 出现在 URL 日志中
+        }
 
     def build_url(self, endpoint: str) -> str:
         endpoint = endpoint.lstrip("/")
-        base = self._base_url
-        url = f"{base}/{endpoint}"
-        if "?" not in url:
-            url += f"?key={self._api_key}"
-        else:
-            url += f"&key={self._api_key}"
-        return url
+        return f"{self._base_url}/{endpoint}"
 
     # ——— 模型列表 ———
 
@@ -261,14 +258,14 @@ class GeminiProvider(BaseProvider):
             elapsed = int((_time.time() - started) * 1000)
             return {"ok": False, "latency_ms": elapsed, "error": str(e)}
 
-    async def fetch_models(self) -> list:
-        """Gemini models 列表格式不同，覆盖默认实现。"""
+    async def fetch_models(self) -> tuple:
+        """Gemini models 列表格式不同，覆盖默认实现。返回 (models, live)。"""
         try:
             url = self.build_url("models")
             async with httpx.AsyncClient(timeout=30, follow_redirects=False) as cli:
                 resp = await cli.get(url, headers=self.build_headers())
             if resp.status_code != 200:
-                return []
+                return [], False
             data = resp.json()
             models = []
             from .base import ModelInfo
@@ -280,7 +277,7 @@ class GeminiProvider(BaseProvider):
                     if "image" in name.lower():
                         m_type = "image"
                     models.append(ModelInfo(id=name, name=item.get("displayName", name), type=m_type))
-            return models
+            return models, True
         except Exception as e:
             log.debug(f"从 Gemini API 拉取模型列表失败（将使用本地配置）: {e}")
-            return []
+            return [], False

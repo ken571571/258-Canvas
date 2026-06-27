@@ -260,7 +260,7 @@ async def run_workflow(name: str, payload: dict):
         # 将其上传到 ComfyUI 的 input 目录，并替换为 ComfyUI 可识别的文件名。
         # 支持三种来源：本地路径、远程 URL、Data URL。
         IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
-        async with httpx.AsyncClient(timeout=30) as cli:
+        async with httpx.AsyncClient(timeout=30, follow_redirects=False) as cli:
             for node_id, node_data in workflow.items():
                 if not isinstance(node_data, dict):
                     continue
@@ -290,8 +290,8 @@ async def run_workflow(name: str, payload: dict):
 
                     # 2) 远程 URL（SSRF 防护：检查目标主机）
                     elif val.startswith("http://") or val.startswith("https://"):
-                        from ..security.network import validate_safe_url
-                        if not validate_safe_url(val):
+                        from ..security.network import async_validate_safe_url
+                        if not await async_validate_safe_url(val):
                             log.warning(f"SSRF 拦截 — 禁止访问内网地址: {val[:80]}")
                             continue
                         try:
@@ -337,8 +337,8 @@ async def run_workflow(name: str, payload: dict):
                         )
                         if upload_resp.status_code == 200:
                             comfy_name = upload_resp.json().get("name", filename)
-                            workflow[node_id]["inputs"][input_name] = comfy_name
                             log.info(f"图片已上传到 ComfyUI: {val[:60]} -> {comfy_name}")
+                            workflow[node_id]["inputs"][input_name] = comfy_name
                         else:
                             log.error(f"ComfyUI 上传失败 ({upload_resp.status_code}): {upload_resp.text[:200]}")
                     except Exception as e:

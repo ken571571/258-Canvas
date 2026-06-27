@@ -38,6 +38,8 @@ async def generate_video(req: VideoGenerateRequest):
         )
     except NotImplementedError:
         raise HTTPException(status_code=400, detail=f"{prov.provider_name} 不支持视频生成")
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"视频生成失败: {e}")
 
     return {
         "url": result.url,
@@ -133,8 +135,10 @@ from ..data.video_model_params import VIDEO_MODEL_DURATIONS, VIDEO_MODEL_RESOLUT
 
 @router.get("/video/model-params")
 async def get_video_model_params():
-    """返回已知视频模型的时长和分辨率参数映射（供前端下拉菜单使用）。"""
+    """返回视频模型参数和轮询配置（供前端下拉菜单和轮询逻辑使用）。"""
     return {
         "durations": VIDEO_MODEL_DURATIONS,
         "resolutions": VIDEO_MODEL_RESOLUTIONS,
+        "poll_timeout": config.VIDEO_POLL_TIMEOUT,
+        "poll_interval": config.VIDEO_POLL_INTERVAL,
     }

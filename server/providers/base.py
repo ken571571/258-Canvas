@@ -9,7 +9,7 @@ from typing import List, Dict, Any, Optional, AsyncGenerator
 from dataclasses import dataclass, field
 import httpx
 from ..logging_config import get_logger
-from ..security.network import validate_safe_url
+from ..security.network import async_validate_safe_url
 
 log = get_logger("provider")
 
@@ -155,8 +155,12 @@ class BaseProvider(ABC):
             elapsed = int((_time.time() - started) * 1000)
             return {"ok": False, "latency_ms": elapsed, "error": str(e)}
 
-    async def fetch_models(self) -> List[ModelInfo]:
+    async def fetch_models(self) -> tuple:
         """从上游 API 拉取可用模型列表。
+
+        返回 (models, live)：
+        - live=True: 模型来自上游 API 实时拉取
+        - live=False: API 不可达，返回的是本地默认/配置模型
 
         如果拉取失败，回退到返回当前配置的模型列表。
         """
@@ -195,7 +199,7 @@ class BaseProvider(ABC):
             for m in self.list_video_models():
                 if not any(x.id == m for x in models):
                     models.append(ModelInfo(id=m, name=m, type="video"))
-        return models
+        return models, fetched
 
     # ——— 通用辅助方法 ———
 
@@ -213,7 +217,7 @@ class BaseProvider(ABC):
             if not download_remote:
                 return url
             # SSRF 防护：检查目标主机是否安全
-            if not validate_safe_url(url):
+            if not await async_validate_safe_url(url):
                 log.warning(f"SSRF 拦截 — 禁止访问内网地址: {url[:80]}")
                 raise ValueError(f"安全拦截：禁止访问内网地址")
             # 下载远程图片并转为 base64（异步，不阻塞事件循环）
@@ -232,7 +236,7 @@ class BaseProvider(ABC):
                         if next_url.startswith("/"):
                             from urllib.parse import urljoin
                             next_url = urljoin(url, next_url)
-                        if not validate_safe_url(next_url):
+                        if not await async_validate_safe_url(next_url):
                             log.warning(f"SSRF 拦截（重定向目标）: {next_url[:80]}")
                             raise ValueError(f"安全拦截：重定向目标指向内网地址")
                         r = await _cli.get(next_url)

@@ -8,6 +8,9 @@
 import asyncio
 import time
 import os
+
+# v2.5.51：使用 monotonic 防止系统时钟回拨导致锁过期判断异常
+_monotonic = time.monotonic
 import base64
 from .logging_config import get_logger
 
@@ -41,7 +44,7 @@ class KeyedLockManager:
         async with self._manager:
             if key not in self._locks:
                 self._locks[key] = asyncio.Lock()
-            self._last_access[key] = time.time()
+            self._last_access[key] = _monotonic()
             # 启动清理任务（如尚未运行）
             if self._cleanup_task is None or self._cleanup_task.done():
                 self._cleanup_task = asyncio.create_task(self._periodic_cleanup())
@@ -51,7 +54,7 @@ class KeyedLockManager:
         """每小时清理一次超过 1 小时未访问的锁。"""
         while True:
             await asyncio.sleep(3600)
-            now = time.time()
+            now = _monotonic()
             async with self._manager:
                 stale = [
                     k for k, t in self._last_access.items()
@@ -89,17 +92,21 @@ def resolve_gen_size(size: str, reference_images: list) -> str:
     ref_url = str(reference_images[0] or "").strip()
     try:
         if ref_url.startswith("data:"):
-            _, b64 = ref_url.split(",", 1)
+            parts = ref_url.split(",", 1)
+            if len(parts) < 2:
+                return size
+            _, b64 = parts
             img_bytes = base64.b64decode(b64)
+            from PIL import Image as PILImage
+            import io as _io
+            orig_w, orig_h = PILImage.open(_io.BytesIO(img_bytes)).size
         elif ref_url.startswith(("http://", "https://")):
-            return size  # 远程图片暂不处理
+            return size
         else:
             local = safe_join(config.BASE_DIR, ref_url.lstrip("/"))
-            with open(local, "rb") as f:
-                img_bytes = f.read()
-        from PIL import Image as PILImage
-        import io as _io
-        orig_w, orig_h = PILImage.open(_io.BytesIO(img_bytes)).size
+            # v2.5.40：PIL.open(local) 只读文件头，不加载完整文件到内存
+            from PIL import Image as PILImage
+            orig_w, orig_h = PILImage.open(local).size
     except Exception as e:
         _log.debug(f"读取参考图尺寸失败，使用原始 size={size}: {e}")
         return size  # 读图失败，原样返回
@@ -132,6 +139,43 @@ def resolve_gen_size(size: str, reference_images: list) -> str:
         )
     _log.info(f"倍率解析: {size or '跟随'} 原图{orig_w}x{orig_h} → {w}x{h}")
     return f"{w}x{h}"
+
+
+# ——— 上传安全 ———
+
+
+async def read_upload_safely(file, max_bytes: int) -> bytes:
+    """流式读取上传文件内容，超限立即拒绝（防止 OOM）。
+
+    分块编码（无 Content-Length）时 file.size 为 None，
+    直接 await file.read() 会无条件加载全部内容到内存。
+    本函数用流式读取，每块累加，超限时抛出 HTTPException(413)。
+
+    Args:
+        file: FastAPI UploadFile 对象
+        max_bytes: 最大允许字节数
+
+    Returns:
+        文件完整内容 bytes
+
+    Raises:
+        fastapi.HTTPException: 内容超过 max_bytes 时立即拒绝
+    """
+    from fastapi import HTTPException
+    chunks = []
+    total = 0
+    while True:
+        chunk = await file.read(64 * 1024)  # 64KB 块
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > max_bytes:
+            raise HTTPException(
+                status_code=413,
+                detail=f"文件过大（超过 {max_bytes // 1024 // 1024}MB 上限）"
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 # ——— 后台任务管理 ———

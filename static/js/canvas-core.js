@@ -46,8 +46,9 @@ class CanvasEngine {
     }
 
     async init() {
-        await refreshProviders();
-        await this._loadAgentOpts();
+        // 防御性容错：provider/agent 加载失败不影响画布启动
+        try { await refreshProviders(); } catch(e) { console.warn('init: refreshProviders failed', e); }
+        try { await this._loadAgentOpts(); } catch(e) { console.warn('init: _loadAgentOpts failed', e); }
         this._loadComfyWorkflows().catch(()=>{});
         this._loadVideoModelParams().catch(()=>{});
         const params = new URLSearchParams(location.search);
@@ -86,6 +87,9 @@ class CanvasEngine {
 
     async load() {
         if (!this.canvasId) return;
+        clearTimeout(this._saveDebounceTimer);  // 取消残留的延迟保存，防止写入错误画布
+        // v2.5.40：递增保存代数，使 load() 前发起的旧 save() 完成后自动丢弃结果
+        this._saveGeneration = (this._saveGeneration || 0) + 1;
         // 递归保护：服务器持续故障时最多重试3次，避免无限递归
         const retries = this._loadRetries || 0;
         try {
@@ -143,17 +147,59 @@ class CanvasEngine {
     }
 
     async save() {
-        if (!this.canvasId || String(this.canvasId).startsWith('local_')) return;
-        // 保存前：将引擎节点最新位置同步到 Store（引擎和 Store 是不同的对象副本）
+        if (!this.canvasId) return;
+        // 首次保存：local_ 画布先创建到服务器，再正常保存
+        if (String(this.canvasId).startsWith('local_')) {
+            try {
+                var created = await apiJson('/api/boards', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title: _t('canvas.defaultTitle','默认画布') }),
+                });
+                // v2.5.51：防御 apiJson 解析失败返回空对象
+                if (!created || !created.canvas) throw new Error(_t('canvas.saveFailed','保存失败'));
+                this.canvasId = created.canvas.id;
+                this._canvasUpdatedAt = created.canvas.updated_at || 0;
+                localStorage.setItem('canvas_current_id', this.canvasId);
+            } catch (e) {
+                this._setSaveIndicator(_t('canvas.saveFailed','保存失败'), 'error');
+                return;
+            }
+        }
+        // 防止并发保存：save() 未完成时新的 save() 调用排队等待
+        if (this._saving) { this._pendingSave = true; return; }
+        this._saving = true;
+        try {
+        // 捕获快照用于完成后验证（必须在 auto-create 之后，否则 local_→real 的切换会被误判）
+        var capturingId = this.canvasId;
+        var capturingGen = this._saveGeneration;
+        // 保存前：将引擎完整同步到 Store（全字段，跳过运行时状态）
+        // 设计：save() 从 Store 序列化负载，如果某字段只在引擎改了而 Store 没同步，刷新后丢失。
+        // 之前只同步 x/y/w/h，导致 node.desc / _queue 排序 / ComfyUI 连线等多处遗漏 → 全字段同步根治。
+        var SKIP_SAVE = {runState:1, runMessage:1, _cursorImg:1, _cursorTxt:1, _cancelled:1, _taH:1, _upstreamLast:1};
         for (var i = 0; i < this.nodes.length; i++) {
             var en = this.nodes[i];
             var sn = this.store.getNode(en.id);
-            if (sn) { sn.x = en.x; sn.y = en.y; sn.w = en.w; sn.h = en.h; }
+            if (sn) {
+                var keys = Object.keys(en);
+                for (var k = 0; k < keys.length; k++) {
+                    var key = keys[k];
+                    if (SKIP_SAVE[key]) continue;
+                    var v = en[key];
+                    sn[key] = Array.isArray(v) ? v.slice() : v;
+                }
+            }
         }
+        // 同步连线到 Store（ComfyUI 切换工作流过滤连线后可能遗漏 Store.removeConnection）
+        this.store.connections = this.connections.map(function(c) { return Object.assign({}, c); });
         // 同步分组到 Store（分组 resize/删除/解组只修改了 Engine 的 this.groups）
         this.store.groups = this.groups.map(function(g) {
-            return Object.assign({}, g, { childIds: (g.childIds || []).slice() });
+            var clean = Object.assign({}, g, { childIds: (g.childIds || []).slice() });
+            delete clean._new;  // 清除临时 UI 标记，防止持久化到服务器
+            return clean;
         });
+        // 重建 Store 索引（直接数组赋值不会触发 _rebuildIndex）
+        this.store._rebuildIndex();
         const payload = this.store.toSavePayload(this._clientId || '', this._canvasUpdatedAt);
         try {
             const response = await apiFetch(`/api/boards/${this.canvasId}`, {
@@ -162,6 +208,10 @@ class CanvasEngine {
                 body: JSON.stringify(payload),
                 silent: true,
             });
+            // v2.5.40：保存完成时画布已切换或已重新加载 → 丢弃旧数据防止覆盖
+            if (this.canvasId !== capturingId || this._saveGeneration !== capturingGen) {
+                return;
+            }
             if (response.status === 409) {
                 try {
                     const errData = await response.json();
@@ -172,6 +222,11 @@ class CanvasEngine {
                         this.groups = detail.canvas.groups || [];
                         this.view = detail.canvas.viewport || this.view;
                         this._canvasUpdatedAt = detail.canvas.updated_at || 0;
+                        // 同步 Store：409 时引擎已替换为服务端最新数据，Store 必须同步
+                        this.store.nodes = this.nodes.map(function(n) { return Object.assign({}, n); });
+                        this.store.connections = this.connections.map(function(c) { return Object.assign({}, c); });
+                        this.store.groups = this.groups.map(function(g) { return Object.assign({}, g, { childIds: (g.childIds || []).slice() }); });
+                        this.store._rebuildIndex();
                         this._undoStack = [{ nodes: this.nodes.map(n => this._deepCloneNode(n)), connections: this.connections.map(c => ({...c})), groups: this.groups.map(g => ({...g, childIds: [...(g.childIds || [])]})) }];
                         this._undoIndex = 0;
                         this.selected.clear();
@@ -191,9 +246,14 @@ class CanvasEngine {
             console.error('save failed', error);
             this._setSaveIndicator(_t('canvas.saveFailed','保存失败'), 'error');
         }
+        } finally {
+            this._saving = false;
+            // 并发调用排队：上一次保存期间又有新编辑 → 立即补一次保存
+            if (this._pendingSave) { this._pendingSave = false; this.save(); }
+        }
     }
 
-    createNode(type, point = null) {
+    createNode(type, point = null, overrides = null) {
         const pt = point || this._menuPoint || this._screenToWorld(window.innerWidth / 2, window.innerHeight / 2);
         const labels = {
             image: _t('nodeType.image','图片'), prompt: _t('nodeType.prompt','提示词'),
@@ -201,7 +261,7 @@ class CanvasEngine {
             video_gen: _t('nodeType.videoGen','视频生成'),
             agent: _t('nodeType.agent','Agent'), loop: _t('nodeType.loop','列队'), output: _t('nodeType.output','输出'), comfy: _t('nodeType.comfy','ComfyUI'),
         };
-        const node = {
+        var node = {
             id: this._uid(type),
             type,
             x: pt.x,
@@ -212,17 +272,14 @@ class CanvasEngine {
             desc: '',
             text: '',
             url: '',
-            model: type === 'image_gen' ? ((getCachedProviders().find(p => (p.image_models||[]).length)?.image_models||[])[0] || 'dall-e-3') : (type === 'video_gen' ? ((getCachedProviders().find(p => (p.video_models||[]).length)?.video_models||[])[0] || 'veo3-fast') : (type === 'loop' ? '' : 'gpt-4o-mini')),
+            model: type === 'image_gen' ? ((getCachedProviders().find(p => (p.image_models||[]).length)?.image_models||[])[0] || 'dall-e-3') : (type === 'video_gen' ? ((getCachedProviders().find(p => (p.video_models||[]).length)?.video_models||[])[0] || 'veo3-fast') : ''),
             systemPrompt: '',
             outputText: '',
             lastResult: '',
             images: [],
             agentId: '',
             comfyWorkflow: '',
-            loopCount: 3,
-            loopMode: 'serial',
-            loopImageInput: true,
-            loopStart: 1,
+            _batchSize: 1,       // loop 节点每批输出数量 (1-5)
             hasConfig: false,
             knowledgeBases: [],
             skills: [],
@@ -230,6 +287,11 @@ class CanvasEngine {
             runState: 'idle',
             runMessage: '',
         };
+        // 应用调用方传入的属性覆盖（在渲染前设置，避免二次 _renderAll 重建 img 标签）
+        if (overrides) {
+            var keys = Object.keys(overrides);
+            for (var k = 0; k < keys.length; k++) { node[keys[k]] = overrides[keys[k]]; }
+        }
         this.nodes.push(node);
         this.store.addNode(node);  // 双写 Store
         this._renderAll();
@@ -257,8 +319,7 @@ class CanvasEngine {
     _deleteSelectedNodes() {
         if (!this.selected.size) return;
         const ids = new Set(this.selected);
-        // 同步 Store：逐一移除选中节点
-        ids.forEach(id => this.store.removeNode(id));
+        // v2.5.40：先过滤 Engine 端 → 再同步 Store，避免 removeNode 通知时 Store groups 仍引用已删节点
         this.nodes = this.nodes.filter(node => !ids.has(node.id));
         this.connections = this.connections.filter(connection => !ids.has(connection.from) && !ids.has(connection.to));
         // Auto-remove groups whose children are all gone
@@ -266,6 +327,9 @@ class CanvasEngine {
             ...group,
             childIds: group.childIds.filter(cid => !ids.has(cid)),
         })).filter(group => group.childIds.length >= 2);
+        // 先同步 Store groups（此时 Store 已不引用已删节点），再逐个 removeNode
+        this.store.syncGroups(this.groups);
+        ids.forEach(id => this.store.removeNode(id));
         this.selected.clear();
         this.selectedConnectionId = '';
         this._renderAll();
@@ -319,23 +383,36 @@ class CanvasEngine {
         // Clean up empty groups
         if (changed) {
             this.groups = this.groups.filter(g => g.childIds.length >= 2);
+            this.store.syncGroups(this.groups);  // v2.5.40：立即同步，防止拖拽结束→浏览器崩溃丢分组
             this._renderAll();
         }
     }
 
     _isPointInGroup(point, group) {
+        const bounds = this._getGroupBounds(group);
+        if (!bounds) return false;
+        return point.x >= bounds.x && point.x <= bounds.x + bounds.w &&
+               point.y >= bounds.y && point.y <= bounds.y + bounds.h;
+    }
+
+    /** 计算组的包围盒（含 padding）。无子节点返回 null。 */
+    _getGroupBounds(group) {
         const children = this.nodes.filter(n => group.childIds.includes(n.id));
-        if (!children.length) return false;
-        const padding = group.padding || 18;
+        if (!children.length) return null;
+        const pad = group.padding || 18;
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
         children.forEach(n => {
+            const w = n.w || 260, h = n.h || 120;
             if (n.x < minX) minX = n.x;
             if (n.y < minY) minY = n.y;
-            if (n.x + (n.w || 260) > maxX) maxX = n.x + (n.w || 260);
-            if (n.y + (n.h || 120) > maxY) maxY = n.y + (n.h || 120);
+            if (n.x + w > maxX) maxX = n.x + w;
+            if (n.y + h > maxY) maxY = n.y + h;
         });
-        return point.x >= minX - padding && point.x <= maxX + padding &&
-               point.y >= minY - padding && point.y <= maxY + padding;
+        return {
+            x: minX - pad, y: minY - pad,
+            w: maxX - minX + pad * 2, h: maxY - minY + pad * 2,
+            minX, minY, maxX, maxY, pad,
+        };
     }
 
     _ungroupSelected() {
@@ -350,6 +427,8 @@ class CanvasEngine {
             return true;
         });
         if (!allChildren.length) return;
+        // 同步 Store（解组前只修改了 Engine 的 this.groups）
+        this.store.syncGroups(this.groups);
         // 解组后选中原组内所有节点
         this.selected = new Set(allChildren);
         this.selectedConnectionId = '';
@@ -393,7 +472,53 @@ class CanvasEngine {
         if (!node) return;
         node[prop] = value;
         this.store.updateNode(id, { [prop]: value });  // 双写 Store
+        // 文本输入属性每击键触发 → 仅调度保存，不拍快照（避免每击键全量深拷贝）
+        // 其他属性（select/checkbox 等）→ 正常拍快照 + 保存
+        if (prop === 'text' || prop === 'userInput') {
+            this._scheduleSave();
+        } else {
+            this._markDirty();
+        }
+    }
+
+    // provider 切换：批量更新 provider_id + 清空 model（一次快照，避免两次 _snapshot）
+    _switchProvider(nodeId, newProviderId) {
+        var node = this.nodes.find(function(n) { return n.id === nodeId; });
+        if (!node) return;
+        node.provider_id = newProviderId;
+        node.model = '';
+        this.store.updateNode(nodeId, { provider_id: newProviderId, model: '' });
         this._markDirty();
+        this._renderAllDeferred();
+    }
+
+    // Agent 切换：更新 agentId + 清除旧 lastResult（一次快照，避免残留误导）
+    _switchAgent(nodeId, newAgentId) {
+        var node = this.nodes.find(function(n) { return n.id === nodeId; });
+        if (!node) return;
+        node.agentId = newAgentId;
+        node.lastResult = '';
+        this.store.updateNode(nodeId, { agentId: newAgentId, lastResult: '' });
+        this._markDirty();
+        this._renderAllDeferred();
+    }
+
+    // ComfyUI 工作流切换：更新名称 + 清除失效 fieldId 连线
+    _switchComfyWorkflow(nodeId, newWorkflow) {
+        var node = this.nodes.find(function(n) { return n.id === nodeId; });
+        if (!node) return;
+        node.comfyWorkflow = newWorkflow;
+        // v2.5.53：保留新工作流中仍然存在的 fieldId 连线，避免同名端口映射丢失
+        var wf = (this._comfyWfList||[]).find(function(w) { return w.name === newWorkflow; });
+        var keepIds = new Set((wf?._fields||[]).map(function(f) { return f.id; }));
+        this.connections = this.connections.filter(function(c) {
+            return !(c.to === nodeId && c.fieldId && !keepIds.has(c.fieldId));
+        });
+        this.store.connections = this.connections.map(function(c) { return Object.assign({}, c); });
+        this.store._rebuildIndex();
+        this.store.updateNode(nodeId, { comfyWorkflow: newWorkflow });
+        this._markDirty();
+        this._renderAllDeferred();
     }
 
     // 生图/生视频节点尺寸切换（批量设置 _customWH + size，避免两次 _snapshot）
@@ -426,17 +551,38 @@ class CanvasEngine {
 
     _loadImageSize(url) {
         return new Promise((resolve) => {
-            const img = new Image();
+            var img = new Image();
             img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
             img.onerror = () => resolve({ w: 0, h: 0 });
+            img.onabort = () => resolve({ w: 0, h: 0 });  // v2.5.40：防止快速翻页时 Promise 永不 resolve
             img.src = url;
         });
+    }
+    // 注意：所有 _loadImageSize 的调用方都通过 if (node.url === url) 守卫防竞态——
+    // 快速替换图片时，旧 URL 的回调会被自动跳过，尺寸不会错乱。
+
+    /** 图片尺寸加载后：同步 Store + 自动调整节点高度适配图片比例 */
+    _syncImageNodeSize(node, w, h) {
+        node.imageWidth = w;
+        node.imageHeight = h;
+        this.store.updateNode(node.id, { imageWidth: w, imageHeight: h });
+        // 根据容器宽度和图片比例计算需要的节点高度
+        if (w > 0 && h > 0) {
+            const containerW = node.w || 260;
+            const renderedImgH = containerW * h / w;
+            const overhead = (node.imageName ? 20 : 0) + 40;  // 文件名行 + 按钮行
+            const newH = Math.max(120, Math.round(renderedImgH + overhead));
+            if (Math.abs((node.h || 100) - newH) > 10) {
+                node.h = newH;
+                this.store.updateNode(node.id, { h: newH });
+            }
+        }
     }
 
     // 输出节点缩略图点击：单击→创建图片节点，双击→灯箱
     _onOutputImageClick(event, url) {
         var self = this;
-        // 用定时器区分单击/双击：300ms 内再次点击视为双击
+        // 用定时器区分单击/双击：120ms 内再次点击视为双击
         if (self._outputClickTimer) {
             // 第二次点击 → 双击 → 开灯箱，取消创建节点
             clearTimeout(self._outputClickTimer);
@@ -444,25 +590,21 @@ class CanvasEngine {
             self._showLightbox(url, 'image');
             return;
         }
-        // 第一次点击 → 等待 300ms，无第二次点击则执行单击动作
+        // 第一次点击 → 等待 120ms，无第二次点击则执行单击动作
         self._outputClickTimer = setTimeout(function() {
             self._outputClickTimer = null;
             var center = self._screenToWorld(window.innerWidth / 2, window.innerHeight / 2);
-            var node = self.createNode('image', center);
-            node.url = url;
-            node.imageName = url.split('/').pop() || '';
-            node.imageWidth = 0;
-            node.imageHeight = 0;
-            self._renderAll();
-            self._markDirty();
+            var node = self.createNode('image', center, { url: url, imageName: url.split('/').pop() || '', imageWidth: 0, imageHeight: 0 });
             self._loadImageSize(url).then(function(size) {
                 if (node.url === url && size.w) {
-                    node.imageWidth = size.w;
-                    node.imageHeight = size.h;
-                    self._renderAll();
+                    self._syncImageNodeSize(node, size.w, size.h);
+                    // v2.5.50：直接更新 DOM 尺寸替代 _renderAll() 全量重建
+                    var nel = self.nodesEl && self.nodesEl.querySelector('[data-id="' + node.id + '"]');
+                    if (nel) { nel.style.width = (node.w || 260) + 'px'; nel.style.height = (node.h || 120) + 'px'; }
+                    self._renderLinks();
                 }
             });
-        }, 300);
+        }, 120);
     }
 
     async _loadAgentOpts() {
@@ -472,12 +614,18 @@ class CanvasEngine {
         } catch(e) { this._agentList = []; }
     }
 
-    _getProviderId() {
-        // 返回第一个有生图或视频模型的平台（从缓存获取，已过滤禁用平台）
+    _getProviderId(modelType) {
+        // 返回第一个匹配类型的平台。modelType: 'image' | 'video' | undefined(any)
         try {
             const provs = getCachedProviders();
-            const p = provs.find(x => (x.image_models||[]).length > 0 || (x.video_models||[]).length > 0);
-            // 兜底：返回任意可用平台，避免 null 导致 API 调用失败
+            let p;
+            if (modelType === 'video') {
+                p = provs.find(x => (x.video_models||[]).length > 0);
+            } else if (modelType === 'image') {
+                p = provs.find(x => (x.image_models||[]).length > 0);
+            } else {
+                p = provs.find(x => (x.image_models||[]).length > 0 || (x.video_models||[]).length > 0);
+            }
             return p ? p.id : (provs[0] ? provs[0].id : null);
         } catch(e) { return null; }
     }
@@ -506,6 +654,11 @@ class CanvasEngine {
             const d = await apiJson('/api/video/model-params');
             this._videoDurations = d.durations || {};
             this._videoResolutions = d.resolutions || {};
+            // 从后端加载轮询参数（与后端 VIDEO_POLL_TIMEOUT/INTERVAL 保持同步）
+            if (d.poll_timeout && d.poll_interval) {
+                this._videoPollTimeoutS = d.poll_timeout;
+                this._videoPollIntervalS = d.poll_interval;
+            }
         } catch(e) {
             this._videoDurations = this._videoDurations || {};
             this._videoResolutions = this._videoResolutions || {};
@@ -548,6 +701,7 @@ class CanvasEngine {
     // zoom/undo/viewport 方法已拆分到 canvas-viewport.js 和 canvas-undo.js
 
     _ensureOutput(sourceId) {
+        // 1) 已有连线到输出节点 → 复用
         const existing = this.connections.find(connection => {
             const target = this.nodes.find(node => node.id === connection.to);
             return connection.from === sourceId && target?.type === 'output';
@@ -558,6 +712,18 @@ class CanvasEngine {
         }
 
         const source = this.nodes.find(item => item.id === sourceId);
+
+        // 2) 存在无入边的孤立输出节点 → 优先复用（用户手动放置的）
+        const connectedOutputIds = new Set(this.connections.map(c => c.to));
+        const orphanOutput = this.nodes.find(n => n.type === 'output' && !connectedOutputIds.has(n.id));
+        if (orphanOutput) {
+            const conn = { id: this._uid('c'), from: sourceId, to: orphanOutput.id };
+            this.connections.push(conn);
+            this.store.addConnection(conn);
+            return orphanOutput;
+        }
+
+        // 3) 新建输出节点
         const output = this.createNode('output', {
             x: (source?.x || 0) + 340,
             y: source?.y || 0,
@@ -566,6 +732,15 @@ class CanvasEngine {
         this.connections.push(conn);
         this.store.addConnection(conn);  // 同步 Store
         return output;
+    }
+
+    /** 管线产出写入 output 节点后同步 Store */
+    _syncOutputToStore(node) {
+        this.store.updateNode(node.id, {
+            images: (node.images || []).slice(),
+            videos: (node.videos || []).slice(),
+            outputText: node.outputText || '',
+        });
     }
 
     _showCreateMenu(x, y) {
@@ -621,10 +796,13 @@ class CanvasEngine {
         const createMenu = document.getElementById('create-menu');
         if (createMenu) createMenu.style.display = 'none';
         this._hideConnectionMenu();
+        this._menuPoint = null;  // 清除右键位置残留
     }
 
     _uid(prefix = 'n') {
-        return `${prefix}_${Math.random().toString(36).slice(2, 8)}`;
+        var r = Math.random().toString(36).slice(2, 10);
+        while (r.length < 4) r += Math.random().toString(36).slice(2, 10);
+        return prefix + '_' + r.slice(0, 8);
     }
 
     _esc(value) {
@@ -638,13 +816,13 @@ class CanvasEngine {
     }
 
     // HTML 属性内 JS 字符串上下文转义（用于 onclick/ondblclick 中的动态值）
-    // 增强版：同时防御 HTML 实体注入(&apos;→')和属性边界突破(")
+    // v2.5.40 修复转义顺序：\ → ' → " → &（& 必须最后，否则 &amp; 被后续替换破坏）
     _escJs(value) {
         if (value === null || value === undefined) return '';
         return String(value)
-            .replace(/&/g, '&amp;')
-            .replace(/"/g, '&quot;')
-            .replace(/\\/g, '\\\\')
-            .replace(/'/g, "\\'");
+            .replace(/\\/g, '\\\\')    // ① 反斜杠（必须在引号前，防止 \\' 被双重转义）
+            .replace(/'/g, "\\'")      // ② 单引号（JS 字符串分隔符）
+            .replace(/"/g, '&quot;')   // ③ 双引号（HTML 属性分隔符）
+            .replace(/&/g, '&amp;');   // ④ & 符号（HTML 实体起始符，必须最后）
     }
 }

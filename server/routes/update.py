@@ -21,7 +21,30 @@ router = APIRouter(prefix="/api", tags=["update"])
 # 格式: "https://raw.githubusercontent.com/<user>/<repo>/main"
 GITHUB_REPO = os.getenv("UPDATE_REPO_URL", "")
 GITHUB_REPO = GITHUB_REPO.rstrip("/") if GITHUB_REPO else ""
+
+# 允许的更新源主机名（逗号分隔），防止指向恶意服务器
+# 默认仅允许 raw.githubusercontent.com
+_ALLOWED_RAW = os.getenv("UPDATE_ALLOWED_HOSTS", "raw.githubusercontent.com")
+UPDATE_ALLOWED_HOSTS = {h.strip().lower() for h in _ALLOWED_RAW.split(",") if h.strip()}
+
 BACKUP_DIR = os.path.join(config.DATA_DIR, "update_backups")
+
+
+def _validate_update_url(url: str) -> str | None:
+    """验证更新源 URL 的安全性。返回错误信息字符串，无错误返回 None。"""
+    if not url:
+        return "未配置更新源（UPDATE_REPO_URL）"
+    if not url.startswith("https://"):
+        return "更新源必须以 https:// 开头"
+    # 提取主机名并校验白名单
+    from urllib.parse import urlparse
+    try:
+        host = urlparse(url).hostname or ""
+    except Exception:
+        return "更新源 URL 格式无效"
+    if host.lower() not in UPDATE_ALLOWED_HOSTS:
+        return f"更新源主机名 {host} 不在允许列表中（{', '.join(sorted(UPDATE_ALLOWED_HOSTS))}）"
+    return None
 
 
 def _version_tuple(v: str) -> list:
@@ -49,10 +72,8 @@ def app_info():
 @router.get("/check-update")
 async def check_update():
     """检测更新源是否有新版本。"""
-    if not GITHUB_REPO:
-        return {"current": config.APP_VERSION, "update_available": False, "error": "未配置更新源（UPDATE_REPO_URL）"}
-    if not GITHUB_REPO.startswith("https://"):
-        return {"current": config.APP_VERSION, "update_available": False, "error": "更新源必须以 https:// 开头"}
+    if err := _validate_update_url(GITHUB_REPO):
+        return {"current": config.APP_VERSION, "update_available": False, "error": err}
     version_url = f"{GITHUB_REPO}/VERSION"
     try:
         async with httpx.AsyncClient(timeout=10, follow_redirects=False) as cli:
@@ -88,12 +109,8 @@ async def do_update(payload: dict = {}):
     - UPDATE_REPO_URL 必须以 https:// 开头
     - 需要 confirm=true 确认操作
     """
-    if not GITHUB_REPO:
-        raise HTTPException(status_code=400, detail="未配置更新源（UPDATE_REPO_URL）")
-
-    # 安全：强制 HTTPS
-    if not GITHUB_REPO.startswith("https://"):
-        raise HTTPException(status_code=400, detail="UPDATE_REPO_URL 必须以 https:// 开头")
+    if err := _validate_update_url(GITHUB_REPO):
+        raise HTTPException(status_code=400, detail=err)
 
     # 安全：要求显式确认
     if not payload.get("confirm"):

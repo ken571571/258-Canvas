@@ -104,7 +104,14 @@ async def run_video_task(
 
             consecutive_errors = 0
             for i in range(VIDEO_POLL_TIMEOUT // VIDEO_POLL_INTERVAL):
+                # v2.5.52：检查取消状态，允许用户提前终止轮询
+                if task_manager.is_cancelled(tid):
+                    task_manager.update_task(tid, status="cancelled", progress_message="用户取消")
+                    return
                 await asyncio.sleep(VIDEO_POLL_INTERVAL)
+                if task_manager.is_cancelled(tid):
+                    task_manager.update_task(tid, status="cancelled", progress_message="用户取消")
+                    return
                 try:
                     poll_result = await prov.query_video_task(result.task_id)
                     consecutive_errors = 0  # 成功后重置错误计数
@@ -186,7 +193,12 @@ async def query_video_status(task_id: str, prov: BaseProvider = None) -> dict | 
                 },
             )
             return task_manager.get_task(task_id)
-    except (NotImplementedError, Exception):
-        pass
+    except NotImplementedError:
+        task_manager.update_task(task_id, status="failed", error="Provider 不支持视频任务轮询")
+        return task_manager.get_task(task_id)
+    except Exception as e:
+        log.warning(f"视频轮询异常 ({provider_id}/{upstream_task_id}): {e}")
+        task_manager.update_task(task_id, status="failed", error=f"轮询失败: {e}")
+        return task_manager.get_task(task_id)
 
     return task

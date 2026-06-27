@@ -78,6 +78,3 @@ class SharedFoldersTests(unittest.TestCase):
         resp = client.get("/api/folders/nonexistent_folder_99999/file?path=../../../etc/passwd")
         self.assertEqual(resp.status_code, 404)
 
-
-if __name__ == "__main__":
-    unittest.main()

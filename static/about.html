@@ -3,10 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title data-t="about.title">关于 — 无限画布</title>
+<title data-t="about.title">关于 — 258无限画布</title>
 <link rel="stylesheet" href="/static/css/style.css?v=5">
 <style>
-body { overflow-y: auto; background: var(--bg); }
+body { overflow-y: auto; overflow-x: hidden; background: var(--bg); }
+.about-page { height: auto; overflow: visible; }
 .about-author { display: flex; align-items: center; gap: 14px; }
 .about-avatar {
     width: 48px; height: 48px; border-radius: 50%;
@@ -17,10 +18,11 @@ body { overflow-y: auto; background: var(--bg); }
 }
 .about-author-info { font-size: 13px; line-height: 1.6; }
 .about-author-info strong { font-size: 15px; color: var(--text); }
+.about-ai-note { font-weight: 700; font-size: 14px; color: var(--text); line-height: 1.8; }
 .about-footer { text-align: center; padding: 32px 0 0; color: var(--muted); font-size: 11px; }
 .about-footer span { color: var(--accent); }
 </style>
-<script src="/static/js/ui-icon.js?v=1"></script>
+
 <script src="/static/js/i18n.js?v=2"></script>
 </head>
 <body>
@@ -28,7 +30,7 @@ body { overflow-y: auto; background: var(--bg); }
     <!-- Hero -->
     <div class="about-hero">
         <div class="about-logo">∞</div>
-        <h1 data-t="about.heroTitle">无限画布</h1>
+        <h1 data-t="about.heroTitle">258无限画布</h1>
         <p class="about-tagline" data-t="about.tagline">AI 驱动的无限创作平台</p>
     </div>
 
@@ -44,13 +46,13 @@ body { overflow-y: auto; background: var(--bg); }
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="margin-right:6px;vertical-align:-3px">
                     <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
                 </svg>
-                <span data-t="about.checkUpdate">检查更新</span>
+                <span id="check-update-label" data-t="about.checkUpdate">检查更新</span>
             </button>
         </div>
         <p class="update-status" id="update-status"></p>
     </div>
 
-    <!-- 作者介绍 -->
+    <!-- 关于作者 -->
     <div class="about-section">
         <h3 data-t="about.aboutAuthor">👤 关于作者</h3>
         <div class="about-author">
@@ -60,11 +62,25 @@ body { overflow-y: auto; background: var(--bg); }
                 <p style="color:var(--muted);margin-top:2px" data-t="about.authorDesc">自由职业者</p>
             </div>
         </div>
-        <p class="about-intro" style="margin-top:14px">
-            <span data-t="about.intro1a">无限画布是一个</span><strong data-t="about.intro1b">聚合多 AI 平台</strong><span data-t="about.intro1c">的创作工具，支持
+    </div>
+
+    <!-- 关于 258无限画布 -->
+    <div class="about-section">
+        <h3 data-t="about.aboutApp">🎨 关于 258无限画布</h3>
+        <p class="about-intro">
+            <span data-t="about.intro1a">258无限画布是一个</span><strong data-t="about.intro1b">聚合多 AI 平台</strong><span data-t="about.intro1c">的创作工具，支持
             OpenAI、DeepSeek、Gemini、火山方舟、ModelScope 等主流 API，
             提供</span><strong data-t="about.intro1d">文生图、图生图、视频生成、LLM 对话、Agent 智能体</strong><span data-t="about.intro1e">
             等完整的 AI 创作工作流。更多功能持续迭代中 🚀</span>
+        </p>
+    </div>
+
+    <!-- 开发说明 -->
+    <div class="about-section">
+        <h3 data-t="about.aiNoteTitle">🤖 开发说明</h3>
+        <p class="about-ai-note" data-t="about.aiNoteText">
+            此项目完全由AI编程完成，大部分设计灵感来自GitHub社区。
+            项目已在GitHub公开，免费商用（禁止源码转售封装）。感谢GitHub社区和每一位贡献者。
         </p>
     </div>
 
@@ -84,7 +100,7 @@ body { overflow-y: auto; background: var(--bg); }
 
     <!-- Footer -->
     <div class="about-footer" data-t="about.footer">
-        用 ❤️ 和 AI 构建 · 无限画布
+        用 ❤️ 和 AI 构建 · 258无限画布
     </div>
 </div>
 
@@ -101,7 +117,7 @@ function refreshI18n() {
     var titleEl = document.querySelector('title');
     if (titleEl) {
         var titleKey = titleEl.getAttribute('data-t');
-        if (titleKey) titleEl.textContent = t(titleKey, '关于 — 无限画布');
+        if (titleKey) titleEl.textContent = t(titleKey, '关于 — 258无限画布');
     }
 }
 
@@ -146,9 +162,10 @@ window.addEventListener('lang-applied', function() { refreshI18n(); });
 // 检查更新
 async function checkUpdate() {
     var btn = document.getElementById('check-update-btn');
+    var label = document.getElementById('check-update-label');
     var status = document.getElementById('update-status');
     btn.disabled = true;
-    btn.textContent = t('about.checking','检测中…');
+    if (label) label.textContent = t('about.checking','检测中…');
     status.textContent = '';
     status.className = 'update-status';
 
@@ -167,7 +184,7 @@ async function checkUpdate() {
         status.textContent = t('about.networkError','网络错误，请稍后重试');
     } finally {
         btn.disabled = false;
-        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="margin-right:6px;vertical-align:-3px"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>' + t('about.checkUpdate','检查更新');
+        if (label) label.textContent = t('about.checkUpdate','检查更新');
     }
 }
 </script>

@@ -58,27 +58,29 @@ def get_canvas(canvas_id: str):
 
 @router.put("/boards/{canvas_id}")
 async def save_canvas(canvas_id: str, payload: dict):
-    try:
-        existing = canvas_service.load(canvas_id)
-    except AppError as e:
-        raise _to_http(e)
+    # v2.5.51：画布线写锁保护 load → merge → save 全事务，防止并发覆盖
+    async with canvas_service.lock_canvas(canvas_id):
+        try:
+            existing = canvas_service.load(canvas_id)
+        except AppError as e:
+            raise _to_http(e)
 
-    try:
-        canvas = canvas_service.merge_from_payload(existing, payload)
-    except ConflictError as e:
-        # 冲突时返回 409 + 最新数据，供前端自动刷新
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "message": e.message,
-                "canvas": existing,
-                "updated_at": existing.get("updated_at", 0),
-            },
-        )
+        try:
+            canvas = canvas_service.merge_from_payload(existing, payload)
+        except ConflictError as e:
+            # 冲突时返回 409 + 最新数据，供前端自动刷新
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "message": e.message,
+                    "canvas": existing,
+                    "updated_at": existing.get("updated_at", 0),
+                },
+            )
 
-    await canvas_service.save(canvas)
+        await canvas_service.save(canvas)
 
-    # 广播更新（携带 client_id 避免回环）
+    # 广播更新（携带 client_id 避免回环）—— 锁外广播，避免阻塞
     client_id = payload.get("client_id", "")
     await manager.broadcast_board_synced(canvas_id, canvas["updated_at"], client_id)
     return {"canvas": canvas}

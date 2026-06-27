@@ -64,6 +64,3 @@ class ChatTests(unittest.TestCase):
         })
         self.assertEqual(resp.status_code, 422)
 
-
-if __name__ == "__main__":
-    unittest.main()

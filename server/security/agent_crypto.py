@@ -371,6 +371,11 @@ def import_bundle(data: bytes, password: str) -> dict:
 
     encrypted_bundle = data[8 + header_len:]
 
+    # 防止 DoS：限制 slots 数量（每个 slot 执行一次 PBKDF2 600k 迭代）
+    MAX_SLOTS = 16
+    if len(slots) > MAX_SLOTS:
+        raise ValueError(f"Agent file contains too many password slots ({len(slots)} > {MAX_SLOTS})")
+
     # 遍历 slots，尝试密码
     for slot in slots:
         salt = bytes.fromhex(slot["salt"])

@@ -49,6 +49,9 @@ def safe_join(root: str, *parts: str) -> str:
             pass
         path = os.path.join(parent, os.path.basename(path))
 
+    # 显式规范化路径（Python <3.9 的 commonpath 不规范化 .. 段）
+    path = os.path.normpath(path)
+
     try:
         common = os.path.commonpath([root_abs, path])
     except ValueError as exc:

@@ -1,5 +1,6 @@
 """FastAPI 应用实例 + 中间件"""
 
+import asyncio
 import secrets
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -92,14 +93,27 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 
 # ——— 安全头中间件 ———
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    """添加安全相关的 HTTP 响应头。"""
+    """添加安全相关的 HTTP 响应头。
+
+    CSP 说明：内联脚本/样式为项目现有架构所需（'unsafe-inline'）。
+    迁移到外部 JS 后可收紧 script-src。
+    """
 
     async def dispatch(self, request: Request, call_next):
         response: Response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "SAMEORIGIN"
-        response.headers["Content-Security-Policy"] = "frame-ancestors 'self'"
-        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src * data: blob:; "
+            "connect-src 'self' ws: wss:; "
+            "font-src 'self'; "
+            "frame-ancestors 'self'; "
+            "object-src 'none'; "
+            "base-uri 'self'"
+        )
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
 
         if config.runtime.is_dev:
@@ -123,9 +137,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     def __init__(self, app, requests_per_window: int = 120, window_seconds: int = 60):
         super().__init__(app)
-        self.requests_per_window = requests_per_window
-        self.window_seconds = window_seconds
+        # 构造函数参数仅作 fallback；dispatch() 动态读取 config.runtime
         self._clients: dict = {}
+        self._cleanup_counter = 0
+        # v2.5.51：asyncio.Lock 保护 _clients dict 的并发读写
+        self._lock = asyncio.Lock()
 
     async def dispatch(self, request: Request, call_next):
         if not config.runtime.rate_limit_enabled:
@@ -146,33 +162,41 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         import time
+        import random as _random
         from fastapi.responses import JSONResponse
 
+        # 动态读取运行时配置（"保存即生效"）
+        req_per_window = config.runtime.rate_limit_requests
+        win_seconds = config.runtime.rate_limit_window
+
         client_ip = request.client.host if request.client else "unknown"
-        now = time.time()
-        entry = self._clients.get(client_ip)
+        now = time.monotonic()  # v2.5.40：monotonic 防止系统时钟回拨绕过
 
-        if entry is None or now - entry["window_start"] > self.window_seconds:
-            entry = {"window_start": now, "count": 1}
-            self._clients[client_ip] = entry
-        else:
-            entry["count"] += 1
+        async with self._lock:
+            entry = self._clients.get(client_ip)
 
-        if entry["count"] > self.requests_per_window:
-            # 返回 JSONResponse 而非 raise HTTPException，
-            # 避免 BaseHTTPMiddleware 内 ExceptionGroup 包装导致 500
-            return JSONResponse(
-                status_code=429,
-                content={"detail": "请求过于频繁，请稍后再试"},
-                headers={"Retry-After": str(self.window_seconds)},
-            )
+            if entry is None or now - entry["window_start"] > win_seconds:
+                entry = {"window_start": now, "count": 1}
+                self._clients[client_ip] = entry
+            else:
+                entry["count"] += 1
 
-        # 清理过期条目（每 500 个请求清理一次）
-        if len(self._clients) > 1000:
-            self._clients = {
-                ip: e for ip, e in self._clients.items()
-                if now - e["window_start"] <= self.window_seconds
-            }
+            if entry["count"] > req_per_window:
+                # 返回 JSONResponse 而非 raise HTTPException，
+                # 避免 BaseHTTPMiddleware 内 ExceptionGroup 包装导致 500
+                return JSONResponse(
+                    status_code=429,
+                    content={"detail": "请求过于频繁，请稍后再试"},
+                    headers={"Retry-After": str(win_seconds)},
+                )
+
+            # 概率性清理过期条目（v2.5.40：替代仅 len>1000 清理，防止字典缓慢增长）
+            self._cleanup_counter += 1
+            if self._cleanup_counter % 20 == 0:  # 每 20 个请求清理一次
+                self._clients = {
+                    ip: e for ip, e in self._clients.items()
+                    if now - e["window_start"] <= win_seconds
+                }
 
         return await call_next(request)
 
@@ -218,13 +242,12 @@ app.add_middleware(RequestIDMiddleware)
 # 1. 安全头
 app.add_middleware(SecurityHeadersMiddleware)
 
-# 2. 速率限制（可选）
-if config.runtime.rate_limit_enabled:
-    app.add_middleware(
-        RateLimitMiddleware,
-        requests_per_window=config.runtime.rate_limit_requests,
-        window_seconds=config.runtime.rate_limit_window,
-    )
+# 2. 速率限制（始终挂载，通过 dispatch 内部 config.runtime.rate_limit_enabled 动态开关，实现"保存即生效"）
+app.add_middleware(
+    RateLimitMiddleware,
+    requests_per_window=config.runtime.rate_limit_requests,
+    window_seconds=config.runtime.rate_limit_window,
+)
 
 # 3. 鉴权
 app.add_middleware(AuthMiddleware)

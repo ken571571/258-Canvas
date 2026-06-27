@@ -8,10 +8,31 @@ import os
 import json
 import re
 import shutil
+import asyncio
 import time
+from contextlib import asynccontextmanager
 from .. import config
 from ..storage.json_store import store
+from ..utils import KeyedLockManager
 from ..exceptions import NotFoundError, ConflictError, ValidationError
+
+
+# v2.5.51：画布线写锁，防止同一画布的并发保存互相覆盖
+_canvas_write_lock = KeyedLockManager()
+
+
+@asynccontextmanager
+async def lock_canvas(canvas_id: str):
+    """画布写锁上下文管理器 —— 保护 load → merge → save 全事务。
+
+    用法:
+        async with lock_canvas(canvas_id):
+            existing = load(canvas_id)
+            canvas = merge_from_payload(existing, payload)
+            await save(canvas)
+    """
+    async with await _canvas_write_lock.get(canvas_id):
+        yield
 
 
 _CANVAS_ID_RE = re.compile(r'^[a-f0-9]{12,64}$')
@@ -171,7 +192,8 @@ async def _sync_canvas_files(canvas: dict):
         filename = os.path.basename(old_url)
         dst_path = os.path.join(files_dir, filename)
         if not os.path.exists(dst_path):
-            shutil.copy2(src_path, dst_path)
+            # v2.5.50：线程池执行避免阻塞事件循环
+            await asyncio.to_thread(shutil.copy2, src_path, dst_path)
         new_url = f"/canvases/{dir_name}/files/{filename}"
         url_map[old_url] = new_url
 

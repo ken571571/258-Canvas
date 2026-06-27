@@ -254,6 +254,12 @@ class VolcengineProvider(BaseProvider):
                 result = data.get("result") or {}
                 if isinstance(result, dict):
                     video_url = result.get("video_url") or result.get("url") or ""
+            # v2.5.52：校验返回的视频 URL 非内网地址
+            if video_url:
+                from ..security.network import async_validate_safe_url
+                if not await async_validate_safe_url(video_url):
+                    log.warning(f"SSRF 拦截 — 火山方舟视频 URL 指向内网: {video_url[:80]}")
+                    video_url = ""
             return VideoResult(url=video_url, task_id=task_id, raw=data)
         elif status in ("FAILED", "FAIL", "ERROR", "CANCELED"):
             raise RuntimeError(f"火山方舟 视频任务失败: {data.get('error') or data.get('message') or status}")
