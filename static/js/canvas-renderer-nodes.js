@@ -202,9 +202,14 @@ CanvasEngine.prototype._renderNodeBody_prompt = function(node, meta) {
             var upstream = inputs.texts.join('\n');
             // 只在上游文本变化时更新，避免重复拼接
             if ((upstream && !node._upstreamLast) || node._upstreamLast !== upstream) {
+                var oldUpstream = node._upstreamLast;
                 node._upstreamLast = upstream;
                 var current = node.text || '';
-                // 精确前缀匹配：current 不以 upstream 开头时才拼接
+                // 如果旧上游文本还在 current 开头，先移除它（避免新旧上游累积）
+                if (oldUpstream && current.indexOf(oldUpstream) === 0) {
+                    current = current.slice(oldUpstream.length).replace(/^\n+/, '');
+                }
+                // 拼接新上游 + 用户手动编辑的文本
                 if (current !== upstream && current.indexOf(upstream + '\n') !== 0) {
                     node.text = upstream + (current ? '\n' + current : '');
                     this.store.updateNode(node.id, { text: node.text });
