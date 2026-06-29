@@ -335,18 +335,17 @@ class APIMartProvider(BaseProvider):
         model: str = "", reference_images: List[str] = None,
         resolution: str = "720p", **kwargs
     ) -> VideoResult:
-        model = model or "veo3-fast"
-        # API 参数映射：aspect_ratio → size, resolution → quality
-        size = str(kwargs.get("size", "") or aspect_ratio)
-        quality = str(kwargs.get("quality", "") or resolution)
+        model = model or "veo3.1-fast"
+        aspect = str(kwargs.get("aspect_ratio", "") or aspect_ratio)
+        res = str(kwargs.get("resolution", "") or resolution)
         body: dict = {
             "model": model,
             "prompt": prompt,
-            "seconds": int(duration),
-            "size": size,
+            "duration": int(duration),
+            "aspect_ratio": aspect,
         }
-        if quality and quality.lower() != "auto":
-            body["quality"] = quality
+        if res and res.lower() != "auto":
+            body["resolution"] = res
         refs = reference_images or []
         if refs:
             # APIMart 支持 image_urls（公网 URL）或 input_reference（base64）
