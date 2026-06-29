@@ -15,7 +15,7 @@ import time
 from typing import List, Dict
 import httpx
 
-from .base import BaseProvider, ImageResult, VideoResult, ChatResult
+from .base import BaseProvider, _safe_error_text, ImageResult, VideoResult, ChatResult
 from .. import config
 from ..security.network import async_validate_safe_url
 
@@ -144,7 +144,7 @@ class RunningHubProvider(BaseProvider):
         async with httpx.AsyncClient(timeout=config.AI_REQUEST_TIMEOUT, follow_redirects=False) as cli:
             resp = await cli.post(url, headers=self.build_headers(use_wallet), json=body)
             if resp.status_code != 200:
-                raise RuntimeError(f"RunningHub 生图失败 ({resp.status_code}): {resp.text[:500]}")
+                raise RuntimeError(f"RunningHub 生图失败 ({resp.status_code}): {_safe_error_text(resp.text)}")
             data = resp.json()
 
         if not isinstance(data, dict) or data.get("code") not in (0, "0"):

@@ -340,7 +340,7 @@ async def run_workflow(name: str, payload: dict):
                             log.info(f"图片已上传到 ComfyUI: {val[:60]} -> {comfy_name}")
                             workflow[node_id]["inputs"][input_name] = comfy_name
                         else:
-                            log.error(f"ComfyUI 上传失败 ({upload_resp.status_code}): {upload_resp.text[:200]}")
+                            log.error(f"ComfyUI 上传失败 ({upload_resp.status_code}): {_safe_error_text(upload_resp.text)}")
                     except Exception as e:
                         log.warning(f"上传图片到 ComfyUI 失败: {e}")
 

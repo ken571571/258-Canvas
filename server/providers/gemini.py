@@ -15,7 +15,7 @@ import hashlib
 from typing import List, Dict, Any
 import httpx
 
-from .base import BaseProvider, ImageResult, VideoResult, ChatResult
+from .base import BaseProvider, _safe_error_text, ImageResult, VideoResult, ChatResult
 from .. import config
 from ..logging_config import get_logger
 
@@ -161,7 +161,7 @@ class GeminiProvider(BaseProvider):
         async with httpx.AsyncClient(timeout=config.AI_REQUEST_TIMEOUT, follow_redirects=False) as cli:
             resp = await cli.post(url, headers=self.build_headers(), json=body)
             if resp.status_code != 200:
-                raise RuntimeError(f"Gemini 对话失败 ({resp.status_code}): {resp.text[:500]}")
+                raise RuntimeError(f"Gemini 对话失败 ({resp.status_code}): {_safe_error_text(resp.text)}")
             data = resp.json()
 
         # 解析 Gemini 响应
@@ -215,7 +215,7 @@ class GeminiProvider(BaseProvider):
         async with httpx.AsyncClient(timeout=config.AI_REQUEST_TIMEOUT, follow_redirects=False) as cli:
             resp = await cli.post(url, headers=self.build_headers(), json=body)
             if resp.status_code != 200:
-                raise RuntimeError(f"Gemini 生图失败 ({resp.status_code}): {resp.text[:500]}")
+                raise RuntimeError(f"Gemini 生图失败 ({resp.status_code}): {_safe_error_text(resp.text)}")
             data = resp.json()
 
         # 提取图片

@@ -110,7 +110,7 @@ class ModelScopeProvider(BaseProvider):
         async with httpx.AsyncClient(timeout=config.AI_REQUEST_TIMEOUT, follow_redirects=False) as cli:
             resp = await cli.post(url, headers=self.build_headers(), json=body)
             if resp.status_code != 200:
-                raise RuntimeError(f"ModelScope 对话失败 ({resp.status_code}): {resp.text[:500]}")
+                raise RuntimeError(f"ModelScope 对话失败 ({resp.status_code}): {_safe_error_text(resp.text)}")
             data = resp.json()
 
         choice = (data.get("choices") or [{}])[0]
@@ -153,7 +153,7 @@ class ModelScopeProvider(BaseProvider):
         async with httpx.AsyncClient(timeout=config.AI_REQUEST_TIMEOUT, follow_redirects=False) as cli:
             resp = await cli.post(url, headers=headers, json=body)
             if resp.status_code != 200:
-                raise RuntimeError(f"ModelScope 生图失败 ({resp.status_code}): {resp.text[:500]}")
+                raise RuntimeError(f"ModelScope 生图失败 ({resp.status_code}): {_safe_error_text(resp.text)}")
             data = resp.json()
 
         # ModelScope 异步模式返回 task_id

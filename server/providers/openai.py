@@ -123,7 +123,7 @@ class OpenAIProvider(BaseProvider):
             try:
                 data = resp.json()
             except JSONDecodeError:
-                raise RuntimeError(f"OpenAI 返回非 JSON 响应 ({resp.status_code}): {resp.text[:500]}")
+                raise RuntimeError(f"OpenAI 返回非 JSON 响应 ({resp.status_code}): {_safe_error_text(resp.text)}")
 
             # 自动降级重试（最多 2 轮），逐步适配第三方中转 API 的参数差异
             for _retry in range(2):
@@ -208,7 +208,7 @@ class OpenAIProvider(BaseProvider):
                         files=form_files,
                     )
                     if resp.status_code != 200:
-                        raise RuntimeError(f"OpenAI 生图失败 ({resp.status_code}): {resp.text[:500]}")
+                        raise RuntimeError(f"OpenAI 生图失败 ({resp.status_code}): {_safe_error_text(resp.text)}")
                     data = resp.json()
                     break  # 成功后跳出循环
 
@@ -219,7 +219,7 @@ class OpenAIProvider(BaseProvider):
                 data = resp.json()
 
             if resp.status_code != 200:
-                raise RuntimeError(f"OpenAI 生图失败 ({resp.status_code}): {resp.text[:500]}")
+                raise RuntimeError(f"OpenAI 生图失败 ({resp.status_code}): {_safe_error_text(resp.text)}")
 
             # 降级后的响应（没有 response_format），手动解析图片数据
             if "response_format" not in body:
@@ -289,7 +289,7 @@ class OpenAIProvider(BaseProvider):
         async with httpx.AsyncClient(timeout=config.AI_REQUEST_TIMEOUT, follow_redirects=False) as cli:
             resp = await cli.post(url, headers=self.build_headers(), json=body)
             if resp.status_code != 200:
-                raise RuntimeError(f"OpenAI 对话失败 ({resp.status_code}): {resp.text[:500]}")
+                raise RuntimeError(f"OpenAI 对话失败 ({resp.status_code}): {_safe_error_text(resp.text)}")
             data = resp.json()
 
         choice = (data.get("choices") or [{}])[0]
@@ -427,7 +427,7 @@ class OpenAIProvider(BaseProvider):
             try:
                 data = resp.json()
             except JSONDecodeError:
-                raise RuntimeError(f"OpenAI 返回非 JSON 响应 ({resp.status_code}): {resp.text[:500]}")
+                raise RuntimeError(f"OpenAI 返回非 JSON 响应 ({resp.status_code}): {_safe_error_text(resp.text)}")
 
             # 自动降级重试（适配不同平台的参数差异）
             for _retry in range(2):
@@ -463,7 +463,7 @@ class OpenAIProvider(BaseProvider):
                 data = resp.json()
 
             if resp.status_code != 200:
-                raise RuntimeError(f"OpenAI 视频生成失败 ({resp.status_code}): {resp.text[:500]}")
+                raise RuntimeError(f"OpenAI 视频生成失败 ({resp.status_code}): {_safe_error_text(resp.text)}")
 
         # 提取 task_id：AIHubMix 用 "id"，其他平台可能用 "task_id"
         task_id = data.get("id", "") or data.get("task_id", "")
@@ -480,7 +480,7 @@ class OpenAIProvider(BaseProvider):
         async with httpx.AsyncClient(timeout=30, follow_redirects=False) as cli:
             resp = await cli.get(url, headers=self.build_headers())
             if resp.status_code != 200:
-                raise RuntimeError(f"OpenAI 查询视频任务失败 ({resp.status_code}): {resp.text[:300]}")
+                raise RuntimeError(f"OpenAI 查询视频任务失败 ({resp.status_code}): {_safe_error_text(resp.text)}")
             data = resp.json()
 
         status = str(data.get("status") or "").lower()

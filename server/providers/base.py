@@ -11,6 +11,23 @@ import httpx
 from ..logging_config import get_logger
 from ..security.network import async_validate_safe_url
 
+
+def _safe_error_text(text: str, max_len: int = 200) -> str:
+    """安全提取 API 错误信息：仅取 JSON 中的 message 字段，避免泄漏 Key。"""
+    if not text:
+        return ""
+    try:
+        import json
+        data = json.loads(text)
+        msg = data.get("error", {})
+        if isinstance(msg, dict):
+            return str(msg.get("message", "") or "")[:max_len]
+        if isinstance(msg, str):
+            return msg[:max_len]
+        return str(data.get("message", "") or "")[:max_len]
+    except Exception:
+        return text[:max_len]
+
 log = get_logger("provider")
 
 
@@ -150,7 +167,7 @@ class BaseProvider(ABC):
             elapsed = int((_time.time() - started) * 1000)
             if 200 <= resp.status_code < 300:
                 return {"ok": True, "latency_ms": elapsed, "status_code": resp.status_code, "protocol": self.protocol}
-            return {"ok": False, "latency_ms": elapsed, "error": f"HTTP {resp.status_code}: {resp.text[:200]}"}
+            return {"ok": False, "latency_ms": elapsed, "error": f"HTTP {resp.status_code}: {_safe_error_text(resp.text)}"}
         except Exception as e:
             elapsed = int((_time.time() - started) * 1000)
             return {"ok": False, "latency_ms": elapsed, "error": str(e)}

@@ -138,7 +138,7 @@ class APIMartProvider(BaseProvider):
         async with httpx.AsyncClient(timeout=config.AI_REQUEST_TIMEOUT, follow_redirects=False) as cli:
             resp = await cli.post(url, headers=self.build_headers(), json=body)
             if resp.status_code != 200:
-                err = resp.text[:500]
+                err = _safe_error_text(resp.text)
                 log.warning(f"HTTP {resp.status_code}: {err}")
                 raise RuntimeError(f"APIMart 生图失败 ({resp.status_code}): {err}")
             data = resp.json()
@@ -312,7 +312,7 @@ class APIMartProvider(BaseProvider):
         async with httpx.AsyncClient(timeout=config.AI_REQUEST_TIMEOUT, follow_redirects=False) as cli:
             resp = await cli.post(url, headers=self.build_headers(), json=body)
             if resp.status_code != 200:
-                raise RuntimeError(f"APIMart 对话失败 ({resp.status_code}): {resp.text[:500]}")
+                raise RuntimeError(f"APIMart 对话失败 ({resp.status_code}): {_safe_error_text(resp.text)}")
             data = resp.json()
 
         choice = (data.get("choices") or [{}])[0]
@@ -368,7 +368,7 @@ class APIMartProvider(BaseProvider):
         async with httpx.AsyncClient(timeout=config.AI_REQUEST_TIMEOUT * 2, follow_redirects=False) as cli:
             resp = await cli.post(url, headers=self.build_headers(), json=body)
             if resp.status_code != 200:
-                raise RuntimeError(f"APIMart 视频生成失败 ({resp.status_code}): {resp.text[:500]}")
+                raise RuntimeError(f"APIMart 视频生成失败 ({resp.status_code}): {_safe_error_text(resp.text)}")
             data = resp.json()
 
         # APIMart 响应结构：{"data": {"task_id": "..."}} 或 {"task_id": "..."}
@@ -384,7 +384,7 @@ class APIMartProvider(BaseProvider):
         async with httpx.AsyncClient(timeout=30, follow_redirects=False) as cli:
             resp = await cli.get(url, headers=self.build_headers())
             if resp.status_code != 200:
-                raise RuntimeError(f"APIMart 查询视频任务失败 ({resp.status_code}): {resp.text[:300]}")
+                raise RuntimeError(f"APIMart 查询视频任务失败 ({resp.status_code}): {_safe_error_text(resp.text)}")
             data = resp.json()
 
         # APIMart 响应结构：{"data": {"status": "...", "output": {...}}} 或顶层直接
@@ -483,7 +483,7 @@ class APIMartProvider(BaseProvider):
                 err = resp.json()
                 detail = err.get("error", {}).get("message", "") or err.get("message", "") or str(err)[:300]
             except Exception:
-                detail = resp.text[:300]
+                detail = _safe_error_text(resp.text)
             return {"ok": False, "latency_ms": elapsed, "error": f"HTTP {resp.status_code}: {detail}"}
         except Exception as e:
             elapsed = int((_time.time() - started) * 1000)

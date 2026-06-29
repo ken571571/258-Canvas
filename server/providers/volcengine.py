@@ -15,7 +15,7 @@ import time
 from typing import List, Dict, Any
 import httpx
 
-from .base import BaseProvider, ImageResult, VideoResult, ChatResult
+from .base import BaseProvider, _safe_error_text, ImageResult, VideoResult, ChatResult
 from .. import config
 
 
@@ -137,7 +137,7 @@ class VolcengineProvider(BaseProvider):
         async with httpx.AsyncClient(timeout=config.AI_REQUEST_TIMEOUT, follow_redirects=False) as cli:
             resp = await cli.post(url, headers=self.build_headers(), json=body)
             if resp.status_code != 200:
-                raise RuntimeError(f"火山方舟 对话失败 ({resp.status_code}): {resp.text[:500]}")
+                raise RuntimeError(f"火山方舟 对话失败 ({resp.status_code}): {_safe_error_text(resp.text)}")
             data = resp.json()
 
         choice = (data.get("choices") or [{}])[0]
@@ -185,7 +185,7 @@ class VolcengineProvider(BaseProvider):
         async with httpx.AsyncClient(timeout=config.AI_REQUEST_TIMEOUT, follow_redirects=False) as cli:
             resp = await cli.post(url, headers=self.build_headers(), json=body)
             if resp.status_code != 200:
-                raise RuntimeError(f"火山方舟 生图失败 ({resp.status_code}): {resp.text[:500]}")
+                raise RuntimeError(f"火山方舟 生图失败 ({resp.status_code}): {_safe_error_text(resp.text)}")
             data = resp.json()
 
         return self._extract_b64_image(data)
@@ -227,7 +227,7 @@ class VolcengineProvider(BaseProvider):
         async with httpx.AsyncClient(timeout=config.AI_REQUEST_TIMEOUT * 2, follow_redirects=False) as cli:
             resp = await cli.post(url, headers=self.build_headers(), json=body)
             if resp.status_code != 200:
-                raise RuntimeError(f"火山方舟 视频生成失败 ({resp.status_code}): {resp.text[:500]}")
+                raise RuntimeError(f"火山方舟 视频生成失败 ({resp.status_code}): {_safe_error_text(resp.text)}")
             data = resp.json()
 
         task_id = data.get("id") or data.get("task_id", "")
@@ -239,7 +239,7 @@ class VolcengineProvider(BaseProvider):
         async with httpx.AsyncClient(timeout=30, follow_redirects=False) as cli:
             resp = await cli.get(url, headers=self.build_headers())
             if resp.status_code != 200:
-                raise RuntimeError(f"火山方舟 查询视频任务失败 ({resp.status_code}): {resp.text[:300]}")
+                raise RuntimeError(f"火山方舟 查询视频任务失败 ({resp.status_code}): {_safe_error_text(resp.text)}")
             data = resp.json()
 
         status = str(data.get("status") or "").upper()
