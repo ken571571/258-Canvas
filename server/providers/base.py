@@ -13,20 +13,29 @@ from ..security.network import async_validate_safe_url
 
 
 def _safe_error_text(text: str, max_len: int = 200) -> str:
-    """安全提取 API 错误信息：仅取 JSON 中的 message 字段，避免泄漏 Key。"""
+    """安全提取 API 错误信息：仅取 JSON 中的 message 字段，并移除 Key 痕迹。"""
     if not text:
         return ""
     try:
-        import json
+        import json, re
         data = json.loads(text)
         msg = data.get("error", {})
         if isinstance(msg, dict):
-            return str(msg.get("message", "") or "")[:max_len]
-        if isinstance(msg, str):
-            return msg[:max_len]
-        return str(data.get("message", "") or "")[:max_len]
+            result = str(msg.get("message", "") or "")
+        elif isinstance(msg, str):
+            result = msg
+        else:
+            result = str(data.get("message", "") or "")
+        # 移除 API Key 痕迹（OpenAI 等平台会在错误消息中回显 Key）
+        result = re.sub(r'sk-[a-zA-Z0-9*_-]{10,}', '[API_KEY]', result)
+        result = re.sub(r'AIza[0-9A-Za-z*_-]{20,}', '[API_KEY]', result)
+        return result[:max_len]
     except Exception:
-        return text[:max_len]
+        # 非 JSON 响应：直接截断并尝试移除 Key 痕迹
+        import re
+        result = re.sub(r'sk-[a-zA-Z0-9*_-]{10,}', '[API_KEY]', text[:max_len])
+        result = re.sub(r'AIza[0-9A-Za-z*_-]{20,}', '[API_KEY]', result)
+        return result
 
 log = get_logger("provider")
 
