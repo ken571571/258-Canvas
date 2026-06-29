@@ -349,18 +349,23 @@ class APIMartProvider(BaseProvider):
             body["quality"] = quality
         refs = reference_images or []
         if refs:
-            # API 要求公网可访问的 URL，不支持 base64
+            # APIMart 支持 image_urls（公网 URL）或 input_reference（base64）
             image_urls = []
             for r in refs[:3]:
                 url = str(r or "").strip()
                 if url.startswith("http://") or url.startswith("https://"):
                     image_urls.append(url)
                 elif url.startswith("/"):
-                    # 本地路径 → 用 PUBLIC_BASE_URL 拼接公网地址
-                    base = config.PUBLIC_BASE_URL
-                    if base:
-                        image_urls.append(base + url)
-                    # 无公网地址则跳过（API 无法访问本地文件）
+                    # 本地路径 → 转 base64 data URL
+                    try:
+                        from ..security.paths import safe_join
+                        local = safe_join(config.BASE_DIR, url.lstrip("/"))
+                        if os.path.isfile(local):
+                            b64 = await self._load_image_b64(url)
+                            if b64:
+                                image_urls.append(b64)
+                    except Exception:
+                        pass
             if image_urls:
                 body["image_urls"] = image_urls
 
@@ -393,26 +398,44 @@ class APIMartProvider(BaseProvider):
             result = result[0] if result else {}
 
         status = str(result.get("status") or "").upper()
-        if status in ("SUCCEED", "SUCCESS", "COMPLETED", "DONE", "SUCCEEDED"):
-            # 提取视频 URL（多种可能的响应结构）
+        log.info(f"APIMart 视频任务 {task_id} 状态={status} keys={list(result.keys())}")
+        if status in ("SUCCEED", "SUCCESS", "COMPLETED", "DONE", "SUCCEEDED", "READY", "FINISHED", "PROCESSED"):
+            # 提取视频 URL
             video_url = ""
             outputs = result.get("output") or result.get("outputs") or {}
             if isinstance(outputs, dict):
-                video_url = outputs.get("video_url") or outputs.get("url") or ""
+                video_url = outputs.get("video_url") or outputs.get("url") or outputs.get("video") or ""
                 if not video_url:
                     for node_out in outputs.values():
                         if isinstance(node_out, dict):
-                            videos = node_out.get("videos") or []
-                            if videos:
-                                video_url = videos[0].get("url", "")
-                                if video_url:
-                                    break
+                            for vkey in ("videos", "video", "images", "gifs"):
+                                items = node_out.get(vkey) or []
+                                if isinstance(items, list) and items:
+                                    video_url = items[0].get("url", "") or items[0].get("video_url", "") or (items[0] if isinstance(items[0], str) else "")
+                                    if video_url: break
+                            if video_url: break
             if not video_url:
                 inner = result.get("result") or {}
                 if isinstance(inner, dict):
-                    video_url = inner.get("url") or inner.get("video_url") or ""
+                    video_url = inner.get("url") or inner.get("video_url") or inner.get("video") or ""
             if not video_url:
-                video_url = result.get("url") or result.get("video_url") or ""
+                video_url = result.get("url") or result.get("video_url") or result.get("video") or ""
+                # 深度遍历：找任意嵌套的 url 字段
+                if not video_url:
+                    def _find_url(obj, depth=0):
+                        if depth > 3: return ""
+                        if isinstance(obj, dict):
+                            for k, v in obj.items():
+                                if k in ("url", "video_url") and isinstance(v, str) and v.startswith("http"):
+                                    return v
+                                r = _find_url(v, depth+1)
+                                if r: return r
+                        if isinstance(obj, list):
+                            for item in obj:
+                                r = _find_url(item, depth+1)
+                                if r: return r
+                        return ""
+                    video_url = _find_url(result)
             # v2.5.52：校验返回的视频 URL 非内网地址
             if video_url:
                 from ..security.network import async_validate_safe_url

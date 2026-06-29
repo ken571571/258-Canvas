@@ -2,7 +2,7 @@
   "id": "1ea56bdc40fc4282",
   "title": "电商流1",
   "created_at": 1782613825504,
-  "updated_at": 1782729477408,
+  "updated_at": 1782730802493,
   "nodes": [
     {
       "id": "image_ir9qxc5y",
@@ -285,33 +285,6 @@
       "videos": []
     },
     {
-      "id": "video_gen_u4z1p42m",
-      "type": "video_gen",
-      "x": 1292.9148355365958,
-      "y": -1293.2625537329277,
-      "w": 260,
-      "h": 376,
-      "label": "视频生成",
-      "desc": "",
-      "text": "",
-      "url": "",
-      "model": "",
-      "systemPrompt": "",
-      "outputText": "",
-      "lastResult": "",
-      "images": [],
-      "agentId": "",
-      "comfyWorkflow": "",
-      "_batchSize": 1,
-      "hasConfig": false,
-      "knowledgeBases": [],
-      "skills": [],
-      "userInput": "",
-      "runState": "error",
-      "runMessage": "RuntimeError: OpenAI 视频生成失败 (401): {\n  \"error\": {\n    \"message\": \"Incorrect API key provided: sk-fiPiI***************************************JuXt. You can find your API key at https://platform.openai.",
-      "provider_id": "apimart"
-    },
-    {
       "id": "image_a2exuafl",
       "type": "image",
       "x": 890.8933071656445,
@@ -343,8 +316,8 @@
     {
       "id": "output_pzq4065d",
       "type": "output",
-      "x": 1685.0956878079205,
-      "y": -1231.1144689861292,
+      "x": 1715.0662987355377,
+      "y": -1354.5228669233763,
       "w": 260,
       "h": 200,
       "label": "输出",
@@ -433,21 +406,6 @@
       "id": "c_ku9bsah6",
       "from": "agent_rponiov7",
       "to": "output_c2o8ogvt"
-    },
-    {
-      "id": "c_3s427h5b",
-      "from": "image_a2exuafl",
-      "to": "video_gen_u4z1p42m"
-    },
-    {
-      "id": "c_i7ih5joe",
-      "from": "video_gen_u4z1p42m",
-      "to": "output_pzq4065d"
-    },
-    {
-      "id": "c_o1pnanzg",
-      "from": "prompt_hu8nu7d4",
-      "to": "video_gen_u4z1p42m"
     }
   ],
   "groups": [],
