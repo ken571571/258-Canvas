@@ -16,7 +16,7 @@ from typing import List, Dict, Any
 import httpx
 from ..security.network import async_validate_safe_url
 
-from .base import BaseProvider, ImageResult, VideoResult, ChatResult
+from .base import BaseProvider, ImageResult, VideoResult, ChatResult, _safe_error_text
 from .. import config
 
 
