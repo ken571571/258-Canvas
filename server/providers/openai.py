@@ -380,10 +380,15 @@ class OpenAIProvider(BaseProvider):
             "model": model,
             "prompt": prompt,
         }
-        # 优先用 seconds（AIHubMix / Sora 格式），回退 duration
-        seconds = str(kwargs.get("seconds", "") or duration)
-        if seconds:
-            body["seconds"] = seconds
+        # 优先用 seconds（AIHubMix / Sora 格式），回退 duration；必须是整数
+        _raw_sec = kwargs.get("seconds", None)
+        if _raw_sec is not None:
+            try:
+                body["seconds"] = int(_raw_sec)
+            except (ValueError, TypeError):
+                body["seconds"] = int(duration)
+        else:
+            body["seconds"] = int(duration)
         # size 参数：优先用 kwargs["size"]（前端传入），其次 resolution
         size = str(kwargs.get("size", "") or resolution)
         refs = reference_images or []

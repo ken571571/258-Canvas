@@ -342,7 +342,7 @@ class APIMartProvider(BaseProvider):
         body: dict = {
             "model": model,
             "prompt": prompt,
-            "seconds": str(duration),  # AIHubMix 要求字符串格式
+            "seconds": int(duration),
             "size": size,
         }
         if quality and quality.lower() != "auto":

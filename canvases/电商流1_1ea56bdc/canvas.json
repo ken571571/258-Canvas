@@ -2,7 +2,7 @@
   "id": "1ea56bdc40fc4282",
   "title": "电商流1",
   "created_at": 1782613825504,
-  "updated_at": 1782728496816,
+  "updated_at": 1782729477408,
   "nodes": [
     {
       "id": "image_ir9qxc5y",
@@ -309,7 +309,7 @@
       "userInput": "",
       "runState": "error",
       "runMessage": "RuntimeError: OpenAI 视频生成失败 (401): {\n  \"error\": {\n    \"message\": \"Incorrect API key provided: sk-fiPiI***************************************JuXt. You can find your API key at https://platform.openai.",
-      "provider_id": "ag"
+      "provider_id": "apimart"
     },
     {
       "id": "image_a2exuafl",
