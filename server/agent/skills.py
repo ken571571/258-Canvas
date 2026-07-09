@@ -228,6 +228,22 @@ class SkillRegistry:
         ))
 
     # ——— 外部技能热加载 ———
+
+    @classmethod
+    def for_agent(cls, skills_dir: str, fingerprint: str = "") -> "SkillRegistry":
+        """v2.5.55：构造仅含内置技能 + 指定 Agent 技能的临时注册表。
+
+        不调用 _load_external（避免扫描所有 Agent 目录），不写入全局单例，
+        使并发 run_agent 之间技能命名空间隔离，杜绝 await 期间同名技能 handler
+        被另一 Agent 覆盖、以及技能残留污染后续无自定义技能的 Agent 运行。
+        """
+        reg = cls.__new__(cls)  # 跳过 __init__ 的 _load_external 全量扫描
+        reg._skills = {}
+        reg._register_builtin()
+        if skills_dir and os.path.isdir(skills_dir):
+            reg._scan_skills_dir(skills_dir, fingerprint=fingerprint)
+        return reg
+
     def _load_external(self, fingerprint: str = ""):
         # 1. 旧的 skills/ 全局目录（永不明文加密）
         if os.path.isdir(config.SKILLS_DIR):

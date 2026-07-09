@@ -3,17 +3,20 @@
 import os
 import uuid
 import time
+import asyncio
 import re
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from .. import config
 from ..storage.json_store import store
 from ..services import knowledge_service
-from ..utils import KeyedLockManager
 
 router = APIRouter(prefix="/api", tags=["knowledge"])
 
-_kb_locks = KeyedLockManager()
+# v2.5.55 修复：所有知识库索引操作读写同一个共享 _index.json，
+# 按 kb_id 分片锁无法防止不同 kb_id 之间的读-改-写竞态（后写覆盖先写→丢数据）。
+# 改用全局锁保护 _index.json 的完整读-改-写事务。
+_kb_index_lock = asyncio.Lock()
 
 
 class KbUploadPayload(BaseModel):
@@ -84,8 +87,7 @@ class KbCreatePayload(BaseModel):
 @router.post("/knowledge-bases")
 async def create_kb(payload: KbCreatePayload):
     kbid = f"kb_{uuid.uuid4().hex[:8]}"
-    lock = await _kb_locks.get(kbid)
-    async with lock:
+    async with _kb_index_lock:
         idx = _load_index()
         idx[kbid] = {
             "name": (payload.name or "默认知识库")[:80],
@@ -100,8 +102,7 @@ async def create_kb(payload: KbCreatePayload):
 
 @router.delete("/knowledge-bases/{kb_id}")
 async def delete_kb(kb_id: str):
-    lock = await _kb_locks.get(kb_id)
-    async with lock:
+    async with _kb_index_lock:
         idx = _load_index()
         if kb_id not in idx:
             raise HTTPException(status_code=404, detail="知识库不存在")
@@ -137,8 +138,7 @@ async def upload_document(kb_id: str, payload: KbUploadPayload):
     if not payload.content.strip():
         raise HTTPException(status_code=400, detail="文档内容不能为空")
 
-    lock = await _kb_locks.get(kb_id)
-    async with lock:
+    async with _kb_index_lock:
         idx = _load_index()
         if kb_id not in idx:
             raise HTTPException(status_code=404, detail="知识库不存在")
@@ -194,9 +194,8 @@ async def upload_document_file(kb_id: str, file: UploadFile = File(...)):
         "created_at": int(time.time() * 1000),
     }
 
-    # 索引读-改-写（锁内：防止并发丢文档）
-    lock = await _kb_locks.get(kb_id)
-    async with lock:
+    # 索引读-改-写（全局锁内：防止并发丢文档）
+    async with _kb_index_lock:
         idx = _load_index()
         if kb_id not in idx:
             raise HTTPException(status_code=404, detail="知识库不存在")
@@ -208,8 +207,7 @@ async def upload_document_file(kb_id: str, file: UploadFile = File(...)):
 
 @router.delete("/knowledge-bases/{kb_id}/documents/{doc_id}")
 async def delete_document(kb_id: str, doc_id: str):
-    lock = await _kb_locks.get(kb_id)
-    async with lock:
+    async with _kb_index_lock:
         idx = _load_index()
         if kb_id not in idx:
             raise HTTPException(status_code=404, detail="知识库不存在")

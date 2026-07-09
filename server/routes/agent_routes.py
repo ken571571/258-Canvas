@@ -31,7 +31,7 @@ from ..exceptions import CryptoError
 
 log = get_logger("agent_routes")
 from ..agent.engine import run_agent
-from ..agent.skills import get_skill_registry, reload_external_skills
+from ..agent.skills import get_skill_registry, reload_external_skills, SkillRegistry
 from ..routes.providers_cfg import resolve_provider
 
 router = APIRouter(prefix="/api", tags=["agent"])
@@ -794,11 +794,9 @@ async def run_agent_endpoint(agent_id: str, payload: AgentRunRequest):
         if data_url:
             input_images.append(data_url)
 
-    # v2.5.52：仅加载当前 Agent 的技能，避免全局 _load_external 扫描所有 Agent 导致技能互相覆盖
-    skills_dir = _agent_skills_dir(agent_id)
-    if os.path.isdir(skills_dir):
-        reg = get_skill_registry()
-        reg._scan_skills_dir(skills_dir, fingerprint=fp)
+    # v2.5.55：构造仅含内置 + 当前 Agent 技能的临时注册表，不污染全局单例，
+    # 避免并发 run_agent 同名技能 handler 互相覆盖、以及技能残留污染其他 Agent。
+    skill_reg = SkillRegistry.for_agent(_agent_skills_dir(agent_id), fingerprint=fp)
 
     user_input = str(payload.user_input or "")
 
@@ -812,6 +810,7 @@ async def run_agent_endpoint(agent_id: str, payload: AgentRunRequest):
                 docs_dir=_agent_docs_dir(agent_id),
                 agent_dir=_agent_dir(agent_id),
                 fingerprint=fp,
+                skill_registry=skill_reg,
             ),
             timeout=600,  # v2.5.52：全局超时 600s（max_steps×单次超时的两倍）
         )

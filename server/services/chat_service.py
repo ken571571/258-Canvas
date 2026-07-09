@@ -122,11 +122,14 @@ def list_conversations() -> list[dict]:
 
 async def delete_conversation(thread_id: str):
     """删除对话历史（同时清理元数据索引）。"""
-    p = conv_path(thread_id)
-    if os.path.exists(p):
-        os.remove(p)
-    # v2.5.51：索引更新在锁内保护，防止并发删除丢失
-    async with _index_write_lock:
-        index = load_thread_index()
-        index.get("threads", {}).pop(thread_id, None)
-        await save_thread_index(index)
+    # v2.5.55 修复：与 chat_stream 的最终 save 共用同一把对话写锁，
+    # 防止"流式进行中删除 → 流结束 save 重建文件+索引 → 对话复活、删除被撤销"
+    async with lock_conversation(thread_id):
+        p = conv_path(thread_id)
+        if os.path.exists(p):
+            os.remove(p)
+        # v2.5.51：索引更新在锁内保护，防止并发删除丢失
+        async with _index_write_lock:
+            index = load_thread_index()
+            index.get("threads", {}).pop(thread_id, None)
+            await save_thread_index(index)

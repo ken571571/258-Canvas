@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>API 设置 — 无限画布</title>
-<link rel="stylesheet" href="/static/css/style.css?v=4">
+<link rel="stylesheet" href="/static/css/style.css?v=10">
 <style>
 /* === 页面框架 === */
 .api-page { display:flex; height:100vh; overflow:hidden; }
@@ -574,7 +574,7 @@ html.dark .platform-card:hover { box-shadow:0 6px 20px rgba(0,0,0,.3); }
     </div>
 </div>
 
-<script src="/static/js/api.js?v=6"></script>
+<script src="/static/js/api.js?v=14"></script>
 <script>
 // ===== 数据模型 =====
 let providers = [];
@@ -692,7 +692,7 @@ function initDefaultProviders() {
         { id: 'deepseek', name: 'DeepSeek', protocol: 'openai', base_url: 'https://api.deepseek.com', vendor: 'official',
           desc: 'deepseek.com', image_models: [], chat_models: ['deepseek-chat', 'deepseek-reasoner'], video_models: [] },
         { id: 'xmmimo', name: 'MiMo', protocol: 'openai', base_url: 'https://api.xiaomimimo.com/v1', vendor: 'official',
-          desc: '小米 AI · 思考模式+工具调用', image_models: [], chat_models: ['mimo-v2.5-pro'], video_models: [] },
+          desc: '小米 AI · 思考模式+工具调用+图片理解', image_models: [], chat_models: ['mimo-v2.5-pro', 'mimo-v2.5'], video_models: [] },
         { id: 'aihubmix', name: 'AIHubMix', protocol: 'openai', base_url: 'https://aihubmix.com/v1', vendor: 'third_party',
           desc: 'aihubmix.com · 推理时代',
           image_models: ['gpt-image-2', 'dall-e-3'],
@@ -1364,6 +1364,7 @@ function _allProviderKeyNames(providerId) {
         'MODELSCOPE': ['MODELSCOPE_API_KEY'],
         'RUNNINGHUB': ['RUNNINGHUB_API_KEY', 'RUNNINGHUB_WALLET_API_KEY'],
         'VOLCENGINE': ['ARK_API_KEY'],
+        'XMMIMO': ['MIMO_API_KEY'],   // v2.5.55：mimo 平台别名，删除时同步清除 MIMO_API_KEY 防止平台复活（§16.2）
     };
     var aliases = aliasMap[pid] || [];
     for (var i = 0; i < aliases.length; i++) {
@@ -1648,7 +1649,7 @@ async function saveCurrent() {
         // 失效所有页面的 Provider 缓存
         refreshProviders().catch(() => {});
         notifyRefresh();
-        status.innerHTML = '<span style="color:var(--good)">' + _t('settings.savedStatus','✓ 已保存 ') + p.name + '</span>';
+        status.innerHTML = '<span style="color:var(--good)">' + _t('settings.savedStatus','✓ 已保存 ') + esc(p.name) + '</span>';
         // v2.5.50：data 属性标记替代硬编码中文匹配（英文模式下 includes('已保存') 永远为 false）
         status.dataset.autoClear = '1';
         setTimeout(() => { if (status.dataset.autoClear) { status.innerHTML = ''; delete status.dataset.autoClear; } }, 2500);

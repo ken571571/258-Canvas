@@ -20,6 +20,7 @@ async def run_agent(
     docs_dir: str = "",
     agent_dir: str = "",
     fingerprint: str = "",
+    skill_registry=None,
 ) -> dict:
     """执行 Agent 任务，返回 {success, steps, final_output, output_images, error}"""
     started = time.time()
@@ -31,7 +32,7 @@ async def run_agent(
     skill_ids = [s.get("id", s) if isinstance(s, dict) else s for s in agent_config.get("skills", [])]
     kb_ids = agent_config.get("knowledge_bases", [])
 
-    skill_reg = get_skill_registry()
+    skill_reg = skill_registry or get_skill_registry()
     tools = skill_reg.to_openai_tools(skill_ids)
 
     # 如果用 Gemini 且启用了 tools，打印警告（Gemini 原生协议未适配 Function Calling）
@@ -140,8 +141,12 @@ async def run_agent(
 
         # 循环结束仍未完成
         if not final_output:
-            # 尝试让 LLM 做最终总结
-            messages.append({"role": "user", "content": "请基于以上工具执行结果，给出最终总结。"})
+            # 尝试让 LLM 做最终总结（根据是否有工具调用选择合适的提示词）
+            if tools:
+                summary_prompt = "请基于以上工具执行结果，给出最终总结。"
+            else:
+                summary_prompt = "请给出最终答案。"
+            messages.append({"role": "user", "content": summary_prompt})
             try:
                 final = await provider.chat(messages=messages, model=model)
                 if final.content:

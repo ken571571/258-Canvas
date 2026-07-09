@@ -27,7 +27,7 @@
     if (rangeX <= 0 || rangeY <= 0) return;
     const scaleX = (rect.width - padding * 2) / rangeX;
     const scaleY = (rect.height - padding * 2) / rangeY;
-    this.view.scale = Math.min(scaleX, scaleY, 2);
+    this.view.scale = Math.max(0.1, Math.min(scaleX, scaleY, 2));  // v2.5.55：加 0.1 下限，防止 board 极窄时 scale≤0 导致除零/翻转
     this.view.x = -minX * this.view.scale + padding;
     this.view.y = -minY * this.view.scale + padding;
     this._renderTransform();

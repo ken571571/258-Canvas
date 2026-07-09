@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Agent 智能体</title>
-<link rel="stylesheet" href="/static/css/style.css?v=4">
+<link rel="stylesheet" href="/static/css/style.css?v=10">
 <style>
 .agent-page { display:flex; height:100vh; overflow:hidden; }
 
@@ -179,7 +179,7 @@
     </main>
 </div>
 
-<script src="/static/js/api.js?v=6"></script>
+<script src="/static/js/api.js?v=14"></script>
 <script>
 let agents = [], currentAgentId = null, allSkills = [], allKBs = [], providerData = [], kbSelection = {};
 let runImageDataUrl = '', designerHistory = [];
@@ -554,7 +554,7 @@ function renderFileList(listId, files, sub) {
 async function uploadAgentFile(sub, input) {
     if (!currentAgentId || !input.files?.[0]) return;
     const form = new FormData(); form.append('file', input.files[0]);
-    try { const resp = await fetch('/api/agents/'+currentAgentId+'/files/'+sub,{method:'POST',body:form}); if(!resp.ok) throw new Error((await resp.json()).detail||_t('agentsPage.uploadFailed','上传失败')); showToast(_t('agentsPage.uploaded','已上传')); loadAgentFiles(); } catch(e) { showToast(_t('agentsPage.uploadFailed','上传失败: ')+e.message,'err'); }
+    try { const resp = await apiFetch('/api/agents/'+currentAgentId+'/files/'+sub,{method:'POST',body:form}); if(!resp.ok) throw new Error((await resp.json()).detail||_t('agentsPage.uploadFailed','上传失败')); showToast(_t('agentsPage.uploaded','已上传')); loadAgentFiles(); } catch(e) { showToast(_t('agentsPage.uploadFailed','上传失败: ')+e.message,'err'); }
     input.value = '';
 }
 async function deleteAgentFile(sub, name) {

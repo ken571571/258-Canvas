@@ -169,6 +169,8 @@ class TaskManager:
                     expired.append(tid)
             for tid in expired:
                 self._tasks.pop(tid, None)
+                # v2.5.55 修复：同步清理取消事件，避免被 cancel 过的过期任务的 Event 对象残留泄漏
+                self._cancel_events.pop(tid, None)
                 path = self._task_path(tid)
                 if os.path.exists(path):
                     try:

@@ -5,13 +5,15 @@
   const proto = (typeof CanvasEngine !== 'undefined' && CanvasEngine.prototype) || null;
   if (!proto) return;
 
-  // 深拷贝节点：防止浅拷贝导致 images/videos/_queue 等数组被共享引用破坏撤销栈
+  // 深拷贝节点：防止浅拷贝导致 images/videos/_queue 等数组元素对象被共享引用破坏撤销栈
   proto._deepCloneNode = function(n) {
+    // v2.5.55：数组元素若为对象则浅展开（一层深拷贝），避免 images[i]._w 等原地修改污染撤销快照
+    const cloneArr = (a) => (a || []).map(it => (it && typeof it === 'object') ? {...it} : it);
     return {
       ...n,
-      images: [...(n.images || [])],
-      videos: [...(n.videos || [])],
-      _queue: [...(n._queue || [])],
+      images: cloneArr(n.images),
+      videos: cloneArr(n.videos),
+      _queue: cloneArr(n._queue),
       _removedUrls: [...(n._removedUrls || [])],
       knowledgeBases: [...(n.knowledgeBases || [])],
       skills: [...(n.skills || [])],

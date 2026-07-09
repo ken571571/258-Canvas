@@ -92,13 +92,16 @@ async def update_canvas_meta(canvas_id: str, payload: CanvasMetaUpdate):
 
     直接写入 canvas.json 而非通过 save()，避免触发文件同步和 updated_at 变更。
     """
-    try:
-        existing = canvas_service.load(canvas_id)
-    except AppError as e:
-        raise _to_http(e)
+    # v2.5.55 修复：与 PUT /boards/{id} 共用同一把画布写锁，防止 meta 的
+    # load→update_meta→write 与 save 的 load→merge→save 竞态覆盖节点/连线变更
+    async with canvas_service.lock_canvas(canvas_id):
+        try:
+            existing = canvas_service.load(canvas_id)
+        except AppError as e:
+            raise _to_http(e)
 
-    canvas_service.update_meta(existing, payload)
-    await store.write(canvas_service._canvas_path(canvas_id), existing)
+        canvas_service.update_meta(existing, payload)
+        await store.write(canvas_service._canvas_path(canvas_id), existing)
     return {"canvas": existing}
 
 

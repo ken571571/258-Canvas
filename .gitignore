@@ -23,7 +23,7 @@ logs/
 input/
 output/
 
-# skills/ 和 canvases/ 纳入版本控制，方便分享
+# skills/ 纳入版本控制分享；canvases/ 默认仅保留 .gitkeep，私人/测试画布见下方忽略规则
 
 # ——— 日志 ———
 *.log
@@ -44,3 +44,22 @@ Thumbs.db
 # ——— 测试残留 ———
 evil.json
 test_regression.json
+
+# ——— 用户画布（私人/测试，不上传） ———
+# 测试画布（canvases 下目录名含"测试"）
+canvases/*测试*/
+# 未命名画布等临时画布
+canvases/未命名画布_*/
+# 已跟踪的实际画布：移出版本控制（见 git rm --cached）
+canvases/电商流1_1ea56bdc/
+
+# ——— 用户智能体（私人，不上传；保留 .gitkeep 占位） ———
+agents/*/
+
+# ——— AI 工作记忆（planning-with-files 规划文件，不上传） ———
+findings.md
+progress.md
+task_plan.md
+
+# ——— 用户运行时资源（头像等） ———
+assets/

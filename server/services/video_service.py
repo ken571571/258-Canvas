@@ -197,8 +197,8 @@ async def query_video_status(task_id: str, prov: BaseProvider = None) -> dict | 
         task_manager.update_task(task_id, status="failed", error="Provider 不支持视频任务轮询")
         return task_manager.get_task(task_id)
     except Exception as e:
-        log.warning(f"视频轮询异常 ({provider_id}/{upstream_task_id}): {e}")
-        task_manager.update_task(task_id, status="failed", error=f"轮询失败: {e}")
-        return task_manager.get_task(task_id)
+        # v2.5.55：查询瞬断不立即标 failed，仅记录日志；失败判定交给后台 run_video_task 的容错逻辑（3 次容忍）。
+        # 避免 /api/video/status 偶发瞬断导致状态反复（标 failed → 后台后续成功又覆盖为 succeeded）。
+        log.warning(f"视频轮询查询异常 ({provider_id}/{upstream_task_id}): {e}（不标记 failed，交后台容错）")
 
     return task

@@ -6,7 +6,11 @@
 
 import re
 import math
+from itertools import islice
 from .. import config
+
+# v2.5.55：PDF 提取页数上限，防止恶意/超大 PDF（50MB 上限内仍可达数万页）耗尽 CPU/内存（DoS）
+_MAX_PDF_PAGES = 2000
 
 
 def chunk_text(text: str, size: int = None, overlap: int = None) -> list:
@@ -53,7 +57,7 @@ def extract_pdf_text(raw: bytes, filename: str) -> str:
         from io import BytesIO
         reader = PdfReader(BytesIO(raw))
         texts = []
-        for page in reader.pages:
+        for page in islice(reader.pages, _MAX_PDF_PAGES):
             t = page.extract_text()
             if t:
                 texts.append(t)
@@ -70,7 +74,7 @@ def extract_pdf_text(raw: bytes, filename: str) -> str:
         from io import BytesIO
         with pdfplumber.open(BytesIO(raw)) as pdf:
             texts = []
-            for page in pdf.pages:
+            for page in islice(pdf.pages, _MAX_PDF_PAGES):
                 t = page.extract_text()
                 if t:
                     texts.append(t)
@@ -87,7 +91,7 @@ def extract_pdf_text(raw: bytes, filename: str) -> str:
         from io import BytesIO
         reader = PdfReader(BytesIO(raw))
         texts = []
-        for page in reader.pages:
+        for page in islice(reader.pages, _MAX_PDF_PAGES):
             t = page.extract_text()
             if t:
                 texts.append(t)

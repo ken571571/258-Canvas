@@ -135,7 +135,11 @@ async def chat_stream(req: ChatRequest):
                 # 重新获取写锁，并从磁盘重载最新历史（避免覆盖流式期间的并发写入）
                 async with chat_service.lock_conversation(conv_id):
                     latest = chat_service.load_history(conv_id)
+                    # v2.5.55 修复：重载磁盘历史后必须补回本次用户消息，
+                    # 否则 v2.5.10 的"重载防并发覆盖"逻辑会丢弃用户输入（每轮流式对话都丢用户消息）
+                    latest.append({"role": "user", "content": user_content})
                     latest.append({"role": "assistant", "content": full_content})
+                    latest = chat_service.trim_history(latest, config.MAX_HISTORY_MESSAGES)
                     title = chat_service.auto_title(req.message) if len(latest) <= 3 else ""
                     await chat_service.save_history(conv_id, latest, title)
             except Exception as save_err:
