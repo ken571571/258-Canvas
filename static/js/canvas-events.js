@@ -454,6 +454,27 @@ CanvasEngine.prototype._onBoardDrop = function(event) {
 
         const worldPt = this._screenToWorld(event.clientX, event.clientY);
 
+        // 音频文件：拖到 audio 节点上替换，或创建 audio 节点
+        const isAudio = /\.(mp3|wav|m4a|ogg|flac|aac|opus|wma)$/i.test(name || '');
+        if (isAudio) {
+            const hitAudio = this._findAudioNodeAt(worldPt);
+            if (hitAudio) {
+                hitAudio.url = url;
+                hitAudio.imageName = name || hitAudio.imageName || '';
+                this.store.updateNode(hitAudio.id, { url, imageName: hitAudio.imageName });
+                this._renderAll();
+                this._markDirty();
+                return;
+            }
+            const hitGroup = this._findGroupAt(worldPt);
+            if (hitGroup) {
+                worldPt.x = Math.max(worldPt.x, hitGroup.bounds.x + 10);
+                worldPt.y = Math.max(worldPt.y, hitGroup.bounds.y + 10);
+            }
+            this.createNode('audio', worldPt, { url, imageName: name || '' });
+            return;
+        }
+
         // 检查是否拖到了已有的图片节点上
         const hitImg = this._findImageNodeAt(worldPt);
         if (hitImg) {
@@ -494,6 +515,14 @@ CanvasEngine.prototype._onBoardDrop = function(event) {
 CanvasEngine.prototype._findImageNodeAt = function(point) {
     return this.nodes.find(n => {
         if (n.type !== 'image') return false;
+        const w = n.w || 260, h = n.h || 100;
+        return point.x >= n.x && point.x <= n.x + w && point.y >= n.y && point.y <= n.y + h;
+    });
+};
+
+CanvasEngine.prototype._findAudioNodeAt = function(point) {
+    return this.nodes.find(n => {
+        if (n.type !== 'audio') return false;
         const w = n.w || 260, h = n.h || 100;
         return point.x >= n.x && point.x <= n.x + w && point.y >= n.y && point.y <= n.y + h;
     });

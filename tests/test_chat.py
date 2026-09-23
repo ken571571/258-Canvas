@@ -13,46 +13,19 @@ client = TestClient(app, raise_server_exceptions=False)
 
 
 class ChatTests(unittest.TestCase):
-    """AI 对话相关回归测试：线程管理、LLM 调用参数校验。
+    """LLM 对话端点回归测试：/api/llm 入参校验。
 
-    注意：测试以 RATE_LIMIT_ENABLED=0 运行，429 不会出现，使用精确断言。
+    注意：独立「Chat 对话」页面已移除，流式 /api/llm/stream、画布多模态
+    /api/boards/llm、对话历史管理 /api/threads 系列端点均已下线。
+    本文件仅保留对仍在使用的 /api/llm（Agent 设计器等内部调用方）的校验测试。
+
+    测试以 RATE_LIMIT_ENABLED=0 运行，429 不会出现，使用精确断言。
     """
-
-    def test_list_threads_ok(self):
-        """GET /api/threads 应正常返回。"""
-        resp = client.get("/api/threads")
-        self.assertEqual(resp.status_code, 200)
-
-    def test_get_nonexistent_thread_not_200(self):
-        """GET /api/threads/{id} 对不存在的 ID 应返回 404。"""
-        resp = client.get("/api/threads/nonexistent_thread_99999")
-        self.assertEqual(resp.status_code, 404)
-
-    def test_delete_nonexistent_thread_not_500(self):
-        """DELETE /api/threads/{id} 不应返回 500 崩溃。"""
-        resp = client.delete("/api/threads/nonexistent_thread_99999")
-        self.assertNotEqual(resp.status_code, 500)
 
     def test_chat_rejects_invalid_provider(self):
         """POST /api/llm 对不存在的 Provider 应返回 400。"""
         resp = client.post("/api/llm", json={
             "message": "你好",
-            "provider_id": "nonexistent_platform",
-        })
-        self.assertEqual(resp.status_code, 400)
-
-    def test_chat_stream_rejects_invalid_provider(self):
-        """POST /api/llm/stream 对不存在的 Provider 应返回 400。"""
-        resp = client.post("/api/llm/stream", json={
-            "message": "你好",
-            "provider_id": "nonexistent_platform",
-        })
-        self.assertEqual(resp.status_code, 400)
-
-    def test_boards_llm_rejects_invalid_provider(self):
-        """POST /api/boards/llm 对不存在的 Provider 应返回 400。"""
-        resp = client.post("/api/boards/llm", json={
-            "message": "画布上的提问",
             "provider_id": "nonexistent_platform",
         })
         self.assertEqual(resp.status_code, 400)
@@ -63,4 +36,3 @@ class ChatTests(unittest.TestCase):
             "provider_id": "openai",
         })
         self.assertEqual(resp.status_code, 422)
-

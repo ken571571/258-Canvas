@@ -24,6 +24,7 @@ APP_PORT = 3571
 # ——— 上传限制 ———
 LOCAL_IMAGE_IMPORT_MAX_BYTES = 50 * 1024 * 1024   # 50MB（可通过环境变量覆盖）
 LOCAL_IMAGE_IMPORT_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+LOCAL_AUDIO_IMPORT_EXTS = {".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aac", ".opus", ".wma"}
 
 # ——— 视频轮询 ———
 VIDEO_POLL_TIMEOUT = 1200    # 视频轮询总超时（秒）

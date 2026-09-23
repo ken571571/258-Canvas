@@ -53,6 +53,7 @@ async def run_video_task(
     reference_images: list = None,
     resolution: str = "720p",
     generate_audio: bool = True,
+    reference_audio: list = None,
 ):
     """后台执行视频生成任务（由路由层的 asyncio.create_task 调用）。
 
@@ -78,6 +79,7 @@ async def run_video_task(
                 reference_images=reference_images or [],
                 resolution=resolution,
                 generate_audio=generate_audio,
+                reference_audio=reference_audio or [],
             )
         except NotImplementedError:
             task_manager.update_task(tid, status="failed", error=f"{prov.provider_name} 不支持视频生成")

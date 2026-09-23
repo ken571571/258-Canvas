@@ -124,6 +124,7 @@ def get_provider_api_key(provider_id: str) -> str:
         "runninghub": ["RUNNINGHUB_API_KEY"],
         "runninghub_wallet": ["RUNNINGHUB_WALLET_API_KEY"],
         "xmmimo": ["MIMO_API_KEY", "XMMIMO_API_KEY"],
+        "minimax": ["MINIMAX_API_KEY", "API_PROVIDER_MINIMAX_KEY"],
     }
     for key in key_map.get(provider_id, []):
         val = os.getenv(key, "")
@@ -152,6 +153,7 @@ def get_provider_base_url(provider_id: str) -> str:
         "modelscope": "https://api-inference.modelscope.cn/v1",
         "runninghub": "https://www.runninghub.cn",
         "xmmimo": "https://api.xiaomimimo.com/v1",
+        "minimax": "https://api.minimax.cn",
     }
     for key in candidates:
         val = os.getenv(key, "")

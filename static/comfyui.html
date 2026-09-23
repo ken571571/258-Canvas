@@ -103,9 +103,9 @@ async function selectWorkflow(name){
 function renderMapping(fields){
     const tbl=document.getElementById('mappingTable');
     if(!fields.length){tbl.innerHTML='<div style="color:var(--muted);font-size:11px;padding:12px;">'+_t('comfyuiPage.detectHint','点击"自动检测参数"或手动添加')+'</div>';return;}
-    tbl.innerHTML=fields.map(function(f,i){ return '<div class="mapping-row"><span class="mapping-node">'+esc(f.node||'')+'::'+esc(f.input||'')+'</span><input value="'+esc(f.name||'')+'" placeholder="'+_t('comfyuiPage.displayName','显示名称')+'" onchange="currentCfg.fields['+i+'].name=this.value"><select onchange="currentCfg.fields['+i+'].type=this.value"><option value="text" '+(f.type==='text'?'selected':'')+'>'+_t('comfyuiPage.text','文本')+'</option><option value="number" '+(f.type==='number'?'selected':'')+'>'+_t('comfyuiPage.number','数字')+'</option><option value="image" '+(f.type==='image'?'selected':'')+'>'+_t('comfyuiPage.image','图片')+'</option></select><button class="btn btn-secondary" style="font-size:10px;padding:2px 6px;" onclick="removeField('+i+')">×</button></div>'; }).join('');
+    tbl.innerHTML=fields.map(function(f,i){ return '<div class="mapping-row"><span class="mapping-node">'+esc(f.node||'')+'::'+esc(f.input||'')+'</span><input value="'+esc(f.name||'')+'" placeholder="'+_t('comfyuiPage.displayName','显示名称')+'" onchange="currentCfg.fields['+i+'].name=this.value"><select onchange="currentCfg.fields['+i+'].type=this.value"><option value="text" '+(f.type==='text'?'selected':'')+'>'+_t('comfyuiPage.text','文本')+'</option><option value="number" '+(f.type==='number'?'selected':'')+'>'+_t('comfyuiPage.number','数字')+'</option><option value="image" '+(f.type==='image'?'selected':'')+'>'+_t('comfyuiPage.image','图片')+'</option><option value="audio" '+(f.type==='audio'?'selected':'')+'>'+_t('comfyuiPage.audio','音频')+'</option></select><button class="btn btn-secondary" style="font-size:10px;padding:2px 6px;" onclick="removeField('+i+')">×</button></div>'; }).join('');
     var tf=document.getElementById('testFields');
-    tf.innerHTML=fields.map(function(f){ return '<div class="field" style="margin-bottom:6px;"><label>'+esc(f.name||f.node+'::'+f.input)+'</label>'+(f.type==='image'?'<input type="text" placeholder="'+_t('comfyuiPage.imageUrl','图片URL')+'" id="tf_'+f.id+'">':'<input type="text" placeholder="'+_t('comfyuiPage.inputValue','输入值')+'" id="tf_'+f.id+'">')+'</div>'; }).join('');
+    tf.innerHTML=fields.map(function(f){ return '<div class="field" style="margin-bottom:6px;"><label>'+esc(f.name||f.node+'::'+f.input)+'</label>'+(f.type==='image'?'<input type="text" placeholder="'+_t('comfyuiPage.imageUrl','图片URL')+'" id="tf_'+f.id+'">':(f.type==='audio'?'<input type="text" placeholder="'+_t('comfyuiPage.audioUrl','音频URL')+'" id="tf_'+f.id+'">':'<input type="text" placeholder="'+_t('comfyuiPage.inputValue','输入值')+'" id="tf_'+f.id+'">'))+'</div>'; }).join('');
 }
 
 function autoDetectMapping(){
@@ -116,7 +116,9 @@ function autoDetectMapping(){
         if(!nd||!nd.inputs) return;
         Object.entries(nd.inputs).forEach(([ik,iv])=>{
             if(typeof iv==='string'||typeof iv==='number'){
-                fields.push({id:'f_'+Date.now()+Math.random(),node:nid,input:ik,name:ik,type:typeof iv==='number'?'number':'text',default:iv});
+                // v2.5.59：识别音频输入（输入名含 audio，或默认值为音频扩展名）
+                var isAudioField=/audio/i.test(ik)||/\.(mp3|wav|m4a|ogg|flac|aac|opus|wma)$/i.test(String(iv||''));
+                fields.push({id:'f_'+Date.now()+Math.random(),node:nid,input:ik,name:ik,type:typeof iv==='number'?'number':(isAudioField?'audio':'text'),default:iv});
             }
         });
     });

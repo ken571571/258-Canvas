@@ -142,6 +142,7 @@
   function tt(chineseText) {
     const map = {
       '图片节点': 'nodeType.image',
+      '音频节点': 'nodeType.audio',
       '提示词节点': 'nodeType.prompt',
       '图片生成': 'nodeType.imageGen',
       '视频生成': 'nodeType.videoGen',

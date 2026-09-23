@@ -5,12 +5,76 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>无限画布</title>
 <link rel="stylesheet" href="/static/css/style.css?v=10">
-<link rel="stylesheet" href="/static/css/components.css?v=5">
+<link rel="stylesheet" href="/static/css/components.css?v=6">
+<style>
+/* ===== 图片裁剪模态 ===== */
+.cropper-overlay{position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.88);display:none;align-items:center;justify-content:center;}
+.cropper-container{width:92vw;max-width:1100px;height:88vh;max-height:760px;background:#1a1a1a;border-radius:14px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.5);}
+.cropper-header{display:flex;align-items:center;justify-content:space-between;padding:10px 18px;background:#222;border-bottom:1px solid #333;flex-shrink:0;}
+.cropper-title{font-size:14px;font-weight:600;color:#eee;}
+.cropper-close{width:28px;height:28px;border:none;background:transparent;color:#999;font-size:20px;cursor:pointer;border-radius:6px;line-height:1;}
+.cropper-close:hover{background:#333;color:#fff;}
+.cropper-body{display:flex;flex:1;min-height:0;}
+.cropper-preview{flex:1;position:relative;overflow:hidden;background:#0d0d0d;cursor:move;user-select:none;-webkit-user-select:none;}
+.cropper-preview img{position:absolute;left:50%;top:50%;transform-origin:center center;max-width:none;pointer-events:none;will-change:transform;}
+.cropper-frame{position:absolute;border:2px solid #fff;box-sizing:border-box;box-shadow:0 0 0 9999px rgba(0,0,0,.5);cursor:move;}
+.cropper-handle{position:absolute;width:12px;height:12px;background:#fff;border:2px solid #333;border-radius:50%;box-sizing:border-box;z-index:2;}
+.cropper-handle[data-dir="nw"]{left:-6px;top:-6px;cursor:nw-resize;}
+.cropper-handle[data-dir="n"]{left:50%;top:-6px;transform:translateX(-50%);cursor:n-resize;}
+.cropper-handle[data-dir="ne"]{right:-6px;top:-6px;cursor:ne-resize;}
+.cropper-handle[data-dir="e"]{right:-6px;top:50%;transform:translateY(-50%);cursor:e-resize;}
+.cropper-handle[data-dir="se"]{right:-6px;bottom:-6px;cursor:se-resize;}
+.cropper-handle[data-dir="s"]{left:50%;bottom:-6px;transform:translateX(-50%);cursor:s-resize;}
+.cropper-handle[data-dir="sw"]{left:-6px;bottom:-6px;cursor:sw-resize;}
+.cropper-handle[data-dir="w"]{left:-6px;top:50%;transform:translateY(-50%);cursor:w-resize;}
+.cropper-rotate-handle{position:absolute;left:50%;transform:translateX(-50%);cursor:grab;z-index:3;display:flex;flex-direction:column;align-items:center;}
+.cropper-rotate-handle:active{cursor:grabbing;}
+.cropper-rotate-line{width:1px;height:16px;background:rgba(255,255,255,.5);}
+.cropper-rotate-dot{width:30px;height:30px;border-radius:50%;background:#4da6ff;border:2px solid #fff;display:flex;align-items:center;justify-content:center;font-size:15px;color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.4);}
+.cropper-angle-display{position:absolute;top:12px;left:12px;background:rgba(0,0,0,.7);color:#fff;font-size:12px;font-weight:600;padding:4px 10px;border-radius:4px;z-index:4;pointer-events:none;}
+.cropper-size-display{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.7);color:#fff;font-size:11px;padding:3px 10px;border-radius:4px;z-index:4;pointer-events:none;white-space:nowrap;}
+.cropper-panel{width:250px;flex-shrink:0;background:#242424;padding:16px;overflow-y:auto;display:flex;flex-direction:column;gap:14px;}
+.cropper-section{display:flex;flex-direction:column;gap:6px;}
+.cropper-label{font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.5px;}
+.cropper-ratio-btns{display:flex;flex-wrap:wrap;gap:4px;}
+.cropper-ratio-btns button{padding:4px 8px;border:1px solid #444;background:#2a2a2a;color:#ccc;border-radius:4px;font-size:11px;cursor:pointer;}
+.cropper-ratio-btns button:hover{border-color:#666;color:#fff;}
+.cropper-ratio-btns button.active{background:#4da6ff;border-color:#4da6ff;color:#fff;}
+.cropper-size-inputs{display:flex;align-items:center;gap:6px;}
+.cropper-size-inputs input{flex:1;min-width:0;height:28px;padding:0 6px;border:1px solid #444;background:#1a1a1a;color:#eee;border-radius:4px;font-size:12px;outline:none;}
+.cropper-size-inputs input:focus{border-color:#4da6ff;}
+.cropper-size-inputs span{color:#888;font-size:12px;flex-shrink:0;}
+.cropper-rotate-inputs{display:flex;align-items:center;gap:6px;}
+.cropper-rotate-inputs input{flex:1;min-width:0;height:28px;padding:0 6px;border:1px solid #444;background:#1a1a1a;color:#eee;border-radius:4px;font-size:12px;outline:none;}
+.cropper-rotate-inputs input:focus{border-color:#4da6ff;}
+.cropper-rotate-btns{display:flex;gap:4px;}
+.cropper-rotate-btns button{flex:1;height:26px;border:1px solid #444;background:#2a2a2a;color:#ccc;border-radius:4px;font-size:10px;cursor:pointer;}
+.cropper-rotate-btns button:hover{border-color:#666;color:#fff;}
+.cropper-zoom-row{display:flex;align-items:center;gap:6px;}
+.cropper-zoom-row button{width:28px;height:28px;border:1px solid #444;background:#2a2a2a;color:#ccc;border-radius:4px;font-size:14px;cursor:pointer;flex-shrink:0;line-height:1;}
+.cropper-zoom-row button:hover{border-color:#666;color:#fff;}
+.cropper-zoom-row input[type=range]{flex:1;min-width:0;accent-color:#4da6ff;}
+.cropper-zoom-row span{font-size:11px;color:#aaa;width:42px;text-align:right;flex-shrink:0;}
+.cropper-actions{display:flex;gap:6px;margin-top:auto;flex-wrap:wrap;}
+.cropper-actions button{padding:8px 12px;border-radius:6px;font-size:12px;cursor:pointer;border:none;font-weight:600;}
+.cropper-btn-primary{background:#4da6ff;color:#fff;flex:1;min-width:100px;}
+.cropper-btn-primary:hover{background:#3d96ef;}
+.cropper-btn-secondary{background:#3a3a3a;color:#ccc;}
+.cropper-btn-secondary:hover{background:#4a4a4a;color:#fff;}
+.cropper-btn-cancel{background:transparent;color:#999;border:1px solid #444 !important;}
+.cropper-btn-cancel:hover{color:#fff;border-color:#666 !important;}
+.cropper-hint{font-size:10px;color:#666;line-height:1.5;}
+@media (max-width:700px){
+  .cropper-body{flex-direction:column;}
+  .cropper-panel{width:auto;height:200px;flex-shrink:0;}
+}
+</style>
 </head>
 <body>
 <div class="canvas-shell">
     <div class="canvas-toolbar" id="toolbar">
         <ui-tool-btn icon="image" label="toolbar.image" fallback="图片" action="createNode('image')"></ui-tool-btn>
+        <ui-tool-btn icon="music" label="toolbar.audio" fallback="音频" action="createNode('audio')"></ui-tool-btn>
         <ui-tool-btn icon="prompt" label="toolbar.prompt" fallback="提示词" action="createNode('prompt')"></ui-tool-btn>
         <ui-tool-btn icon="lightning" label="toolbar.imageGen" fallback="生图" action="createNode('image_gen')"></ui-tool-btn>
         <ui-tool-btn icon="video" label="toolbar.videoGen" fallback="生视频" action="createNode('video_gen')"></ui-tool-btn>
@@ -71,25 +135,103 @@
         <div class="asset-grid" id="asset-grid"></div>
         <div class="asset-hint" data-t="assets.hint">点击创建于视口中心 · 拖拽到画布上精准放置 · 拖到图片节点上替换</div>
     </div>
+
+    <!-- 图片裁剪模态 -->
+    <div class="cropper-overlay" id="cropper-overlay">
+      <div class="cropper-container">
+        <div class="cropper-header">
+          <span class="cropper-title" data-t="cropper.title">图片裁剪</span>
+          <button class="cropper-close" onclick="engine._closeCropper()">&times;</button>
+        </div>
+        <div class="cropper-body">
+          <div class="cropper-preview" id="cropper-preview">
+            <img id="cropper-image" alt="">
+            <div class="cropper-frame" id="cropper-frame">
+              <div class="cropper-handle" data-dir="nw"></div>
+              <div class="cropper-handle" data-dir="n"></div>
+              <div class="cropper-handle" data-dir="ne"></div>
+              <div class="cropper-handle" data-dir="e"></div>
+              <div class="cropper-handle" data-dir="se"></div>
+              <div class="cropper-handle" data-dir="s"></div>
+              <div class="cropper-handle" data-dir="sw"></div>
+              <div class="cropper-handle" data-dir="w"></div>
+            </div>
+            <div class="cropper-rotate-handle" id="cropper-rotate-handle">
+              <div class="cropper-rotate-line"></div>
+              <div class="cropper-rotate-dot">⟳</div>
+            </div>
+            <div class="cropper-angle-display" id="cropper-angle-display">0.0°</div>
+            <div class="cropper-size-display" id="cropper-size-display">800 × 600</div>
+          </div>
+          <div class="cropper-panel">
+            <div class="cropper-section">
+              <div class="cropper-label" data-t="cropper.aspectRatio">裁剪比例</div>
+              <div class="cropper-ratio-btns" id="cropper-ratio-btns">
+                <button data-ratio="free" class="active" data-t="cropper.ratioFree">自由</button>
+                <button data-ratio="1">1:1</button>
+                <button data-ratio="1.3333">4:3</button>
+                <button data-ratio="0.75">3:4</button>
+                <button data-ratio="1.7778">16:9</button>
+                <button data-ratio="0.5625">9:16</button>
+              </div>
+            </div>
+            <div class="cropper-section">
+              <div class="cropper-label" data-t="cropper.outputSize">输出尺寸 (px)</div>
+              <div class="cropper-size-inputs">
+                <input type="number" id="cropper-output-w" min="1" step="1" value="800">
+                <span>×</span>
+                <input type="number" id="cropper-output-h" min="1" step="1" value="600">
+              </div>
+            </div>
+            <div class="cropper-section">
+              <div class="cropper-label" data-t="cropper.rotation">旋转角度</div>
+              <div class="cropper-rotate-inputs">
+                <input type="number" id="cropper-angle-input" step="0.1" value="0">
+                <span>°</span>
+              </div>
+              <div class="cropper-rotate-btns">
+                <button onclick="engine._cropperRotate(-90)" data-t="cropper.rotateLeft">↺ 左转90°</button>
+                <button onclick="engine._cropperRotate(90)" data-t="cropper.rotateRight">↻ 右转90°</button>
+              </div>
+            </div>
+            <div class="cropper-section">
+              <div class="cropper-label" data-t="cropper.zoom">缩放</div>
+              <div class="cropper-zoom-row">
+                <button onclick="engine._cropperZoomBy(0.8)">−</button>
+                <input type="range" id="cropper-zoom-slider" min="0.1" max="5" step="0.01" value="1">
+                <button onclick="engine._cropperZoomBy(1.25)">+</button>
+                <span id="cropper-zoom-value">100%</span>
+              </div>
+            </div>
+            <div class="cropper-actions">
+              <button class="cropper-btn-secondary" onclick="engine._cropperReset()" data-t="cropper.reset">重置</button>
+              <button class="cropper-btn-cancel" onclick="engine._closeCropper()" data-t="cropper.cancel">取消</button>
+              <button class="cropper-btn-primary" onclick="engine._applyCrop()" data-t="cropper.confirm">✓ 确认裁剪</button>
+            </div>
+            <div class="cropper-hint" data-t="cropper.hint">拖拽图片=平移 · 滚轮=缩放 · 拖拽顶部蓝点=旋转 · 拖拽白框=调整裁剪</div>
+          </div>
+        </div>
+      </div>
+    </div>
 </div>
 
 <script src="/static/js/ui-icon.js?v=2"></script>
-<script src="/static/js/ui-tool-btn.js?v=2"></script>
+<script src="/static/js/ui-tool-btn.js?v=3"></script>
 <script src="/static/js/i18n.js?v=2"></script>
 <script src="/static/js/api.js?v=14"></script>
 <script src="/static/js/canvas-store.js?v=4"></script>
-<script src="/static/js/canvas-core.js?v=28"></script>
+<script src="/static/js/canvas-core.js?v=32"></script>
 <script src="/static/js/canvas-undo.js?v=3"></script>
-<script src="/static/js/canvas-viewport.js?v=2"></script>
+<script src="/static/js/canvas-viewport.js?v=3"></script>
 <!-- 渲染器模块（按依赖顺序加载） -->
 <script src="/static/js/canvas-renderer-core.js?v=4"></script>
 <script src="/static/js/canvas-renderer-providers.js?v=2"></script>
-<script src="/static/js/canvas-renderer-nodes.js?v=24"></script>
+<script src="/static/js/canvas-renderer-nodes.js?v=32"></script>
 <script src="/static/js/canvas-renderer-groups.js?v=5"></script>
 <script src="/static/js/canvas-renderer-links.js?v=3"></script>
 <script src="/static/js/canvas-renderer-lightbox.js?v=4"></script>
 <script src="/static/js/canvas-renderer-assets.js?v=4"></script>
-<script src="/static/js/canvas-pipeline.js?v=74"></script>
+<script src="/static/js/canvas-pipeline.js?v=83"></script>
 <script src="/static/js/canvas-events.js?v=3"></script>
 <script>
 const engine = new CanvasEngine('board', 'world', 'nodes-container', 'links');

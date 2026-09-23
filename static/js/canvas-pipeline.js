@@ -9,6 +9,11 @@ CanvasEngine.prototype._activePipelineAbort = null;
 CanvasEngine.prototype._activeVideoAbort = null;
 CanvasEngine.prototype._activeComfyAbort = null;
 
+// v2.5.56：LOOP 批次内已跑 agent 去重集合（loop 进入时创建、退出时恢复，支持嵌套）
+// 直接挂在生成器上游、不经 LOOP 的 agent（如 agent2→comfy 且 agent1→LOOP→comfy）
+// 其输出与批次游标无关，整个 loop 只应跑一次；用此集合跨批次去重。
+CanvasEngine.prototype._loopRanAgents = null;
+
 // 视频模型时长和分辨率参数 —— 运行时由 _loadVideoModelParams() 从 GET /api/video/model-params 填充
 CanvasEngine.prototype._videoDurations = {};
 CanvasEngine.prototype._videoResolutions = {};
@@ -43,10 +48,31 @@ CanvasEngine.prototype._handleImageUpload = async function(id, input) {
     }
 };
 
+CanvasEngine.prototype._handleAudioUpload = async function(id, input) {
+    const file = input.files?.[0];
+    if (!file) return;
+    const form = new FormData();
+    form.append('file', file);
+    try {
+        const response = await apiFetch('/api/upload', { method: 'POST', body: form });
+        const data = await response.json();
+        const node = this.nodes.find(item => item.id === id);
+        if (!node) return;
+        node.url = data.url;
+        node.imageName = data.name || '';
+        this.store.updateNode(id, { url: data.url, imageName: node.imageName });
+        this._renderAll();
+        this._markDirty();
+    } catch (error) {
+        alert((typeof _t !== 'undefined' ? _t('pipeline.uploadFailed','上传失败') : '上传失败') + ': ' + error.message);
+    }
+};
+
 CanvasEngine.prototype._collectInputs = function(nodeId) {
     var texts = [];
     var images = [];
     var videos = [];
+    var audios = [];
     var seenLoop = {};  // 防止 loop 多端口连线导致重复收集
 
     this.connections
@@ -62,6 +88,11 @@ CanvasEngine.prototype._collectInputs = function(nodeId) {
                 var u = from.url;
                 if (/\.(mp4|webm|mov|m4v)$/i.test(u)) videos.push(tag ? tag+'::'+u : u);
                 else images.push(tag ? tag+'::'+u : u);
+            }
+            // v2.5.59：音频节点连线 → 音频参考（如 MiniMax-H3 r2va 音频驱动）
+            if (from.type === 'audio' && from.url) {
+                var au = from.url;
+                audios.push(tag ? tag+'::'+au : au);
             }
             if (from.type === 'loop') {
                 var bs = from._batchSize || 1;
@@ -95,7 +126,7 @@ CanvasEngine.prototype._collectInputs = function(nodeId) {
             }
         }, this);
 
-    return { texts, images, videos };
+    return { texts, images, videos, audios };
 };
 
 CanvasEngine.prototype._clearOutput = function(nodeId) {
@@ -367,6 +398,11 @@ CanvasEngine.prototype._runLoop = async function(nodeId, visited) {
     node._cancelled = false;
     self._setNodeRunState(node, 'running', _t('pipeline.batchStart','开始批次处理...'));
     self._renderAll();
+    // v2.5.56：本 loop 的"已跑 agent"集合——跨批次去重直接挂生成器上游的 agent。
+    // 继承父 loop 的集合（嵌套 loop 场景），退出时恢复父值。
+    var _prevRanAgents = self._loopRanAgents;
+    self._loopRanAgents = _prevRanAgents ? new Set(_prevRanAgents) : new Set();
+    try {
     for (var b = 0; b < batchCount; b++) {
         if (node._cancelled) {
             self._setNodeRunState(node, 'cancelled', _t('pipeline.cancelled','Cancelled'));
@@ -409,6 +445,9 @@ CanvasEngine.prototype._runLoop = async function(nodeId, visited) {
     }
     self._setNodeRunState(node, 'success', _t('pipeline.batchComplete','完成 图片{cursorImg}/{queueLen} 张 · 文本{cursorTxt}/{textLen}段').replace('{cursorImg}',node._cursorImg).replace('{queueLen}',totalImages).replace('{cursorTxt}',node._cursorTxt).replace('{textLen}',totalTexts));
     self._renderAll(); self._markDirty();
+    } finally {
+        self._loopRanAgents = _prevRanAgents;
+    }
 };
 
 CanvasEngine.prototype._cancelLoop = function(nodeId) {
@@ -468,11 +507,25 @@ CanvasEngine.prototype._upsertOutputFromNode = function(sourceId, payload) {
 };
 
 CanvasEngine.prototype._getVideoDurations = function(model) {
-    return this._videoDurations[model] || [5, 8, 10];
+    if (!model) return [5, 8, 10];
+    if (this._videoDurations[model]) return this._videoDurations[model];
+    // 模糊匹配：最长前缀匹配（处理火山模型名带日期后缀，如 doubao-seedance-1-0-pro-250528）
+    let best = null;
+    for (const key in this._videoDurations) {
+        if (model.startsWith(key) && (!best || key.length > best.length)) best = key;
+    }
+    return best ? this._videoDurations[best] : [5, 8, 10];
 };
 
 CanvasEngine.prototype._getVideoResolutions = function(model) {
-    return this._videoResolutions[model] || [{v:'720p',l:'720p'},{v:'1080p',l:'1080p'},{v:'1280x720',l:'1280x720'}];
+    if (!model) return [{v:'720p',l:'720p'},{v:'1080p',l:'1080p'},{v:'1280x720',l:'1280x720'}];
+    if (this._videoResolutions[model]) return this._videoResolutions[model];
+    // 模糊匹配：最长前缀匹配
+    let best = null;
+    for (const key in this._videoResolutions) {
+        if (model.startsWith(key) && (!best || key.length > best.length)) best = key;
+    }
+    return best ? this._videoResolutions[best] : [{v:'720p',l:'720p'},{v:'1080p',l:'1080p'},{v:'1280x720',l:'1280x720'}];
 };
 
 CanvasEngine.prototype._upstreamOrder = function(nodeId, visited = new Set()) {
@@ -541,17 +594,22 @@ CanvasEngine.prototype._executeFrom = async function(nodeId, visited) {
         return;  // loop 内部已处理下游传播，不需要外面的逻辑
     } else if (node.type === 'comfy') {
         // 先执行上游 agent（Loop 由父链 _executeFrom(loopId) 处理，这里不重复执行）
+        // v2.5.56：跳过 visited 中已执行的 agent（链根 agent，避免 LOOP 每批重跑）；
+        //          并用 _loopRanAgents 跨批次去重直接挂生成器上游的 agent（整个 loop 只跑一次）
         var upstreamIds = self._upstreamOrder(nodeId);
         for (var i = 0; i < upstreamIds.length; i++) {
             var un = self.nodes.find(function(n) { return n.id === upstreamIds[i]; });
-            if (un && un.type === 'agent') await self._runAgent(upstreamIds[i]);
+            if (un && un.type === 'agent' && !visited.has(un.id) && !(self._loopRanAgents && self._loopRanAgents.has(un.id))) {
+                await self._runAgent(upstreamIds[i]);
+                if (self._loopRanAgents) self._loopRanAgents.add(un.id);
+            }
         }
         await self._runComfyUI(nodeId);
     } else if (node.type === 'prompt') {
         // 提示词节点是数据节点，不执行，只向下游传播
     } else {
         // image_gen / video_gen → _runPipeline 内部处理上游 agent
-        await self._runPipeline(nodeId);
+        await self._runPipeline(nodeId, visited);
     }
 
     // v2.5.52：取消/错误时阻断下游传播，避免已取消链路的节点继续执行
@@ -587,16 +645,20 @@ CanvasEngine.prototype._runComfyUI = async function(nodeId) {
         var flds = wf?._fields||[];
         var tagMap = {};
         // v2.5.53：文本先入、图片后入，确保同名 fieldId 时图片覆盖文本（而非文本覆盖图片导致 LoadImage 报错）
-        [...inputs.texts, ...inputs.images].forEach(function(v) {
+        // v2.5.59：音频输入并入 tagMap 与字段路由（ComfyUI 音频参考/驱动）
+        [...inputs.texts, ...inputs.images, ...inputs.audios].forEach(function(v) {
             var parts = String(v).split('::'); if(parts.length>=2){ tagMap[parts[0]]=parts.slice(1).join('::'); }
         });
-        var imgIdx = 0, txtIdx = 0;
+        var imgIdx = 0, txtIdx = 0, audIdx = 0;
         flds.forEach(function(f) {
             if (tagMap[f.id]) { fields[f.node+'::'+f.input] = tagMap[f.id]; return; }
             if (f.type==='image'&&imgIdx<inputs.images.length){
                 var v = inputs.images[imgIdx++];
                 fields[f.node+'::'+f.input] = String(v).includes('::') ? String(v).split('::').slice(1).join('::') : v;
-            } else if (f.type!=='image'&&txtIdx<inputs.texts.length){
+            } else if (f.type==='audio'&&audIdx<inputs.audios.length){
+                var a = inputs.audios[audIdx++];
+                fields[f.node+'::'+f.input] = String(a).includes('::') ? String(a).split('::').slice(1).join('::') : a;
+            } else if (f.type!=='image'&&f.type!=='audio'&&txtIdx<inputs.texts.length){
                 var t = inputs.texts[txtIdx++];
                 fields[f.node+'::'+f.input] = String(t).includes('::') ? String(t).split('::').slice(1).join('::') : t;
             } else if (f.default) { fields[f.node+'::'+f.input] = f.default; }
@@ -606,19 +668,22 @@ CanvasEngine.prototype._runComfyUI = async function(nodeId) {
         if (comfySignal.aborted) return;
         var resp = await apiFetch('/api/comfyui/workflows/'+encodeURIComponent(node.comfyWorkflow)+'/run',{
             method:'POST',headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({fields,client_id:nodeId}),
+            body:JSON.stringify({fields,client_id:nodeId,
+                // v2.5.60：节点可配置轮询（超时单位分→秒，间隔单位秒）
+                poll_timeout:(parseInt(node.comfyPollTimeout)||60)*60,
+                poll_interval:parseInt(node.comfyPollInterval)||1}),
             signal: comfySignal
         });
         var data = await resp.json();
         if (comfySignal.aborted) return;
         if (data.detail) throw new Error(typeof data.detail==='string'?data.detail:JSON.stringify(data.detail));
         if(data.images?.length||data.videos?.length){
-            var outputNode = this._ensureOutput(nodeId);
-            if(data.images?.length) outputNode.images = [...(outputNode.images||[]), ...data.images.map(function(u){return typeof u==='string'?{url:u,name:_t('pipeline.comfyImageResult','ComfyUI结果')}:u;})].slice(-50);
-            if(data.videos?.length) outputNode.videos = [...(outputNode.videos||[]), ...data.videos.map(function(u){return typeof u==='string'?{url:u,name:_t('pipeline.comfyVideoResult','ComfyUI视频')}:u;})].slice(-50);
-            this._syncOutputToStore(outputNode);
+            var target = this._ensureOutput(nodeId) || node;
+            if(data.images?.length) target.images = [...(target.images||[]), ...data.images.map(function(u){return typeof u==='string'?{url:u,name:_t('pipeline.comfyImageResult','ComfyUI结果')}:u;})].slice(-50);
+            if(data.videos?.length) target.videos = [...(target.videos||[]), ...data.videos.map(function(u){return typeof u==='string'?{url:u,name:_t('pipeline.comfyVideoResult','ComfyUI视频')}:u;})].slice(-50);
+            this._syncOutputToStore(target);
             this._refreshAssetLibrary();
-            this._loadOutputDimensions(outputNode);
+            this._loadOutputDimensions(target);
             this._setNodeRunState(node,'success',(data.images?.length?_t('pipeline.imageGenerated','图片已生成'):_t('pipeline.videoGenerated','视频已生成')));
         }else{
             this._setNodeRunState(node,'error',_t('pipeline.comfyNoOutput','无输出')+' keys='+JSON.stringify(Object.keys(data)));
@@ -635,7 +700,7 @@ CanvasEngine.prototype._runComfyUI = async function(nodeId) {
     }
 };
 
-CanvasEngine.prototype._runPipeline = async function(nodeId) {
+CanvasEngine.prototype._runPipeline = async function(nodeId, visited) {
     // 取消之前的 pipeline（如果有）
     if (this._activePipelineAbort) {
         this._activePipelineAbort.abort();
@@ -653,9 +718,12 @@ CanvasEngine.prototype._runPipeline = async function(nodeId) {
             if (signal.aborted) return;
             const node = this.nodes.find(n => n.id === uid);
             if (!node) continue;
-            if (node.type === 'agent') {
+            // v2.5.56：跳过 visited 中已执行的 agent（链根 agent，避免 LOOP 每批重跑）；
+            //          并用 _loopRanAgents 跨批次去重直接挂生成器上游的 agent（整个 loop 只跑一次）
+            if (node.type === 'agent' && !(visited && visited.has(node.id)) && !(this._loopRanAgents && this._loopRanAgents.has(node.id))) {
                 this._setNodeRunState(node, 'running', _t('pipeline.pipelineRunning','管线执行中...'));
                 await this._runAgent(uid);
+                if (this._loopRanAgents) this._loopRanAgents.add(node.id);
             }
         }
 
@@ -720,7 +788,12 @@ CanvasEngine.prototype._runGenerator = async function(id) {
 
 CanvasEngine.prototype._runImageGenerator = async function(node, inputs, provider, model) {
     // v2.5.52 修复 TOCTOU：捕获信号快照，避免动态读取被后续运行替换
-    var mySignal = this._activePipelineAbort?.signal;
+    // v2.5.60：单独运行 agent 节点时没有管线 AbortController，api.js 会注入 60s 默认超时；
+    //          而 mimo 长 JSON 生成实测需 80~100s，会被 60s 超时中断导致“运行失败”。
+    //          此处给独立运行兑底一个 300s 超时信号（管线运行仍用管线信号，可随时取消）。
+    var mySignal = this._activePipelineAbort
+        ? this._activePipelineAbort.signal
+        : (typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(300000) : undefined);
     this._setNodeRunState(node, 'running', _t('pipeline.generatingImage','正在生成图片...'));
     try {
         const response = await apiFetch('/api/generate', {
@@ -744,11 +817,11 @@ CanvasEngine.prototype._runImageGenerator = async function(node, inputs, provide
         }
         if (data.detail) throw new Error(data.detail);
         if (!data.url) throw new Error(_t('pipeline.noImageReturned','未返回图片地址'));
-        const outputNode = this._ensureOutput(node.id);
-        outputNode.images = [...(outputNode.images || []), { url: data.url, name: _t('pipeline.resultImage','生成结果') }].slice(-50);
-        outputNode.outputText = '';
-        this._syncOutputToStore(outputNode);
-        this._loadOutputDimensions(outputNode);
+        const target = this._ensureOutput(node.id) || node;
+        target.images = [...(target.images || []), { url: data.url, name: _t('pipeline.resultImage','生成结果') }].slice(-50);
+        target.outputText = '';
+        this._syncOutputToStore(target);
+        this._loadOutputDimensions(target);
         this._setNodeRunState(node, 'success', _t('pipeline.imageGenerated','图片已生成'));
         this._renderAll();
         this._markDirty();
@@ -794,8 +867,10 @@ CanvasEngine.prototype._runVideoGenerator = async function(node, inputs, provide
                 model: model,
                 duration: node.duration || 5,
                 resolution: node.resolution || (inputs.images.length ? 'auto' : '720p'),
+                aspect_ratio: node.aspect_ratio || '16:9',
                 reference_images: inputs.images,
                 generate_audio: node.generate_audio !== false,
+                reference_audio: inputs.audios,
             }),
             signal: signal,  // v2.5.51：传递 abort signal
         });
@@ -834,11 +909,11 @@ CanvasEngine.prototype._runVideoGenerator = async function(node, inputs, provide
             if (pollData.status === 'succeeded') {
                 const videoUrl = pollData.result?.video_url || '';
                 if (!videoUrl) throw new Error(_t('pipeline.videoDoneNoUrl','视频任务完成但无下载地址'));
-                const outputNode = this._ensureOutput(node.id);
-                outputNode.videos = [...(outputNode.videos || []), { url: videoUrl, name: _t('pipeline.resultVideo','生成视频') }].slice(-50);
-                outputNode.outputText = '';
-                this._syncOutputToStore(outputNode);
-                this._loadOutputDimensions(outputNode);
+                const target = this._ensureOutput(node.id) || node;
+                target.videos = [...(target.videos || []), { url: videoUrl, name: _t('pipeline.resultVideo','生成视频') }].slice(-50);
+                target.outputText = '';
+                this._syncOutputToStore(target);
+                this._loadOutputDimensions(target);
                 this._setNodeRunState(node, 'success', _t('pipeline.videoGenerated','视频已生成'));
                 this._renderAll();
                 this._markDirty();
@@ -873,7 +948,12 @@ CanvasEngine.prototype._runVideoGenerator = async function(node, inputs, provide
 
 CanvasEngine.prototype._runAgent = async function(id) {
     // v2.5.52 修复 TOCTOU：捕获信号快照，避免动态读取被后续运行替换
-    var mySignal = this._activePipelineAbort?.signal;
+    // v2.5.60：单独运行 agent 节点时没有管线 AbortController，api.js 会注入 60s 默认超时；
+    //          而 mimo 长 JSON 生成实测需 80~100s，会被 60s 超时中断导致“运行失败”。
+    //          此处给独立运行兑底一个 300s 超时信号（管线运行仍用管线信号，可随时取消）。
+    var mySignal = this._activePipelineAbort
+        ? this._activePipelineAbort.signal
+        : (typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(300000) : undefined);
     const node = this.nodes.find(item => item.id === id);
     if (!node) return;
 
@@ -907,13 +987,13 @@ CanvasEngine.prototype._runAgent = async function(id) {
         this.store.updateNode(id, { lastResult: node.lastResult });
 
         const outputImages = (data.output_images || []).map(url => ({ url, name: _t('pipeline.agentOutput','Agent 输出') }));
-        const outputNode = this._ensureOutput(id);
-        outputNode.outputText = node.lastResult || '';
+        const target = this._ensureOutput(id) || node;
+        if (target !== node) target.outputText = node.lastResult || '';  // 仅输出节点需要 outputText；agent 节点已单独显示 lastResult
         if (outputImages.length) {
-            outputNode.images = [...(outputNode.images || []), ...outputImages].slice(-50);
-            this._loadOutputDimensions(outputNode);
+            target.images = [...(target.images || []), ...outputImages].slice(-50);
+            this._loadOutputDimensions(target);
         }
-        this._syncOutputToStore(outputNode);
+        this._syncOutputToStore(target);
 
         this._setNodeRunState(node, 'success', _t('pipeline.agentComplete','Agent 完成'));
         this._renderAll();

@@ -12,6 +12,7 @@ import httpx
 from .. import config
 from ..logging_config import get_logger
 from ..security.paths import safe_join
+from ..providers.base import _safe_error_text
 
 log = get_logger("workflows")
 
@@ -250,6 +251,16 @@ async def run_workflow(name: str, payload: dict):
 
     client_id = payload.get("client_id", "canvas571")
 
+    # 画布节点可配置轮询：poll_timeout(秒) / poll_interval(秒)，带安全范围钳制
+    try:
+        timeout_seconds = max(60, min(86400, int(payload.get("poll_timeout", 3600))))
+    except Exception:
+        timeout_seconds = 3600
+    try:
+        interval_seconds = max(1, min(60, int(payload.get("poll_interval", 1))))
+    except Exception:
+        interval_seconds = 1
+
     # 选择在线实例（复用 comfyui 的负载均衡）
     from .comfyui import _get_best_backend, _release_backend, _submit_comfyui, _poll_comfyui_task
     addr = await _get_best_backend()
@@ -260,6 +271,7 @@ async def run_workflow(name: str, payload: dict):
         # 将其上传到 ComfyUI 的 input 目录，并替换为 ComfyUI 可识别的文件名。
         # 支持三种来源：本地路径、远程 URL、Data URL。
         IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
+        AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aac", ".opus", ".wma"}
         async with httpx.AsyncClient(timeout=30, follow_redirects=False) as cli:
             for node_id, node_data in workflow.items():
                 if not isinstance(node_data, dict):
@@ -281,7 +293,7 @@ async def run_workflow(name: str, payload: dict):
                         try:
                             header, b64_data = val.split(",", 1)
                             mime = header.split(":")[1].split(";")[0] if ":" in header else "image/png"
-                            ext2 = {"image/png":".png","image/jpeg":".jpg","image/webp":".webp","image/gif":".gif"}.get(mime, ".png")
+                            ext2 = {"image/png":".png","image/jpeg":".jpg","image/webp":".webp","image/gif":".gif","audio/mpeg":".mp3","audio/wav":".wav","audio/mp4":".m4a","audio/ogg":".ogg","audio/flac":".flac","audio/aac":".aac","audio/opus":".opus","audio/x-ms-wma":".wma"}.get(mime, ".png")
                             file_data = __import__("base64").b64decode(b64_data)
                             filename = f"ref_{node_id}_{input_name}{ext2}"
                         except Exception as e:
@@ -299,7 +311,7 @@ async def run_workflow(name: str, payload: dict):
                             r.raise_for_status()
                             file_data = r.content
                             mime = r.headers.get("content-type", "image/png").split(";")[0]
-                            ext2 = {"image/png":".png","image/jpeg":".jpg","image/webp":".webp","image/gif":".gif"}.get(mime, ".png")
+                            ext2 = {"image/png":".png","image/jpeg":".jpg","image/webp":".webp","image/gif":".gif","audio/mpeg":".mp3","audio/wav":".wav","audio/mp4":".m4a","audio/ogg":".ogg","audio/flac":".flac","audio/aac":".aac","audio/opus":".opus","audio/x-ms-wma":".wma"}.get(mime, ".png")
                             filename = f"ref_{node_id}_{input_name}{ext2}"
                         except Exception as e:
                             log.warning(f"下载远程图片失败 {val[:80]}: {e}")
@@ -329,26 +341,39 @@ async def run_workflow(name: str, payload: dict):
                     if not file_data:
                         continue
 
-                    # 上传到 ComfyUI
+                    # 上传到 ComfyUI：音频优先 /upload/audio（新版 ComfyUI）；
+                    # 旧版本（实测 0.34.6 返回 405）不支持时回退 /upload/image（该接口不做类型校验，同样存入 input 目录）
+                    is_audio_val = ext in AUDIO_EXTENSIONS
                     try:
-                        upload_resp = await cli.post(
-                            f"http://{addr}/upload/image",
-                            files={"image": (filename, file_data)},
-                        )
+                        if is_audio_val:
+                            upload_resp = await cli.post(
+                                f"http://{addr}/upload/audio",
+                                files={"audio": (filename, file_data)},
+                            )
+                            if upload_resp.status_code != 200:
+                                upload_resp = await cli.post(
+                                    f"http://{addr}/upload/image",
+                                    files={"image": (filename, file_data)},
+                                )
+                        else:
+                            upload_resp = await cli.post(
+                                f"http://{addr}/upload/image",
+                                files={"image": (filename, file_data)},
+                            )
                         if upload_resp.status_code == 200:
                             comfy_name = upload_resp.json().get("name", filename)
-                            log.info(f"图片已上传到 ComfyUI: {val[:60]} -> {comfy_name}")
+                            log.info(f"{'音频' if is_audio_val else '图片'}已上传到 ComfyUI: {val[:60]} -> {comfy_name}")
                             workflow[node_id]["inputs"][input_name] = comfy_name
                         else:
                             log.error(f"ComfyUI 上传失败 ({upload_resp.status_code}): {_safe_error_text(upload_resp.text)}")
                     except Exception as e:
-                        log.warning(f"上传图片到 ComfyUI 失败: {e}")
+                        log.warning(f"上传{'音频' if is_audio_val else '图片'}到 ComfyUI 失败: {e}")
 
             # 提交
             prompt_id = await _submit_comfyui(addr, workflow, client_id)
 
             # 轮询
-            result = await _poll_comfyui_task(addr, prompt_id)
+            result = await _poll_comfyui_task(addr, prompt_id, timeout_seconds=timeout_seconds, interval_seconds=interval_seconds)
             result["seed"] = seed
             return result
 

@@ -10,11 +10,14 @@ import re
 import shutil
 import asyncio
 import time
+import logging
 from contextlib import asynccontextmanager
 from .. import config
 from ..storage.json_store import store
 from ..utils import KeyedLockManager
 from ..exceptions import NotFoundError, ConflictError, ValidationError
+
+_log = logging.getLogger("canvas571")
 
 
 # v2.5.51：画布线写锁，防止同一画布的并发保存互相覆盖
@@ -154,6 +157,8 @@ async def _sync_canvas_files(canvas: dict):
     复制完成后，将节点中的 URL 替换为画布内部路径：
     /output/images/xxx.png → /canvases/{dir}/files/xxx.png
     /input/xxx.jpg          → /canvases/{dir}/files/xxx.jpg
+
+    保存时 GC：清理 files/ 中不再被任何节点引用的孤儿文件（v2.5.61）。
     """
     cid = canvas["id"]
     files_dir = _canvas_files_dir(cid)
@@ -181,9 +186,6 @@ async def _sync_canvas_files(canvas: dict):
                 if src:
                     refs[src] = val
 
-    if not refs:
-        return
-
     # 复制文件并构建 URL 映射
     url_map: dict[str, str] = {}  # old_url → new_url
     for src_path, old_url in refs.items():
@@ -196,9 +198,6 @@ async def _sync_canvas_files(canvas: dict):
             await asyncio.to_thread(shutil.copy2, src_path, dst_path)
         new_url = f"/canvases/{dir_name}/files/{filename}"
         url_map[old_url] = new_url
-
-    if not url_map:
-        return
 
     # 替换节点中的 URL
     for node in canvas.get("nodes", []):
@@ -217,6 +216,56 @@ async def _sync_canvas_files(canvas: dict):
                 elif isinstance(item, str):
                     if item in url_map:
                         arr[i] = url_map[item]
+
+    # v2.5.61：保存时 GC —— 清理 files/ 中未被任何节点引用的孤儿文件
+    await _gc_canvas_files(canvas, files_dir, dir_name)
+
+
+async def _gc_canvas_files(canvas: dict, files_dir: str, dir_name: str) -> None:
+    """保存时 GC：清理画布 files/ 中未被任何节点引用的孤儿文件。
+
+    引用判断：递归扫描节点所有字段，凡是以 /canvases/{dir}/files/ 开头的
+    URL 视为有效引用（覆盖 url / images[] / videos[] / originalUrl 及未来新增字段）。
+    删除失败（文件被占用等）静默跳过，留待下次保存再清理。
+    """
+    prefix = f"/canvases/{dir_name}/files/"
+    used: set[str] = set()
+
+    def _collect(o) -> None:
+        if isinstance(o, str):
+            if o.startswith(prefix):
+                used.add(os.path.basename(o.split("?", 1)[0]))
+        elif isinstance(o, dict):
+            for v in o.values():
+                _collect(v)
+        elif isinstance(o, list):
+            for v in o:
+                _collect(v)
+
+    for node in canvas.get("nodes", []):
+        _collect(node)
+
+    if not os.path.isdir(files_dir):
+        return
+
+    removed = 0
+    for name in os.listdir(files_dir):
+        if name.startswith("."):
+            continue
+        full = os.path.join(files_dir, name)
+        if not os.path.isfile(full):
+            continue
+        if name in used:
+            continue
+        try:
+            await asyncio.to_thread(os.remove, full)
+            removed += 1
+            _log.info("画布 GC 清理孤儿文件: %s/files/%s", dir_name, name)
+        except OSError:
+            pass  # 文件被占用等，留待下次保存再清理
+
+    if removed:
+        _log.info("画布 GC 完成: %s 清理 %d 个孤儿文件", dir_name, removed)
 
 
 def _resolve_file_source(url: str) -> str:

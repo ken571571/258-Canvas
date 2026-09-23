@@ -3,7 +3,6 @@
     "about": "关于",
     "generate": "API生图",
     "canvas": "无限画布",
-    "chat": "Chat 对话",
     "agents": "Agent",
     "comfyui": "ComfyUI",
     "settings": "API 设置",
@@ -11,6 +10,7 @@
   },
   "toolbar": {
     "image": "图片",
+    "audio": "音频",
     "prompt": "提示词",
     "imageGen": "生图",
     "videoGen": "生视频",
@@ -26,6 +26,7 @@
   "node": {
     "dblClickDesc": "双击添加描述",
     "clickUpload": "点击上传图片",
+    "clickUploadAudio": "点击上传音频",
     "dragFromAsset": "或从右侧资产库拖入",
     "replace": "替换",
     "delete": "删除",
@@ -34,6 +35,7 @@
   },
   "nodeType": {
     "image": "图片",
+    "audio": "音频",
     "prompt": "提示词",
     "imageGen": "图片生成",
     "videoGen": "视频生成",
@@ -96,20 +98,6 @@
     "switchTheme": "切换主题"
   },
   "monitor": {},
-  "chat": {
-    "typeMessage": "输入消息... (Enter 发送, Shift+Enter 换行)",
-    "history": "对话历史",
-    "newChat": "新建对话",
-    "send": "发送",
-    "welcome": "输入消息开始对话，Enter 发送",
-    "emptyList": "暂无对话",
-    "loaded": "对话已加载。",
-    "loadFailed": "加载失败。",
-    "deleteConfirm": "确定删除此对话？",
-    "deleteFailed": "删除失败: ",
-    "noReply": "无回复",
-    "error": "错误: "
-  },
   "common": {
     "cancel": "取消",
     "confirm": "确认",
@@ -204,7 +192,10 @@
     "videoSubmitFailed": "视频任务提交失败",
     "videoSubmitted": "视频任务已提交，预计需 1-10 分钟...",
     "videoCancelled": "视频生成已取消",
-    "videoPolling": "视频生成中 ({t}s)..."
+    "videoPolling": "视频生成中 ({t}s)...",
+    "audioRefConnected": "🎵 音频参考已连接",
+    "audioRefHint": "连线音频节点可作音频参考",
+    "audioRefH3Only": "⚠️ 音频参考仅 MiniMax-H3 支持"
   },
   "auth": {
     "enterPassword": "请输入访问密码"
@@ -275,7 +266,7 @@
     "segHint": "上游文本用 ---- 分隔多段，连接 prompt 节点传入",
     "count": "共 # 张",
     "batchSize": "每批",
-    "perBatch": "张/批",
+    "perBatch": "{bs}张/批",
     "textPlaceholder": "输入文本，用 ---- 分隔多段...",
     "segPreview": "文本段预览",
     "segCount": "段",
@@ -283,7 +274,6 @@
     "batchSummary": "{img}张图/{txt}段文本",
     "imgOnly": "{img}张图",
     "txtOnly": "{txt}段文本",
-    "perBatch": "{bs}张/批",
     "perBatchUnit": "张/批",
     "totalBatches": "共{batches}批",
     "remainder": "剩余{rem}张"
@@ -292,7 +282,15 @@
     "selectWorkflow": "选择工作流...",
     "inputPorts": "输入端口（连接上游节点）",
     "hint": "连接上游节点后点运行，自动按类型映射：图片→图片字段，文本→提示词字段。",
-    "workflowMissing": "工作流已删除，请重新选择或上传"
+    "workflowMissing": "工作流已删除，请重新选择或上传",
+    "pollSettings": "轮询设置",
+    "pollTimeoutMin": "轮询超时（分）",
+    "pollTimeoutMinTip": "轮询超时（分），默认 60",
+    "pollIntervalSec": "轮询间隔（秒）",
+    "pollIntervalSecTip": "轮询间隔（秒），默认 1",
+    "pollLabel": "轮询",
+    "minUnit": "分",
+    "secUnit": "秒"
   },
   "size": {
     "square": "1:1 方形",
@@ -457,7 +455,9 @@
     "uploaded": "上传成功",
     "uploadFailed": "上传失败: ",
     "deleteConfirm": "删除此工作流？",
-    "deleteFailed": "删除失败: "
+    "deleteFailed": "删除失败: ",
+    "audio": "音频",
+    "audioUrl": "音频URL"
   },
   "settings": {
     "platformList": "平台列表",
@@ -595,5 +595,28 @@
     "ratio_43_1080p": "1080P 4:3",
     "ratio_34_1080p": "1080P 3:4",
     "adaptive": "📎 自适应"
+  },
+  "cropper": {
+    "title": "图片裁剪",
+    "noImage": "请先加载图片",
+    "onlyLocal": "仅支持本地图片裁剪，请先下载到资产库",
+    "loadFail": "图片加载失败",
+    "exportFail": "裁剪导出失败",
+    "uploadFail": "上传裁剪图失败",
+    "crop": "✂ 裁剪图片",
+    "recrop": "✂ 重新裁剪",
+    "restore": "↺ 恢复原图",
+    "croppedTag": "已裁剪",
+    "aspectRatio": "裁剪比例",
+    "ratioFree": "自由",
+    "outputSize": "输出尺寸 (px)",
+    "rotation": "旋转角度",
+    "rotateLeft": "↺ 左转90°",
+    "rotateRight": "↻ 右转90°",
+    "zoom": "缩放",
+    "reset": "重置",
+    "cancel": "取消",
+    "confirm": "✓ 确认裁剪",
+    "hint": "拖拽图片=平移 · 滚轮=缩放 · 拖拽顶部蓝点=旋转 · 拖拽白框=调整裁剪"
   }
 }

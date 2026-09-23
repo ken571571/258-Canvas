@@ -300,6 +300,73 @@ class BaseProvider(ABC):
         log.debug(f"图片文件未找到: {url} -> {local}")
         return url
 
+    async def _load_audio_b64(self, url: str) -> str:
+        """将本地音频路径或 http URL 转为 base64 data URL（异步）。
+
+        与 _load_image_b64 同策略：优先本地文件，其次下载远程（含 SSRF 校验）。
+        MiniMax 等平台支持 data URL 形式的多模态参考输入。
+        """
+        if url.startswith("data:"):
+            return url
+        if url.startswith("http://") or url.startswith("https://"):
+            if not await async_validate_safe_url(url):
+                log.warning(f"SSRF 拦截 — 禁止访问内网地址: {url[:80]}")
+                raise ValueError(f"安全拦截：禁止访问内网地址")
+            try:
+                import httpx as _httpx
+                async with _httpx.AsyncClient(timeout=60, follow_redirects=False) as _cli:
+                    r = await _cli.get(url)
+                    redirect_count = 0
+                    while r.is_redirect and redirect_count < 5:
+                        redirect_count += 1
+                        next_url = r.headers.get("location", "")
+                        if not next_url:
+                            break
+                        if next_url.startswith("/"):
+                            from urllib.parse import urljoin
+                            next_url = urljoin(url, next_url)
+                        if not await async_validate_safe_url(next_url):
+                            log.warning(f"SSRF 拦截（重定向目标）: {next_url[:80]}")
+                            raise ValueError(f"安全拦截：重定向目标指向内网地址")
+                        r = await _cli.get(next_url)
+                    r.raise_for_status()
+                    raw = r.content
+                    mime = r.headers.get("content-type", "audio/mp3")
+                    # MiniMax H3 只认 audio/mp3，不认 audio/mpeg
+                    if mime == "audio/mpeg":
+                        mime = "audio/mp3"
+                b64 = base64.b64encode(raw).decode("ascii")
+                log.debug(f"音频转 base64: {url[:80]} ({len(raw)} bytes)")
+                return f"data:{mime};base64,{b64}"
+            except Exception as e:
+                log.debug(f"下载远程音频失败: {url[:80]} — {e}")
+                return url
+        # 本地路径
+        from .. import config
+        from ..security.paths import safe_join
+        if url.startswith("/output/"):
+            local = safe_join(config.OUTPUT_DIR, url[len("/output/"):].lstrip("/"))
+        elif url.startswith("/input/"):
+            local = safe_join(config.INPUT_DIR, url[len("/input/"):].lstrip("/"))
+        elif url.startswith("/assets/"):
+            local = safe_join(config.ASSETS_DIR, url[len("/assets/"):].lstrip("/"))
+        else:
+            local = safe_join(config.BASE_DIR, url.lstrip("/"))
+        if os.path.isfile(local) and local.startswith(str(config.BASE_DIR)):
+            with open(local, "rb") as f:
+                raw = f.read()
+            ext = os.path.splitext(local)[1].lower()
+            mime = {
+                ".mp3": "audio/mp3", ".wav": "audio/wav",
+                ".m4a": "audio/mp4", ".ogg": "audio/ogg",
+                ".flac": "audio/flac", ".aac": "audio/aac",
+                ".opus": "audio/opus", ".wma": "audio/x-ms-wma",
+            }.get(ext, "audio/mp3")
+            log.debug(f"音频转 base64: {url[:80]} ({len(raw)} bytes)")
+            return f"data:{mime};base64,{base64.b64encode(raw).decode('ascii')}"
+        log.debug(f"音频文件未找到: {url} -> {local}")
+        return url
+
     def _save_image(self, raw: bytes, prefix: str = "gen_") -> str:
         """将二进制图片保存到 output/images/ 目录，返回路径。"""
         from .. import config

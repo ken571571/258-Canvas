@@ -1,0 +1,51 @@
+{
+  "catwalk-first-frame-examples": {
+    "name": "catwalk-first-frame-examples",
+    "documents": [
+      {
+        "id": "doc_a976856b",
+        "filename": "prompt-examples.md",
+        "content": "# Catwalk First-Frame Prompt Examples\n\n## Writing Paradigm\n\nOutput = 1 English prompt paragraph, no separators. Structure: main operation first (\"Edit the image: dress the model in this garment...\") → keep garment unchanged → natural pose → composition contract (full body, centered, safe margins, vertical) → scene (user-specified or auto-matched by style) → lighting → realism & commercial quality. No analysis, titles, or explanations.\n\n## Example 1: Elegant satin dress → auto-matched seaside resort (style: casual resort)\n\nEdit the image: dress the model in this garment, a European-American female model with loose wavy hair and natural makeup, in a relaxed standing pose. Keep the garment's color, silhouette, pattern, fabric and all details unchanged. Full-body composition: the model is fully visible head to toe, centered in frame, with safe margins on all sides, vertical portrait orientation. Scene: a seaside resort beach in Europe or America, with waves, sand and sky in frame, bright sunlight, resort atmosphere. Soft natural light, realistic fabric sheen. Sharp garment details, natural proportions, photorealistic professional e-commerce fashion photography.\n\n## Example 2: Streetwear oversize hoodie → auto-matched urban street style (style: streetwear)\n\nEdit the image: dress the model in this garment, a European-American male model with neat short hair and natural makeup, in a relaxed light walking pose, with the hoodie front print fully visible. Keep the garment's color, silhouette, pattern, fabric and all details unchanged. Full-body composition: the model is fully visible head to toe, centered in frame, with safe margins on all sides, vertical portrait orientation. Scene: a European or American city street with brick buildings and a crosswalk in frame, natural daylight, street-style feel. Soft natural side light, realistic fabric texture. Sharp garment details, natural proportions, photorealistic professional e-commerce fashion photography.\n\n## Example 3: Minimal blazer → auto-matched high-end studio (style: minimal urban professional)\n\nEdit the image: dress the model in this garment, a European-American female model with sleek straight hair and refined makeup, in a natural standing pose, with the blazer lapels, front opening and buttons fully visible. Keep the garment's color, silhouette, pattern, fabric and all details unchanged. Full-body composition: the model is fully visible head to toe, centered in frame, with safe margins on all sides, vertical portrait orientation. Scene: a minimal photography studio with a light gray gradient backdrop and professional softbox lighting, high-end fashion editorial feel. Soft even key light, realistic fabric texture. Sharp garment details, natural proportions, photorealistic professional e-commerce fashion photography.\n\n## Example 4: User-specified \"upper body + seaside resort\"\n\nEdit the image: dress the model in this garment, a European-American female model with wavy hair and natural makeup, in a natural pose. Keep the garment's color, silhouette, pattern, fabric and all details unchanged. Upper-body composition: the model is centered in frame, head and shoulders framed with breathing room, head not cropped. Scene: a seaside resort beach in Europe or America, with waves, sand and sky in frame, bright sunlight, resort atmosphere. Soft natural light, sharp garment details, natural skin tone, photorealistic professional e-commerce fashion photography.\n",
+        "chunks": [
+          {
+            "index": 0,
+            "text": "# Catwalk First-Frame Prompt Examples\n\n## Writing Paradigm\n\nOutput = 1 English prompt paragraph, no separators. Structure: main operation first (\"Edit the image: dress the model in this garment...\") → keep garment unchanged → natural pose → composition contract (full body, centered, safe margins, vertical) → scene (user-specified or auto-matched by style) → lighting → realism & commercial quality. No analysis, titles, or explanations."
+          },
+          {
+            "index": 1,
+            "text": "o-matched by style) → lighting → realism & commercial quality. No analysis, titles, or explanations.\n## Example 1: Elegant satin dress → auto-matched seaside resort (style: casual resort)"
+          },
+          {
+            "index": 2,
+            "text": "## Example 1: Elegant satin dress → auto-matched seaside resort (style: casual resort)\nEdit the image: dress the model in this garment, a European-American female model with loose wavy hair and natural makeup, in a relaxed standing pose. Keep the garment's color, silhouette, pattern, fabric and all details unchanged. Full-body composition: the model is fully visible head to toe, centered in frame, with safe margins on all sides, vertical portrait orientation. Scene: a seaside resort beach in Europe or America, with waves, sand and sky in frame, bright sunlight, resort atmosphere. Soft natural light, realistic fabric sheen. Sharp garment details, natural proportions, photorealistic professional e-commerce fashion photography."
+          },
+          {
+            "index": 3,
+            "text": "rp garment details, natural proportions, photorealistic professional e-commerce fashion photography.\n## Example 2: Streetwear oversize hoodie → auto-matched urban street style (style: streetwear)"
+          },
+          {
+            "index": 4,
+            "text": "## Example 2: Streetwear oversize hoodie → auto-matched urban street style (style: streetwear)\nEdit the image: dress the model in this garment, a European-American male model with neat short hair and natural makeup, in a relaxed light walking pose, with the hoodie front print fully visible. Keep the garment's color, silhouette, pattern, fabric and all details unchanged. Full-body composition: the model is fully visible head to toe, centered in frame, with safe margins on all sides, vertical portrait orientation. Scene: a European or American city street with brick buildings and a crosswalk in frame, natural daylight, street-style feel. Soft natural side light, realistic fabric texture. Sharp garment details, natural proportions, photorealistic professional e-commerce fashion photography."
+          },
+          {
+            "index": 5,
+            "text": "rp garment details, natural proportions, photorealistic professional e-commerce fashion photography.\n## Example 3: Minimal blazer → auto-matched high-end studio (style: minimal urban professional)"
+          },
+          {
+            "index": 6,
+            "text": "## Example 3: Minimal blazer → auto-matched high-end studio (style: minimal urban professional)\nEdit the image: dress the model in this garment, a European-American female model with sleek straight hair and refined makeup, in a natural standing pose, with the blazer lapels, front opening and buttons fully visible. Keep the garment's color, silhouette, pattern, fabric and all details unchanged. Full-body composition: the model is fully visible head to toe, centered in frame, with safe margins on all sides, vertical portrait orientation. Scene: a minimal photography studio with a light gray gradient backdrop and professional softbox lighting, high-end fashion editorial feel. Soft even key light, realistic fabric texture. Sharp garment details, natural proportions, photorealistic professional e-commerce fashion photography."
+          },
+          {
+            "index": 7,
+            "text": "rp garment details, natural proportions, photorealistic professional e-commerce fashion photography.\n## Example 4: User-specified \"upper body + seaside resort\""
+          },
+          {
+            "index": 8,
+            "text": "## Example 4: User-specified \"upper body + seaside resort\"\nEdit the image: dress the model in this garment, a European-American female model with wavy hair and natural makeup, in a natural pose. Keep the garment's color, silhouette, pattern, fabric and all details unchanged. Upper-body composition: the model is centered in frame, head and shoulders framed with breathing room, head not cropped. Scene: a seaside resort beach in Europe or America, with waves, sand and sky in frame, bright sunlight, resort atmosphere. Soft natural light, sharp garment details, natural skin tone, photorealistic professional e-commerce fashion photography."
+          }
+        ],
+        "created_at": 1788847766058
+      }
+    ]
+  }
+}

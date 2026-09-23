@@ -35,6 +35,7 @@ async def generate_video(req: VideoGenerateRequest):
             reference_images=req.reference_images,
             resolution=req.resolution,
             generate_audio=req.generate_audio,
+            reference_audio=req.reference_audio,
         )
     except NotImplementedError:
         raise HTTPException(status_code=400, detail=f"{prov.provider_name} 不支持视频生成")
@@ -83,6 +84,7 @@ async def generate_video_async(req: VideoGenerateRequest):
         reference_images=req.reference_images,
         resolution=req.resolution,
         generate_audio=req.generate_audio,
+        reference_audio=req.reference_audio,
     ))
     return {"task_id": tid, "status": "queued"}
 

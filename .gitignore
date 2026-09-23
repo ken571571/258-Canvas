@@ -52,9 +52,21 @@ canvases/*测试*/
 canvases/未命名画布_*/
 # 已跟踪的实际画布：移出版本控制（见 git rm --cached）
 canvases/电商流1_1ea56bdc/
+# 仅本地使用的私人画布（含业务提示词/工作流编排，不上传）
+canvases/服饰电商流_ComfyUI_H3_17d032cd/
 
-# ——— 用户智能体（私人，不上传；保留 .gitkeep 占位） ———
+# ——— 用户智能体（默认不上传；保留 .gitkeep 占位） ———
 agents/*/
+# ——— 以下智能体作为示例上传 ———
+!agents/牙科内容生产智能体_dental-c/
+!agents/牙医数字人H3提示词智能体_dentist-/
+!agents/服装提取提示词_2002a3b3/
+!agents/服饰模特上身提示词_74709494/
+!agents/走秀首帧智能体_d2a065a5/
+!agents/minimax_h3_视频生成智能体_5971a4bb/
+
+# ——— 用户自定义 ComfyUI 工作流（私人，不上传） ———
+workflows/custom/
 
 # ——— AI 工作记忆（planning-with-files 规划文件，不上传） ———
 findings.md

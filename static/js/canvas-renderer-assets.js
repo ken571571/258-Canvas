@@ -28,6 +28,7 @@ CanvasEngine.prototype._renderAssetGrid = function() {
     grid.innerHTML = files.map(f => {
         const isImg = /\.(png|jpg|jpeg|webp|gif)$/i.test(f.name);
         const isVideo = /\.(mp4|webm|mov)$/i.test(f.name);
+        const isAudio = /\.(mp3|wav|m4a|ogg|flac|aac|opus|wma)$/i.test(f.name);
         var thumbHtml;
         if (isImg) {
             thumbHtml = `<img src="${this._esc(f.url)}" alt="${this._esc(f.name)}" onerror="this.style.display='none'">`;
@@ -38,6 +39,8 @@ CanvasEngine.prototype._renderAssetGrid = function() {
                     <span style="font-size:22px;color:#fff;text-shadow:0 2px 6px rgba(0,0,0,.7);opacity:.9;">▶</span>
                 </div>
             </div>`;
+        } else if (isAudio) {
+            thumbHtml = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:28px;">🎵</div>`;
         } else {
             thumbHtml = '📁';
         }
@@ -103,9 +106,17 @@ CanvasEngine.prototype._onAssetClick = function(event) {
     const url = thumb.dataset.assetUrl;
     const name = thumb.dataset.assetName;
     const isVideo = /\.(mp4|webm|mov)$/i.test(name);
+    const isAudio = /\.(mp3|wav|m4a|ogg|flac|aac|opus|wma)$/i.test(name);
 
-    // 视频只响应双击灯箱
-    if (isVideo) {
+    // 音频：无灯箱，双击视为第二次单击（保留第一次单击创建的节点）
+    if (isAudio) {
+        if (event.detail === 2) {
+            clearTimeout(this._assetClickTimer);
+            this._assetClickTimer = null;
+            return;
+        }
+    } else if (isVideo) {
+        // 视频只响应双击灯箱
         if (event.detail === 2) this._showLightbox(url, 'video');
         return;
     }
@@ -132,17 +143,25 @@ CanvasEngine.prototype._onAssetClick = function(event) {
         self._assetClickPending = null;
     }
     var center = self._screenToWorld(window.innerWidth / 2, window.innerHeight / 2);
-    var node = self.createNode('image', center, { url, imageName: name || '', imageWidth: 0, imageHeight: 0 });
+    var node;
+    if (isAudio) {
+        // 音频：创建 audio 节点，无需尺寸探测
+        node = self.createNode('audio', center, { url, imageName: name || '' });
+    } else {
+        node = self.createNode('image', center, { url, imageName: name || '', imageWidth: 0, imageHeight: 0 });
+    }
     self._assetClickPending = node.id;
     self._assetClickTimer = setTimeout(function() {
         // 300ms 后无双击 → 确认保留
         self._assetClickTimer = null;
         self._assetClickPending = null;
-        self._loadImageSize(url).then(function(size) {
-            if (node.url === url && size.w) {
-                self._syncImageNodeSize(node, size.w, size.h);
-                self._renderAll();
-            }
-        });
+        if (!isAudio) {
+            self._loadImageSize(url).then(function(size) {
+                if (node.url === url && size.w) {
+                    self._syncImageNodeSize(node, size.w, size.h);
+                    self._renderAll();
+                }
+            });
+        }
     }, 300);
 };

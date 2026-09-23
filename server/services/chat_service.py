@@ -1,6 +1,7 @@
 """对话业务逻辑层 —— 对话历史管理 + 元数据索引。
 
-从 routes/chat.py 抽取，路由层只保留 HTTP 参数校验和 SSE 流式传输。
+独立「Chat 对话」页面移除后，本模块仅保留 LLM 对话历史的读写能力，
+供 /api/llm 端点（Agent 设计器等内部调用方）维护多轮上下文。
 """
 
 import os
@@ -109,27 +110,3 @@ def trim_history(messages: list, max_messages: int) -> list:
     system_msgs = [m for m in messages if m["role"] == "system"]
     other_msgs = [m for m in messages if m["role"] != "system"]
     return system_msgs + other_msgs[-(max_messages):]
-
-
-def list_conversations() -> list[dict]:
-    """列出所有对话历史（从元数据索引读取，O(1) 避免遍历全部文件）。"""
-    os.makedirs(config.HISTORY_DIR, exist_ok=True)
-    index = load_thread_index()
-    items = list(index.get("threads", {}).values())
-    items.sort(key=lambda c: c.get("updated_at", 0), reverse=True)
-    return items
-
-
-async def delete_conversation(thread_id: str):
-    """删除对话历史（同时清理元数据索引）。"""
-    # v2.5.55 修复：与 chat_stream 的最终 save 共用同一把对话写锁，
-    # 防止"流式进行中删除 → 流结束 save 重建文件+索引 → 对话复活、删除被撤销"
-    async with lock_conversation(thread_id):
-        p = conv_path(thread_id)
-        if os.path.exists(p):
-            os.remove(p)
-        # v2.5.51：索引更新在锁内保护，防止并发删除丢失
-        async with _index_write_lock:
-            index = load_thread_index()
-            index.get("threads", {}).pop(thread_id, None)
-            await save_thread_index(index)

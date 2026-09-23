@@ -51,7 +51,6 @@
         <ui-nav-btn icon="sparkle" page="generate" label="nav.generate" fallback="API生图"></ui-nav-btn>
         <ui-nav-btn icon="grid" page="canvas" label="nav.canvas" fallback="无限画布" hidden-initially></ui-nav-btn>
         <ui-nav-btn icon="grid" page="canvas-gate" label="nav.canvas" fallback="无限画布"></ui-nav-btn>
-        <ui-nav-btn icon="chat" page="chat" label="nav.chat" fallback="Chat 对话"></ui-nav-btn>
         <ui-nav-btn icon="monitor" page="agents" label="nav.agents" fallback="Agent"></ui-nav-btn>
         <ui-nav-btn icon="box" page="comfyui" label="nav.comfyui" fallback="ComfyUI"></ui-nav-btn>
         <ui-nav-btn icon="settings" page="settings" label="nav.settings" fallback="API 设置"></ui-nav-btn>
@@ -89,8 +88,7 @@
         <iframe id="frame-generate" data-src="/static/generate.html" scrolling="yes"></iframe>
         <iframe id="frame-canvas-gate" data-src="/static/canvas-gate.html" scrolling="yes"></iframe>
         <iframe id="frame-canvas" data-src="/static/canvas.html?v=15" scrolling="yes"></iframe>
-        <iframe id="frame-chat" data-src="/static/chat.html?v=3" scrolling="yes"></iframe>
-        <iframe id="frame-settings" data-src="/static/settings.html?v=7" scrolling="yes"></iframe>
+        <iframe id="frame-settings" data-src="/static/settings.html?v=8" scrolling="yes"></iframe>
         <iframe id="frame-agents" data-src="/static/agents.html?v=2" scrolling="yes"></iframe>
         <iframe id="frame-comfyui" data-src="/static/comfyui.html" scrolling="yes"></iframe>
         <iframe id="frame-about" data-src="/static/about.html" scrolling="yes"></iframe>
@@ -220,6 +218,11 @@ document.addEventListener('click', function(e) {
     applySidebarMode(localStorage.sidebarMode || 'auto');
     const page = localStorage.activePage || 'generate';
     const btn = document.querySelector('[data-page="' + page + '"]');
+    // 若上次停留的页面已被移除（如旧版本残留的 chat 页），回退到默认页，避免找不到 iframe
+    if (!document.getElementById('frame-' + page)) {
+      navTo('generate', document.querySelector('[data-page="generate"]'));
+      return;
+    }
     navTo(page, btn);
 })();
 

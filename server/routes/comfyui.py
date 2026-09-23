@@ -157,7 +157,7 @@ async def _submit_comfyui(addr: str, workflow: dict, client_id: str = "canvas571
             raise HTTPException(status_code=502, detail=f"ComfyUI 错误: {detail}")
 
 
-async def _poll_comfyui_task(addr: str, prompt_id: str, timeout_seconds: int = 300) -> dict:
+async def _poll_comfyui_task(addr: str, prompt_id: str, timeout_seconds: int = 3600, interval_seconds: int = 1) -> dict:
     """轮询 ComfyUI 任务直到完成。
 
     返回: {"images": [...], "videos": [...], "prompt_id": "...", "backend": "..."}
@@ -166,12 +166,17 @@ async def _poll_comfyui_task(addr: str, prompt_id: str, timeout_seconds: int = 3
     """
     import asyncio as _asyncio
     consecutive_errors = 0
+    elapsed = 0
+    last_log = 0
+    interval_seconds = max(1, min(60, int(interval_seconds)))
     async with httpx.AsyncClient(timeout=5, follow_redirects=False) as cli:
-        for _ in range(timeout_seconds):
+        while elapsed < timeout_seconds:
             try:
                 resp = await cli.get(f"http://{addr}/history/{prompt_id}")
                 hist = resp.json()
                 consecutive_errors = 0  # 成功响应后重置
+                if prompt_id not in hist:
+                    log.info(f"ComfyUI 轮询 pid 未命中: status={resp.status_code}, size={len(resp.content)}, hist_keys={list(hist.keys())[:5]}")
                 if prompt_id in hist:
                     outputs = hist[prompt_id].get("outputs", {})
                     images = []
@@ -186,10 +191,10 @@ async def _poll_comfyui_task(addr: str, prompt_id: str, timeout_seconds: int = 3
                             # 视频扩展名 → 走视频下载
                             if ext in (".mp4", ".webm", ".mov", ".avi", ".mkv"):
                                 video_url = f"http://{addr}/view?filename={quote(fn,safe='')}&type=output&subfolder={quote(sub,safe='')}" if sub else f"http://{addr}/view?filename={quote(fn,safe='')}&type=output"
-                                local_url = await _download_comfyui_media(addr, fn, sub or "video")
+                                local_url = await _download_comfyui_media(addr, fn, sub)
                                 videos.append(local_url or video_url)
                             elif ext in (".gif",):
-                                local_url = await _download_comfyui_media(addr, fn, sub or "gifs")
+                                local_url = await _download_comfyui_media(addr, fn, sub)
                                 videos.append(local_url or f"http://{addr}/view?filename={quote(fn,safe='')}&type=output&subfolder={quote(sub,safe='')}" if sub else f"http://{addr}/view?filename={quote(fn,safe='')}&type=output")
                             else:
                                 # 图片也下载到本地，避免局域网客户端无法直连 ComfyUI
@@ -200,7 +205,7 @@ async def _poll_comfyui_task(addr: str, prompt_id: str, timeout_seconds: int = 3
                             for item in (node_out.get(video_key) or []):
                                 fn = item.get("filename", "")
                                 if not fn: continue
-                                sub = item.get("subfolder", "") or video_key
+                                sub = item.get("subfolder", "")
                                 video_url = f"http://{addr}/view?filename={quote(fn,safe='')}&type=output&subfolder={quote(sub,safe='')}"
                                 local_url = await _download_comfyui_media(addr, fn, sub)
                                 videos.append(local_url or video_url)
@@ -212,7 +217,11 @@ async def _poll_comfyui_task(addr: str, prompt_id: str, timeout_seconds: int = 3
                     log.warning(f"ComfyUI 轮询瞬断 ({consecutive_errors} 次): {addr} — {e}")
                 if consecutive_errors >= 30:
                     raise HTTPException(status_code=502, detail=f"ComfyUI 后端连续 {consecutive_errors} 次无响应: {addr}")
-            await _asyncio.sleep(1)
+            await _asyncio.sleep(interval_seconds)
+            elapsed += interval_seconds
+            if elapsed - last_log >= 60:
+                last_log = elapsed
+                log.info(f"ComfyUI 任务仍在运行中: {prompt_id} 已等待 {elapsed}s / 上限 {timeout_seconds}s")
 
     raise HTTPException(status_code=504, detail="ComfyUI 渲染超时")
 
@@ -282,6 +291,6 @@ async def comfyui_generate(req: ComfyGenerateReq):
 
     try:
         prompt_id = await _submit_comfyui(addr, req.workflow, req.client_id or "canvas571")
-        return await _poll_comfyui_task(addr, prompt_id)
+        return await _poll_comfyui_task(addr, prompt_id, timeout_seconds=3600)
     finally:
         await _release_backend(addr)

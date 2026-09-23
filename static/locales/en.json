@@ -3,7 +3,6 @@
     "about": "About",
     "generate": "API Image",
     "canvas": "Canvas",
-    "chat": "Chat",
     "agents": "Agents",
     "comfyui": "ComfyUI",
     "settings": "Settings",
@@ -21,7 +20,8 @@
     "save": "Save",
     "assets": "Assets",
     "status": "Status",
-    "waiting": "Waiting"
+    "waiting": "Waiting",
+    "audio": "Audio"
   },
   "node": {
     "dblClickDesc": "Double-click to add description",
@@ -30,7 +30,8 @@
     "replace": "Replace",
     "delete": "Delete",
     "inputPrompt": "Enter prompt...",
-    "unknownType": "Unknown node type"
+    "unknownType": "Unknown node type",
+    "clickUploadAudio": "Click to upload audio"
   },
   "nodeType": {
     "image": "Image",
@@ -40,7 +41,8 @@
     "agent": "Agent",
     "loop": "Loop",
     "output": "Output",
-    "comfy": "ComfyUI"
+    "comfy": "ComfyUI",
+    "audio": "Audio"
   },
   "nodeState": {
     "running": "Running",
@@ -96,20 +98,6 @@
     "switchTheme": "Toggle Theme"
   },
   "monitor": {},
-  "chat": {
-    "typeMessage": "Type a message... (Enter to send, Shift+Enter for new line)",
-    "history": "History",
-    "newChat": "New Chat",
-    "send": "Send",
-    "welcome": "Type a message to start, Enter to send",
-    "emptyList": "No conversations",
-    "loaded": "Conversation loaded.",
-    "loadFailed": "Load failed.",
-    "deleteConfirm": "Delete this conversation?",
-    "deleteFailed": "Delete failed: ",
-    "noReply": "No reply",
-    "error": "Error: "
-  },
   "common": {
     "cancel": "Cancel",
     "confirm": "Confirm",
@@ -204,7 +192,10 @@
     "videoSubmitFailed": "Video submission failed",
     "videoSubmitted": "Video task submitted, estimated 1-10 minutes...",
     "videoCancelled": "Video generation cancelled",
-    "videoPolling": "Video generating ({t}s)..."
+    "videoPolling": "Video generating ({t}s)...",
+    "audioRefConnected": "🎵 Audio reference connected",
+    "audioRefHint": "Connect an audio node for audio reference",
+    "audioRefH3Only": "⚠️ Audio reference requires MiniMax-H3"
   },
   "auth": {
     "enterPassword": "Enter access password"
@@ -275,7 +266,7 @@
     "segHint": "Upstream text separated by ---- , connect a prompt node",
     "count": "# items",
     "batchSize": "per batch",
-    "perBatch": "img/batch",
+    "perBatch": "{bs}/batch",
     "textPlaceholder": "Enter text, separate sections with ----",
     "segPreview": "Text segments",
     "segCount": "segments",
@@ -283,7 +274,6 @@
     "batchSummary": "{img}img/{txt}txt",
     "imgOnly": "{img} images",
     "txtOnly": "{txt} texts",
-    "perBatch": "{bs}/batch",
     "perBatchUnit": "/batch",
     "totalBatches": "{batches} batches",
     "remainder": "{rem} left"
@@ -292,7 +282,15 @@
     "selectWorkflow": "Select workflow...",
     "inputPorts": "Input ports (connect upstream nodes)",
     "hint": "Connect upstream and click Run. Auto-mapping: image→image field, text→prompt field.",
-    "workflowMissing": "Workflow deleted, please re-select or upload"
+    "workflowMissing": "Workflow deleted, please re-select or upload",
+    "pollSettings": "Polling",
+    "pollTimeoutMin": "Timeout (min)",
+    "pollTimeoutMinTip": "Polling timeout (min), default 60",
+    "pollIntervalSec": "Interval (s)",
+    "pollIntervalSecTip": "Polling interval (s), default 1",
+    "pollLabel": "Poll",
+    "minUnit": "min",
+    "secUnit": "s"
   },
   "size": {
     "square": "1:1 Square",
@@ -457,7 +455,9 @@
     "uploaded": "Uploaded",
     "uploadFailed": "Upload failed: ",
     "deleteConfirm": "Delete this workflow?",
-    "deleteFailed": "Delete failed: "
+    "deleteFailed": "Delete failed: ",
+    "audio": "Audio",
+    "audioUrl": "Audio URL"
   },
   "settings": {
     "platformList": "Platforms",
@@ -595,5 +595,28 @@
     "ratio_43_1080p": "1080P 4:3",
     "ratio_34_1080p": "1080P 3:4",
     "adaptive": "📎 Adaptive"
+  },
+  "cropper": {
+    "title": "Image Crop",
+    "noImage": "Please load an image first",
+    "onlyLocal": "Only local images supported, please download to assets first",
+    "loadFail": "Failed to load image",
+    "exportFail": "Crop export failed",
+    "uploadFail": "Failed to upload cropped image",
+    "crop": "✂ Crop Image",
+    "recrop": "✂ Re-crop",
+    "restore": "↺ Restore Original",
+    "croppedTag": "Cropped",
+    "aspectRatio": "Aspect Ratio",
+    "ratioFree": "Free",
+    "outputSize": "Output Size (px)",
+    "rotation": "Rotation",
+    "rotateLeft": "↺ Rotate Left 90°",
+    "rotateRight": "↻ Rotate Right 90°",
+    "zoom": "Zoom",
+    "reset": "Reset",
+    "cancel": "Cancel",
+    "confirm": "✓ Apply Crop",
+    "hint": "Drag image=pan · Wheel=zoom · Drag blue dot=rotate · Drag frame=crop"
   }
 }

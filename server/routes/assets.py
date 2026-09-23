@@ -16,7 +16,7 @@ async def upload_file(file: UploadFile = File(...)):
     raw = await read_upload_safely(file, config.LOCAL_IMAGE_IMPORT_MAX_BYTES)  # v2.5.40：流式读取防 OOM
 
     ext = os.path.splitext(file.filename or ".png")[1].lower()
-    if ext not in config.LOCAL_IMAGE_IMPORT_EXTS:
+    if ext not in config.LOCAL_IMAGE_IMPORT_EXTS and ext not in config.LOCAL_AUDIO_IMPORT_EXTS:
         raise HTTPException(status_code=400, detail=f"不支持的文件格式: {ext}")
 
     h = hashlib.md5(raw).hexdigest()[:12]
@@ -54,7 +54,7 @@ def list_assets(dir: str = "input"):
     if not os.path.isdir(scan_dir):
         return {"files": []}
 
-    exts = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".mp4", ".webm", ".mov"}
+    exts = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".mp4", ".webm", ".mov", ".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aac", ".opus", ".wma"}
 
     def _scan(directory: str, rel: str = "") -> list:
         items = []

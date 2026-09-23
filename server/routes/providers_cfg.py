@@ -189,6 +189,7 @@ _URL_PROTOCOL_MAP = [
     ("openai.com", "openai"),
     ("api.deepseek.com", "deepseek"),
     ("aihubmix.com", "openai"),
+    ("minimax.cn", "minimax"),
 ]
 
 def _detect_protocol_from_url(url: str) -> str:

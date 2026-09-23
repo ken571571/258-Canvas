@@ -122,6 +122,8 @@ class CanvasEngine {
                 groups: this.groups,
                 viewport: this.view
             });
+            // v2.5.58：打开画布时聚焦到内容包围盒，避免遗留在空白原点
+            this._focusContent();
             this._renderAll();
             this._loadRetries = 0;  // 成功后重置
         } catch (error) {
@@ -256,7 +258,7 @@ class CanvasEngine {
     createNode(type, point = null, overrides = null) {
         const pt = point || this._menuPoint || this._screenToWorld(window.innerWidth / 2, window.innerHeight / 2);
         const labels = {
-            image: _t('nodeType.image','图片'), prompt: _t('nodeType.prompt','提示词'),
+            image: _t('nodeType.image','图片'), audio: _t('nodeType.audio','音频'), prompt: _t('nodeType.prompt','提示词'),
             image_gen: _t('nodeType.imageGen','图片生成'),
             video_gen: _t('nodeType.videoGen','视频生成'),
             agent: _t('nodeType.agent','Agent'), loop: _t('nodeType.loop','列队'), output: _t('nodeType.output','输出'), comfy: _t('nodeType.comfy','ComfyUI'),
@@ -549,6 +551,16 @@ class CanvasEngine {
         this._markDirty();
     }
 
+    _removeAudio(nodeId) {
+        const node = this.nodes.find(item => item.id === nodeId);
+        if (!node) return;
+        node.url = '';
+        node.imageName = '';
+        this.store.updateNode(nodeId, { url: '', imageName: '' });
+        this._renderAll();
+        this._markDirty();
+    }
+
     _loadImageSize(url) {
         return new Promise((resolve) => {
             var img = new Image();
@@ -711,9 +723,7 @@ class CanvasEngine {
             if (node) return node;
         }
 
-        const source = this.nodes.find(item => item.id === sourceId);
-
-        // 2) 存在无入边的孤立输出节点 → 优先复用（用户手动放置的）
+        // 2) 存在无入边的孤立输出节点 → 优先复用（用户手动放置但未连线）
         const connectedOutputIds = new Set(this.connections.map(c => c.to));
         const orphanOutput = this.nodes.find(n => n.type === 'output' && !connectedOutputIds.has(n.id));
         if (orphanOutput) {
@@ -723,15 +733,9 @@ class CanvasEngine {
             return orphanOutput;
         }
 
-        // 3) 新建输出节点
-        const output = this.createNode('output', {
-            x: (source?.x || 0) + 340,
-            y: source?.y || 0,
-        });
-        const conn = { id: this._uid('c'), from: sourceId, to: output.id };
-        this.connections.push(conn);
-        this.store.addConnection(conn);  // 同步 Store
-        return output;
+        // v2.5.57：不再自动新建输出节点（移除"自动跳出"行为）。
+        // 无可用输出节点时返回 null，调用方将结果存到生成器节点自身并就地渲染（见 _renderResultGrid）。
+        return null;
     }
 
     /** 管线产出写入 output 节点后同步 Store */
@@ -752,6 +756,7 @@ class CanvasEngine {
         menu.innerHTML = `
             ${!hasSelection ? `
             <button onclick="window._canvas.createNode('image');document.getElementById('create-menu').style.display='none'">${_tt('图片节点')}</button>
+            <button onclick="window._canvas.createNode('audio');document.getElementById('create-menu').style.display='none'">${_tt('音频节点')}</button>
             <button onclick="window._canvas.createNode('prompt');document.getElementById('create-menu').style.display='none'">${_tt('提示词节点')}</button>
             <button onclick="window._canvas.createNode('image_gen');document.getElementById('create-menu').style.display='none'">🖼 ${_tt('图片生成')}</button>
             <button onclick="window._canvas.createNode('video_gen');document.getElementById('create-menu').style.display='none'">🎬 ${_tt('视频生成')}</button>
@@ -825,4 +830,423 @@ class CanvasEngine {
             .replace(/"/g, '&quot;')   // ③ 双引号（HTML 属性分隔符）
             .replace(/&/g, '&amp;');   // ④ & 符号（HTML 实体起始符，必须最后）
     }
+
+    // ================================================================
+    // 图片裁剪器（v2.5.59）：自由旋转 + 平移 + 缩放 + 裁剪框
+    // ================================================================
+
+    _openCropper(nodeId) {
+        var node = this.nodes.find(function(n) { return n.id === nodeId; });
+        if (!node || !node.url) { alert(_t('cropper.noImage','请先加载图片')); return; }
+        if (!node.url.startsWith('/')) {
+            alert(_t('cropper.onlyLocal','仅支持本地图片裁剪，请先下载到资产库'));
+            return;
+        }
+        var overlay = document.getElementById('cropper-overlay');
+        if (!overlay) return;
+        overlay.style.display = 'flex';
+        var self = this;
+        var img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = function() {
+            var previewEl = document.getElementById('cropper-preview');
+            var pw = previewEl.clientWidth, ph = previewEl.clientHeight;
+            var baseScale = Math.min(pw / img.width, ph / img.height) * 0.72;
+            var cropW = Math.min(pw * 0.7, img.width * baseScale);
+            var cropH = Math.min(ph * 0.7, img.height * baseScale);
+            self._crop = {
+                nodeId: nodeId, originalUrl: node.originalUrl || '',
+                img: img, imgW: img.width, imgH: img.height,
+                rotation: 0, translateX: 0, translateY: 0, scale: 1,
+                baseScale: baseScale,
+                cropX: (pw - cropW) / 2, cropY: (ph - cropH) / 2,
+                cropW: cropW, cropH: cropH,
+                aspectRatio: null,
+                outputW: Math.round(cropW / baseScale), outputH: Math.round(cropH / baseScale),
+                dragMode: null, startX: 0, startY: 0, startState: null,
+                outputFocus: 'w',
+                _handlers: {}
+            };
+            var cropImg = document.getElementById('cropper-image');
+            cropImg.src = img.src;
+            cropImg.width = img.width;
+            cropImg.height = img.height;
+            self._cropperBindEvents();
+            // 恢复上次使用的比例
+            var lastRatio = localStorage.getItem('cropper_last_ratio');
+            if (lastRatio && lastRatio !== 'free') {
+                self._crop.aspectRatio = parseFloat(lastRatio);
+                self._cropperApplyRatio();
+                var allRatioBtns = document.querySelectorAll('#cropper-ratio-btns button');
+                allRatioBtns.forEach(function(b) {
+                    b.classList.toggle('active', b.getAttribute('data-ratio') === lastRatio);
+                });
+            }
+            self._cropperRender();
+        };
+        img.onerror = function() {
+            alert(_t('cropper.loadFail','图片加载失败'));
+            self._closeCropper();
+        };
+        img.src = node.url;
+    }
+
+    _closeCropper() {
+        var overlay = document.getElementById('cropper-overlay');
+        if (overlay) overlay.style.display = 'none';
+        if (this._crop) {
+            this._cropperUnbindEvents();
+            this._crop = null;
+        }
+    }
+
+    _cropperBindEvents() {
+        var self = this;
+        var c = this._crop;
+        var preview = document.getElementById('cropper-preview');
+        var h = {};
+        h.down = function(e) { self._cropperOnMouseDown(e); };
+        h.move = function(e) { self._cropperOnMouseMove(e); };
+        h.up = function(e) { self._cropperOnMouseUp(e); };
+        h.wheel = function(e) { self._cropperOnWheel(e); };
+        h.key = function(e) { if (e.key === 'Escape') self._closeCropper(); };
+        preview.addEventListener('mousedown', h.down);
+        document.addEventListener('mousemove', h.move);
+        document.addEventListener('mouseup', h.up);
+        preview.addEventListener('wheel', h.wheel, { passive: false });
+        document.addEventListener('keydown', h.key);
+        var ratioBtns = document.querySelectorAll('#cropper-ratio-btns button');
+        h.ratio = function(e) {
+            var btn = e.currentTarget;
+            ratioBtns.forEach(function(b) { b.classList.remove('active'); });
+            btn.classList.add('active');
+            var r = btn.getAttribute('data-ratio');
+            localStorage.setItem('cropper_last_ratio', r);
+            self._crop.aspectRatio = (r === 'free') ? null : parseFloat(r);
+            self._crop.outputFocus = 'w';
+            if (self._crop.aspectRatio) self._cropperApplyRatio();
+            self._cropperRender();
+        };
+        ratioBtns.forEach(function(b) { b.addEventListener('click', h.ratio); });
+        h.outW = function() { self._cropperOnOutputChange('w'); };
+        h.outH = function() { self._cropperOnOutputChange('h'); };
+        h.focusW = function() { if (self._crop && self._crop.aspectRatio) { self._crop.outputFocus = 'w'; self._cropperRender(); } };
+        h.focusH = function() { if (self._crop && self._crop.aspectRatio) { self._crop.outputFocus = 'h'; self._cropperRender(); } };
+        h.inputW = function() { if (self._crop && self._crop.aspectRatio && self._crop.outputFocus !== 'w') { self._cropperRender(); } };
+        h.inputH = function() { if (self._crop && self._crop.aspectRatio && self._crop.outputFocus !== 'h') { self._cropperRender(); } };
+        document.getElementById('cropper-output-w').addEventListener('change', h.outW);
+        document.getElementById('cropper-output-h').addEventListener('change', h.outH);
+        document.getElementById('cropper-output-w').addEventListener('focus', h.focusW);
+        document.getElementById('cropper-output-h').addEventListener('focus', h.focusH);
+        document.getElementById('cropper-output-w').addEventListener('input', h.inputW);
+        document.getElementById('cropper-output-h').addEventListener('input', h.inputH);
+        h.angle = function() {
+            var v = parseFloat(document.getElementById('cropper-angle-input').value);
+            if (!isNaN(v)) { self._crop.rotation = v; self._cropperRender(); }
+        };
+        document.getElementById('cropper-angle-input').addEventListener('change', h.angle);
+        h.zoom = function() {
+            self._crop.scale = parseFloat(document.getElementById('cropper-zoom-slider').value);
+            self._cropperRender();
+        };
+        document.getElementById('cropper-zoom-slider').addEventListener('input', h.zoom);
+        c._handlers = h;
+        c._ratioBtns = ratioBtns;
+    }
+
+    _cropperUnbindEvents() {
+        var c = this._crop;
+        if (!c || !c._handlers) return;
+        var h = c._handlers;
+        var preview = document.getElementById('cropper-preview');
+        preview.removeEventListener('mousedown', h.down);
+        document.removeEventListener('mousemove', h.move);
+        document.removeEventListener('mouseup', h.up);
+        preview.removeEventListener('wheel', h.wheel);
+        document.removeEventListener('keydown', h.key);
+        if (c._ratioBtns) c._ratioBtns.forEach(function(b) { b.removeEventListener('click', h.ratio); });
+        var ow = document.getElementById('cropper-output-w');
+        var oh = document.getElementById('cropper-output-h');
+        var ai = document.getElementById('cropper-angle-input');
+        var zs = document.getElementById('cropper-zoom-slider');
+        if (ow) { ow.removeEventListener('change', h.outW); ow.removeEventListener('focus', h.focusW); ow.removeEventListener('input', h.inputW); }
+        if (oh) { oh.removeEventListener('change', h.outH); oh.removeEventListener('focus', h.focusH); oh.removeEventListener('input', h.inputH); }
+        if (ai) ai.removeEventListener('change', h.angle);
+        if (zs) zs.removeEventListener('input', h.zoom);
+    }
+
+    _cropperRender() {
+        var c = this._crop;
+        if (!c) return;
+        var img = document.getElementById('cropper-image');
+        var totalScale = c.baseScale * c.scale;
+        img.style.transform = 'translate(calc(-50% + ' + c.translateX + 'px), calc(-50% + ' + c.translateY + 'px)) rotate(' + c.rotation + 'deg) scale(' + totalScale + ')';
+        var frame = document.getElementById('cropper-frame');
+        frame.style.left = c.cropX + 'px';
+        frame.style.top = c.cropY + 'px';
+        frame.style.width = c.cropW + 'px';
+        frame.style.height = c.cropH + 'px';
+        var rh = document.getElementById('cropper-rotate-handle');
+        rh.style.left = (c.cropX + c.cropW / 2) + 'px';
+        rh.style.top = (c.cropY - 52) + 'px';
+        rh.style.transform = 'translateX(-50%)';
+        document.getElementById('cropper-angle-display').textContent = c.rotation.toFixed(1) + '\u00B0';
+        document.getElementById('cropper-size-display').textContent = c.outputW + ' \u00D7 ' + c.outputH;
+        document.getElementById('cropper-angle-input').value = c.rotation.toFixed(1);
+        var wInput = document.getElementById('cropper-output-w');
+        var hInput = document.getElementById('cropper-output-h');
+        wInput.value = c.outputW;
+        hInput.value = c.outputH;
+        if (c.aspectRatio) {
+            if (c.outputFocus === 'w') {
+                wInput.readOnly = false; wInput.style.opacity = '1';
+                hInput.readOnly = true; hInput.style.opacity = '0.45';
+            } else {
+                wInput.readOnly = true; wInput.style.opacity = '0.45';
+                hInput.readOnly = false; hInput.style.opacity = '1';
+            }
+        } else {
+            wInput.readOnly = false; wInput.style.opacity = '1';
+            hInput.readOnly = false; hInput.style.opacity = '1';
+        }
+        document.getElementById('cropper-zoom-slider').value = c.scale;
+        document.getElementById('cropper-zoom-value').textContent = Math.round(c.scale * 100) + '%';
+    }
+
+    _cropperOnMouseDown(e) {
+        var c = this._crop;
+        if (!c) return;
+        e.preventDefault();
+        var target = e.target;
+        var previewEl = document.getElementById('cropper-preview');
+        var pw = previewEl.clientWidth, ph = previewEl.clientHeight;
+        var rect = previewEl.getBoundingClientRect();
+        c.startX = e.clientX;
+        c.startY = e.clientY;
+        c.startState = {
+            translateX: c.translateX, translateY: c.translateY,
+            rotation: c.rotation, scale: c.scale,
+            cropX: c.cropX, cropY: c.cropY, cropW: c.cropW, cropH: c.cropH,
+            centerX: rect.left + pw / 2 + c.translateX,
+            centerY: rect.top + ph / 2 + c.translateY,
+            startAngle: Math.atan2(e.clientY - (rect.top + ph / 2 + c.translateY), e.clientX - (rect.left + pw / 2 + c.translateX)) * 180 / Math.PI
+        };
+        if (target.classList.contains('cropper-rotate-handle') || target.closest('.cropper-rotate-handle')) {
+            c.dragMode = 'rotate';
+        } else if (target.classList.contains('cropper-handle')) {
+            c.dragMode = 'crop-resize';
+            c.startState.dir = target.getAttribute('data-dir');
+        } else if (target.classList.contains('cropper-frame') || target.closest('.cropper-frame')) {
+            c.dragMode = 'crop-move';
+        } else {
+            c.dragMode = 'move';
+        }
+    }
+
+    _cropperOnMouseMove(e) {
+        var c = this._crop;
+        if (!c || !c.dragMode) return;
+        var previewEl = document.getElementById('cropper-preview');
+        var pw = previewEl.clientWidth, ph = previewEl.clientHeight;
+        var dx = e.clientX - c.startX, dy = e.clientY - c.startY;
+        var s = c.startState;
+        if (c.dragMode === 'move') {
+            c.translateX = s.translateX + dx;
+            c.translateY = s.translateY + dy;
+        } else if (c.dragMode === 'rotate') {
+            var curAngle = Math.atan2(e.clientY - s.centerY, e.clientX - s.centerX) * 180 / Math.PI;
+            c.rotation = s.rotation + (curAngle - s.startAngle);
+            while (c.rotation > 180) c.rotation -= 360;
+            while (c.rotation < -180) c.rotation += 360;
+        } else if (c.dragMode === 'crop-move') {
+            c.cropX = Math.max(0, Math.min(s.cropX + dx, pw - c.cropW));
+            c.cropY = Math.max(0, Math.min(s.cropY + dy, ph - c.cropH));
+            this._cropperRecalcOutput();
+        } else if (c.dragMode === 'crop-resize') {
+            var dir = s.dir;
+            var nx = s.cropX, ny = s.cropY, nw = s.cropW, nh = s.cropH;
+            if (dir.indexOf('e') !== -1) nw = s.cropW + dx;
+            if (dir.indexOf('w') !== -1) { nw = s.cropW - dx; nx = s.cropX + dx; }
+            if (dir.indexOf('s') !== -1) nh = s.cropH + dy;
+            if (dir.indexOf('n') !== -1) { nh = s.cropH - dy; ny = s.cropY + dy; }
+            nw = Math.max(20, nw); nh = Math.max(20, nh);
+            if (c.aspectRatio) {
+                if (dir === 'n' || dir === 's') { nw = nh * c.aspectRatio; nx = s.cropX + (s.cropW - nw) / 2; }
+                else if (dir === 'e' || dir === 'w') { nh = nw / c.aspectRatio; ny = s.cropY + (s.cropH - nh) / 2; }
+                else { var rr = Math.max(nw / s.cropW, nh / s.cropH); nw = s.cropW * rr; nh = s.cropH * rr; nx = s.cropX + (s.cropW - nw) / 2; ny = s.cropY + (s.cropH - nh) / 2; }
+            }
+            nx = Math.max(0, nx); ny = Math.max(0, ny);
+            nw = Math.min(nw, pw - nx); nh = Math.min(nh, ph - ny);
+            c.cropX = nx; c.cropY = ny; c.cropW = nw; c.cropH = nh;
+            this._cropperRecalcOutput();
+        }
+        this._cropperRender();
+    }
+
+    _cropperOnMouseUp() {
+        if (this._crop) this._crop.dragMode = null;
+    }
+
+    _cropperOnWheel(e) {
+        e.preventDefault();
+        var c = this._crop;
+        if (!c) return;
+        var delta = e.deltaY > 0 ? 0.92 : 1.08;
+        c.scale = Math.max(0.1, Math.min(5, c.scale * delta));
+        this._cropperRecalcOutput();
+        this._cropperRender();
+    }
+
+    _cropperRotate(deg) {
+        var c = this._crop;
+        if (!c) return;
+        c.rotation += deg;
+        while (c.rotation > 180) c.rotation -= 360;
+        while (c.rotation < -180) c.rotation += 360;
+        this._cropperRender();
+    }
+
+    _cropperZoomBy(factor) {
+        var c = this._crop;
+        if (!c) return;
+        c.scale = Math.max(0.1, Math.min(5, c.scale * factor));
+        this._cropperRecalcOutput();
+        this._cropperRender();
+    }
+
+    _cropperReset() {
+        var c = this._crop;
+        if (!c) return;
+        c.rotation = 0; c.translateX = 0; c.translateY = 0; c.scale = 1;
+        var previewEl = document.getElementById('cropper-preview');
+        var pw = previewEl.clientWidth, ph = previewEl.clientHeight;
+        c.cropW = Math.min(pw * 0.7, c.imgW * c.baseScale);
+        c.cropH = Math.min(ph * 0.7, c.imgH * c.baseScale);
+        c.cropX = (pw - c.cropW) / 2; c.cropY = (ph - c.cropH) / 2;
+        this._cropperRecalcOutput();
+        c.aspectRatio = null;
+        var ratioBtns = document.querySelectorAll('#cropper-ratio-btns button');
+        ratioBtns.forEach(function(b) { b.classList.toggle('active', b.getAttribute('data-ratio') === 'free'); });
+        this._cropperRender();
+    }
+
+    _cropperApplyRatio() {
+        var c = this._crop;
+        if (!c || !c.aspectRatio) return;
+        var previewEl = document.getElementById('cropper-preview');
+        var pw = previewEl.clientWidth, ph = previewEl.clientHeight;
+        var cx = c.cropX + c.cropW / 2, cy = c.cropY + c.cropH / 2;
+        var newW = c.cropW, newH = c.cropW / c.aspectRatio;
+        if (newH > ph * 0.9) { newH = ph * 0.9; newW = newH * c.aspectRatio; }
+        if (newW > pw * 0.9) { newW = pw * 0.9; newH = newW / c.aspectRatio; }
+        c.cropW = newW; c.cropH = newH;
+        c.cropX = Math.max(0, Math.min(cx - newW / 2, pw - newW));
+        c.cropY = Math.max(0, Math.min(cy - newH / 2, ph - newH));
+        this._cropperRecalcOutput();
+    }
+
+    _cropperRecalcOutput() {
+        var c = this._crop;
+        if (!c) return;
+        var previewScale = c.baseScale * c.scale;
+        c.outputW = Math.max(1, Math.round(c.cropW / previewScale));
+        c.outputH = Math.max(1, Math.round(c.cropH / previewScale));
+    }
+
+    _cropperOnOutputChange(which) {
+        var c = this._crop;
+        if (!c) return;
+        var wEl = document.getElementById('cropper-output-w');
+        var hEl = document.getElementById('cropper-output-h');
+        var newW = parseInt(wEl.value) || 1;
+        var newH = parseInt(hEl.value) || 1;
+        if (c.aspectRatio) {
+            if (which === 'w') newH = Math.round(newW / c.aspectRatio);
+            else newW = Math.round(newH * c.aspectRatio);
+        }
+        // 只更新输出分辨率，不改变裁剪框的位置和大小
+        c.outputW = newW;
+        c.outputH = newH;
+        this._cropperRender();
+    }
+
+    async _applyCrop() {
+        var c = this._crop;
+        if (!c || !c.img) return;
+        var outW = Math.max(1, Math.round(c.outputW));
+        var outH = Math.max(1, Math.round(c.outputH));
+        var canvas = document.createElement('canvas');
+        canvas.width = outW;
+        canvas.height = outH;
+        var ctx = canvas.getContext('2d');
+        var previewEl = document.getElementById('cropper-preview');
+        var pw = previewEl.clientWidth, ph = previewEl.clientHeight;
+        var totalScale = c.baseScale * c.scale;
+        var cropCenterX = c.cropX + c.cropW / 2;
+        var cropCenterY = c.cropY + c.cropH / 2;
+        var imgCenterX = pw / 2 + c.translateX;
+        var imgCenterY = ph / 2 + c.translateY;
+        var relX = imgCenterX - cropCenterX;
+        var relY = imgCenterY - cropCenterY;
+        var scaleOutX = outW / c.cropW;
+        var scaleOutY = outH / c.cropH;
+        var dispW = c.imgW * totalScale * scaleOutX;
+        var dispH = c.imgH * totalScale * scaleOutY;
+        var outImgCenterX = outW / 2 + relX * scaleOutX;
+        var outImgCenterY = outH / 2 + relY * scaleOutY;
+        ctx.save();
+        ctx.translate(outImgCenterX, outImgCenterY);
+        ctx.rotate(c.rotation * Math.PI / 180);
+        ctx.drawImage(c.img, -dispW / 2, -dispH / 2, dispW, dispH);
+        ctx.restore();
+        var self = this;
+        canvas.toBlob(async function(blob) {
+            if (!blob) { alert(_t('cropper.exportFail','裁剪导出失败')); return; }
+            try {
+                var form = new FormData();
+                form.append('file', blob, 'crop_' + Date.now() + '.png');
+                var resp = await apiFetch('/api/upload', { method: 'POST', body: form });
+                var data = await resp.json();
+                var node = self.nodes.find(function(n) { return n.id === c.nodeId; });
+                if (node) {
+                    if (!node.originalUrl) node.originalUrl = node.url;
+                    node.url = data.url;
+                    node.imageName = data.name || 'cropped.png';
+                    node.cropped = true;
+                    self.store.updateNode(node.id, { url: data.url, imageName: node.imageName, originalUrl: node.originalUrl, cropped: true });
+                    if (data.width && data.height) self._syncImageNodeSize(node, data.width, data.height);
+                    self._renderAll();
+                    self._markDirty();
+                    self.save();
+                }
+                self._closeCropper();
+            } catch(err) {
+                alert(_t('cropper.uploadFail','上传裁剪图失败: ') + (err.message || err));
+            }
+        }, 'image/png');
+    }
+
+    async _restoreOriginalImage(nodeId) {
+        var node = this.nodes.find(function(n) { return n.id === nodeId; });
+        if (!node || !node.originalUrl) return;
+        var croppedUrl = node.url;
+        if (croppedUrl && croppedUrl.startsWith('/input/')) {
+            try { await apiFetch('/api/assets/delete?url=' + encodeURIComponent(croppedUrl), { method: 'DELETE' }); } catch(e) {}
+        }
+        node.url = node.originalUrl;
+        node.originalUrl = '';
+        node.cropped = false;
+        this.store.updateNode(node.id, { url: node.url, originalUrl: '', cropped: false });
+        var self = this;
+        var probe = new Image();
+        probe.onload = function() {
+            self._syncImageNodeSize(node, probe.width, probe.height);
+            self._renderAll();
+        };
+        probe.src = node.url;
+        this._renderAll();
+        this._markDirty();
+        this.save();
+    }
+
 }

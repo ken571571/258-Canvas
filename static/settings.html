@@ -307,6 +307,21 @@ html.dark .platform-card:hover { box-shadow:0 6px 20px rgba(0,0,0,.3); }
     .form-grid, .model-grid { grid-template-columns:1fr; }
     .content-head { flex-direction:column; align-items:flex-start; }
 }
+/* === 系统更新区域 === */
+.update-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; }
+.update-card {
+    background:var(--surface); border:1px solid var(--border); border-radius:10px;
+    padding:14px 16px; display:flex; flex-direction:column; gap:6px;
+}
+.update-card-label { font-size:11px; color:var(--muted); font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
+.update-card-value { font-size:22px; font-weight:900; color:var(--text); font-family:ui-monospace,Menlo,monospace; }
+#backupList .backup-item {
+    display:flex; align-items:center; gap:10px; padding:8px 12px;
+    background:var(--surface); border:1px solid var(--border); border-radius:8px; margin-bottom:6px;
+}
+#backupList .backup-item .bk-id { font-family:ui-monospace,Menlo,monospace; font-size:12px; font-weight:700; }
+#backupList .backup-item .bk-size { color:var(--muted); font-size:11px; }
+#backupList .backup-item .bk-rollback { margin-left:auto; }
 </style>
 <script src="/static/js/i18n.js?v=2"></script>
 </head>
@@ -381,6 +396,7 @@ html.dark .platform-card:hover { box-shadow:0 6px 20px rgba(0,0,0,.3); }
                         <option value="modelscope" data-t="settings.protocolOptionModelScope">ModelScope</option>
                                                 <option value="runninghub" data-t="settings.protocolOptionRunningHub">RunningHub</option>
                         <option value="deepseek" data-t="settings.protocolOptionDeepSeek">DeepSeek</option>
+                        <option value="minimax">MiniMax</option>
                     </select>
                 </div>
                 <div class="field full" id="baseUrlField">
@@ -498,6 +514,54 @@ html.dark .platform-card:hover { box-shadow:0 6px 20px rgba(0,0,0,.3); }
             </div>
             <div class="platforms-card-grid" id="platformsCardGrid"></div>
         </div>
+
+        <!-- === 系统更新区域 === -->
+        <section class="block" id="updateSection">
+            <div class="block-head">
+                <div>
+                    <div class="block-title">🔄 系统更新</div>
+                    <div class="block-desc">从 GitHub 仓库一键更新到最新版本（仅更新代码，不影响你的画布、智能体和配置）</div>
+                </div>
+            </div>
+
+            <div class="update-grid">
+                <!-- 当前版本 -->
+                <div class="update-card">
+                    <div class="update-card-label">当前版本</div>
+                    <div class="update-card-value" id="currentVerDisplay">—</div>
+                </div>
+                <div class="update-card">
+                    <div class="update-card-label">最新版本</div>
+                    <div class="update-card-value" id="latestVerDisplay">检查后显示</div>
+                </div>
+            </div>
+
+            <!-- 更新源配置 -->
+            <div class="field full" style="margin-top:14px;">
+                <label>更新源（GitHub 仓库地址）</label>
+                <div style="display:flex;gap:8px;">
+                    <input id="updateRepoInput" type="text" placeholder="https://raw.githubusercontent.com/用户名/仓库名/main" style="flex:1;">
+                    <button class="btn btn-secondary" onclick="saveUpdateRepo()">保存</button>
+                </div>
+                <span class="hint">仅支持 raw.githubusercontent.com 等白名单域名，留空则禁用更新</span>
+            </div>
+
+            <!-- 操作按钮 -->
+            <div style="display:flex;gap:10px;align-items:center;margin-top:14px;flex-wrap:wrap;">
+                <button class="btn btn-secondary" onclick="checkForUpdate()">检查更新</button>
+                <button class="btn btn-primary" id="doUpdateBtn" onclick="doUpdate()" disabled>立即更新</button>
+                <span id="updateMsg" class="inline-status"></span>
+            </div>
+
+            <!-- 备份与回滚 -->
+            <div style="margin-top:20px;">
+                <div class="block-title" style="font-size:13px;">📦 备份与回滚</div>
+                <div style="display:flex;gap:8px;align-items:center;margin-top:8px;">
+                    <button class="btn btn-secondary" onclick="loadBackups()">刷新备份列表</button>
+                </div>
+                <div id="backupList" style="margin-top:10px;font-size:12px;color:var(--muted);">点击"刷新备份列表"查看</div>
+            </div>
+        </section>
     </main>
 </div>
 
@@ -580,13 +644,15 @@ html.dark .platform-card:hover { box-shadow:0 6px 20px rgba(0,0,0,.3); }
 let providers = [];
 let currentProviderId = null;
 const PROVIDER_CONFIG_PREFIX = 'canvas571_cfg_';
+let loadedAppApiKey = '';  // 后端返回的 APP_API_KEY 掩码，用于区分“用户是否真的改了密码”
 const DEFAULT_BASE_URLS = {
     'openai':'https://api.openai.com/v1','apimart':'https://api.apimart.ai',
     'gemini':'https://generativelanguage.googleapis.com/v1beta',
     'volcengine':'https://ark.cn-beijing.volces.com/api/v3',
     'modelscope':'https://api-inference.modelscope.cn/v1',
     'runninghub':'https://www.runninghub.cn',
-    'deepseek':'https://api.deepseek.com'
+    'deepseek':'https://api.deepseek.com',
+    'minimax':'https://api.minimax.cn'
 };
 
 // ===== 密钥输入掩码初始化 =====
@@ -673,6 +739,9 @@ async function init() {
 
     renderProviderList();
     if (providers.length > 0) selectProvider(providers[0].id);
+
+    // 初始化系统更新区域
+    initUpdateSection();
 }
 
 function initDefaultProviders() {
@@ -693,6 +762,8 @@ function initDefaultProviders() {
           desc: 'deepseek.com', image_models: [], chat_models: ['deepseek-chat', 'deepseek-reasoner'], video_models: [] },
         { id: 'xmmimo', name: 'MiMo', protocol: 'openai', base_url: 'https://api.xiaomimimo.com/v1', vendor: 'official',
           desc: '小米 AI · 思考模式+工具调用+图片理解', image_models: [], chat_models: ['mimo-v2.5-pro', 'mimo-v2.5'], video_models: [] },
+        { id: 'minimax', name: 'MiniMax', protocol: 'minimax', base_url: 'https://api.minimax.cn', vendor: 'official',
+          desc: 'minimax.cn · H3 视频生成', image_models: [], chat_models: [], video_models: ['MiniMax-H3', 'MiniMax-H3-Max'] },
         { id: 'aihubmix', name: 'AIHubMix', protocol: 'openai', base_url: 'https://aihubmix.com/v1', vendor: 'third_party',
           desc: 'aihubmix.com · 推理时代',
           image_models: ['gpt-image-2', 'dall-e-3'],
@@ -741,7 +812,8 @@ async function loadSecuritySettings() {
         const resp = await apiFetch('/api/settings/api-keys');
         const data = await resp.json();
         const keys = data.keys || {};
-        if (keys.APP_API_KEY) document.getElementById('appApiKey').value = keys.APP_API_KEY;
+        loadedAppApiKey = keys.APP_API_KEY || '';
+        if (loadedAppApiKey) document.getElementById('appApiKey').value = loadedAppApiKey;
         if (keys.CORS_ORIGINS) document.getElementById('corsOrigins').value = keys.CORS_ORIGINS;
     } catch (e) { console.error('加载安全设置失败:', e); }
 }
@@ -1154,6 +1226,7 @@ function openKeyPage() {
         'runninghub': 'https://www.runninghub.cn/enterprise-api/consumerApi',
                 'deepseek':   'https://platform.deepseek.com/api_keys',
         'xmmimo':     'https://platform.xiaomimimo.com/console/api-keys',
+        'minimax':    'https://platform.minimaxi.com/console/access',
     };
     let url = keyUrls[currentProviderId];
     if (!url) {
@@ -1173,6 +1246,7 @@ function openRegister() {
         'runninghub': 'https://www.runninghub.cn/?inviteCode=ilkbkjpt',
                 'deepseek':   'https://platform.deepseek.com/',
         'xmmimo':     'https://platform.xiaomimimo.com?ref=RMU2DB',
+        'minimax':    'https://platform.minimaxi.com/',
     };
     let url = currentProviderId ? regUrls[currentProviderId] : null;
     if (!url) {
@@ -1199,6 +1273,7 @@ function autoDetectProtocol(url) {
     if (u.includes('runninghub.cn') || u.includes('runninghub.ai')) return 'runninghub';
     if (u.includes('api.openai.com') || u.includes('openai.com')) return 'openai';
     if (u.includes('api.deepseek.com') || u.includes('deepseek.com')) return 'deepseek';
+    if (u.includes('minimax.cn')) return 'minimax';
     return null;
 }
 
@@ -1345,6 +1420,7 @@ function providerEnvKey(providerId) {
         'modelscope': 'MODELSCOPE_API_KEY',
         'runninghub': 'RUNNINGHUB_API_KEY',
                 'deepseek': 'DEEPSEEK_API_KEY',
+        'minimax': 'MINIMAX_API_KEY',
     };
     return keyMap[providerId] || `API_PROVIDER_${providerId.toUpperCase().replace(/-/g, '_')}_KEY`;
 }
@@ -1383,6 +1459,7 @@ function providerBaseUrlEnvKey(providerId) {
         'volcengine': 'VOLCENGINE_BASE_URL',
         'modelscope': 'MODELSCOPE_BASE_URL',
         'runninghub': 'RUNNINGHUB_BASE_URL',
+        'minimax': 'MINIMAX_BASE_URL',
     };
     return keyMap[providerId] || `${providerId.toUpperCase().replace(/-/g, '_')}_BASE_URL`;
 }
@@ -1695,8 +1772,11 @@ async function saveAll() {
     }
 
     // 安全设置
+    // 后端返回的是掩码（如 ****），只有用户实际改动了输入框才写入 .env，
+    // 避免“没改密码却点保存”把掩码覆盖成真实密码。
     const appKey = document.getElementById('appApiKey').value.trim();
-    if (appKey) updates['APP_API_KEY'] = appKey;
+    const appKeyChanged = appKey && appKey !== loadedAppApiKey;
+    if (appKeyChanged) updates['APP_API_KEY'] = appKey;
     const cors = document.getElementById('corsOrigins').value.trim();
     if (cors) updates['CORS_ORIGINS'] = cors;
 
@@ -1708,7 +1788,7 @@ async function saveAll() {
         });
 
         // 保存 APP_API_KEY 到浏览器（后续请求自动携带）
-        if (appKey) setStoredApiKey(appKey);
+        if (appKeyChanged) setStoredApiKey(appKey);
 
         // 失效所有页面的 Provider 缓存
         refreshProviders().catch(() => {});
@@ -1761,6 +1841,155 @@ window.addEventListener('message', e => {
 });
 // v2.5.50：语言切换时重新渲染设置面板
 window._i18nUpdate = function() { if (typeof renderProviderList === 'function') renderProviderList(); if (typeof selectProvider === 'function' && typeof currentProviderId !== 'undefined' && currentProviderId) selectProvider(currentProviderId); };
-window.addEventListener('lang-applied',function(){if(window._i18nUpdate)window._i18nUpdate();});</script>
+window.addEventListener('lang-applied',function(){if(window._i18nUpdate)window._i18nUpdate();});
+
+// ===== 系统更新功能 =====
+var _latestVersion = '';
+
+async function initUpdateSection() {
+    try {
+        var resp = await apiFetch('/api/app-info');
+        var info = await resp.json();
+        document.getElementById('currentVerDisplay').textContent = 'v' + info.version;
+        if (info.repo_url) {
+            document.getElementById('updateRepoInput').value = info.repo_url;
+        }
+    } catch(e) {}
+}
+
+async function saveUpdateRepo() {
+    var url = document.getElementById('updateRepoInput').value.trim();
+    var msg = document.getElementById('updateMsg');
+    try {
+        var resp = await apiFetch('/api/settings/update-repo', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ repo_url: url })
+        });
+        var data = await resp.json();
+        if (data.ok) {
+            msg.textContent = url ? '更新源已保存' : '已禁用更新';
+            msg.className = 'inline-status ok';
+        } else {
+            msg.textContent = data.detail || '保存失败';
+            msg.className = 'inline-status err';
+        }
+    } catch(e) {
+        msg.textContent = '保存失败: ' + e.message;
+        msg.className = 'inline-status err';
+    }
+    setTimeout(function() { msg.textContent = ''; }, 4000);
+}
+
+async function checkForUpdate() {
+    var msg = document.getElementById('updateMsg');
+    var btn = event.target;
+    btn.disabled = true;
+    msg.textContent = '检查中…';
+    msg.className = 'inline-status';
+    try {
+        var resp = await apiFetch('/api/check-update');
+        var data = await resp.json();
+        if (data.error) {
+            msg.textContent = '检查失败: ' + data.error;
+            msg.className = 'inline-status err';
+            document.getElementById('latestVerDisplay').textContent = '—';
+            document.getElementById('doUpdateBtn').disabled = true;
+        } else if (data.update_available) {
+            _latestVersion = data.latest.version;
+            document.getElementById('latestVerDisplay').textContent = 'v' + data.latest.version;
+            msg.textContent = '发现新版本 v' + data.latest.version + '，可点击"立即更新"';
+            msg.className = 'inline-status ok';
+            document.getElementById('doUpdateBtn').disabled = false;
+        } else {
+            document.getElementById('latestVerDisplay').textContent = 'v' + data.current;
+            msg.textContent = '已是最新版本 ✓';
+            msg.className = 'inline-status ok';
+            document.getElementById('doUpdateBtn').disabled = true;
+        }
+    } catch(e) {
+        msg.textContent = '网络错误: ' + e.message;
+        msg.className = 'inline-status err';
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+async function doUpdate() {
+    if (!confirm('确定要更新到最新版本吗？\n\n更新过程中请勿关闭页面。\n更新完成后需要重启服务才能生效。')) return;
+    var msg = document.getElementById('updateMsg');
+    var btn = document.getElementById('doUpdateBtn');
+    btn.disabled = true;
+    msg.textContent = '正在下载并更新，请稍候…';
+    msg.className = 'inline-status';
+    try {
+        var resp = await apiFetch('/api/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ confirm: true })
+        });
+        var data = await resp.json();
+        if (data.ok) {
+            msg.textContent = '更新完成（' + data.updated.length + ' 个文件），请重启服务生效。备份: ' + data.backup;
+            msg.className = 'inline-status ok';
+            document.getElementById('currentVerDisplay').textContent = 'v' + data.new_version;
+        } else {
+            msg.textContent = data.detail || '更新失败';
+            msg.className = 'inline-status err';
+        }
+    } catch(e) {
+        msg.textContent = '更新失败: ' + e.message;
+        msg.className = 'inline-status err';
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+async function loadBackups() {
+    var list = document.getElementById('backupList');
+    list.textContent = '加载中…';
+    try {
+        var resp = await apiFetch('/api/update/backups');
+        var data = await resp.json();
+        if (!data.backups || data.backups.length === 0) {
+            list.textContent = '暂无备份';
+            return;
+        }
+        var html = '';
+        for (var i = 0; i < data.backups.length; i++) {
+            var b = data.backups[i];
+            var sizeKB = (b.size / 1024).toFixed(1);
+            html += '<div class="backup-item">' +
+                '<span class="bk-id">' + esc(b.id) + '</span>' +
+                '<span class="bk-size">' + sizeKB + ' KB</span>' +
+                '<button class="btn btn-secondary bk-rollback" style="font-size:11px;padding:4px 10px;" onclick="rollbackBackup(\'' + esc(b.id) + '\')">回滚</button>' +
+                '</div>';
+        }
+        list.innerHTML = html;
+    } catch(e) {
+        list.textContent = '加载失败: ' + e.message;
+    }
+}
+
+async function rollbackBackup(id) {
+    if (!confirm('确定要回滚到备份 ' + id + ' 吗？\n\n回滚后需要重启服务才能生效。')) return;
+    var msg = document.getElementById('updateMsg');
+    try {
+        var resp = await apiFetch('/api/update/rollback?backup_id=' + encodeURIComponent(id), { method: 'POST' });
+        var data = await resp.json();
+        if (data.ok) {
+            msg.textContent = data.message;
+            msg.className = 'inline-status ok';
+        } else {
+            msg.textContent = data.detail || '回滚失败';
+            msg.className = 'inline-status err';
+        }
+    } catch(e) {
+        msg.textContent = '回滚失败: ' + e.message;
+        msg.className = 'inline-status err';
+    }
+    setTimeout(function() { msg.textContent = ''; }, 6000);
+}
+</script>
 </body>
 </html>

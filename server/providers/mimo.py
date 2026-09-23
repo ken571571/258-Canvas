@@ -3,7 +3,7 @@
 import os
 from typing import List
 
-from .openai import OpenAIProvider
+from .openai import OpenAIProvider, ChatResult
 
 
 class MiMoProvider(OpenAIProvider):
@@ -71,6 +71,14 @@ class MiMoProvider(OpenAIProvider):
 
     def list_video_models(self):
         return []
+
+    # v2.5.57：mimo-v2.5 是带 reasoning 的模型，默认 max_tokens=4096 会被推理 token 占用，
+    # 导致 6 段 H3 提示词 JSON（需 3000-4000 输出 token）时好时坏——推理多时内容被截断。
+    # 覆写 chat，将默认输出上限提升到 8192，保证长 JSON 完整输出。
+    async def chat(self, messages: List[dict], model: str = "", **kwargs) -> ChatResult:
+        if "max_tokens" not in kwargs or not kwargs.get("max_tokens"):
+            kwargs["max_tokens"] = 8192
+        return await super().chat(messages=messages, model=model, **kwargs)
 
     # v2.5.55：MiMo 不支持图片/视频生成，显式拒绝，避免继承的 OpenAI 实现向 MiMo 发 /images/generations 404
     async def generate_image(self, *args, **kwargs):

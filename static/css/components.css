@@ -450,13 +450,19 @@
     padding: 14px 16px 16px;
   }
 
-  .node-body textarea,
-  .node-body input {
+  .node-body textarea {
     width: 100%; min-height: 80px;
     padding: 10px 12px; border: 1px solid rgba(64, 76, 97, 0.14); border-radius: 12px;
     background: rgba(243, 244, 241, 0.84); color: var(--text);
     font-family: inherit; font-size: 12px; resize: none;
     scrollbar-width: auto; scrollbar-color: var(--accent) transparent;
+  }
+  /* v2.5.60：节点内 input 默认紧凑（不再被 textarea 的 80px min-height 撑大），数字输入框由内联 height 控制 */
+  .node-body input {
+    width: 100%;
+    padding: 4px 8px; border: 1px solid rgba(64, 76, 97, 0.14); border-radius: 6px;
+    background: rgba(243, 244, 241, 0.84); color: var(--text);
+    font-family: inherit; font-size: 12px;
   }
   .node-body textarea::-webkit-scrollbar { width: 16px; cursor: default; }
   .node-body textarea::-webkit-scrollbar-track { background: transparent; border-radius: 4px; }

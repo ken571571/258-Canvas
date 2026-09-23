@@ -32,6 +32,7 @@ class VideoGenerateRequest(BaseModel):
     aspect_ratio: str = Field(default="16:9", min_length=1)
     resolution: str = Field(default="720p", min_length=1)
     reference_images: List[str] = Field(default_factory=list)
+    reference_audio: List[str] = Field(default_factory=list)
     generate_audio: bool = True
 
 

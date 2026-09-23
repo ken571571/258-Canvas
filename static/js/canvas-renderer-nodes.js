@@ -73,13 +73,13 @@ CanvasEngine.prototype._renderNodes = function() {
 
         const hasInput = ['image_gen', 'video_gen', 'agent', 'output', 'loop', 'prompt'].includes(node.type);
         const isComfy = node.type === 'comfy';
-        const hasOutput = ['image', 'prompt', 'image_gen', 'video_gen', 'agent', 'loop', 'output', 'comfy'].includes(node.type);
+        const hasOutput = ['image', 'audio', 'prompt', 'image_gen', 'video_gen', 'agent', 'loop', 'output', 'comfy'].includes(node.type);
         const badge = this._renderNodeStateBadge(node);
 
         el.innerHTML = `<div class="node-head"><div class="node-head-title"><span>${this._esc(node.label || node.type)}</span>${node.type==='image'?`<span class="node-desc" data-node-desc="${node.id}" title="${_t('node.dblClickDesc','双击添加描述')}">${this._esc(node.desc||_t('node.dblClickDesc','双击添加描述'))}</span>`:''}${badge}</div><button class="node-delete" title="${_t('node.delete','删除')}" data-del="${node.id}">&times;</button></div><div class="node-body" data-body="${node.id}">${this._renderNodeBody(node)}</div>${hasInput && !isComfy?`<div class="port port-in" data-port="in" data-node="${node.id}"></div>`:''}${hasOutput?`<div class="port port-out" data-port="out" data-node="${node.id}"></div>`:''}<div class="resize-handle" data-resize="${node.id}"></div>`;
 
         el.addEventListener('mousedown', event => {
-            if (event.target.closest('.port')||event.target.closest('button')||event.target.closest('textarea')||event.target.closest('input')||event.target.closest('select')||event.target.closest('.resize-handle')||event.target.closest('[data-upload]')||event.target.closest('[data-node-desc]')||event.target.closest('[draggable]')||event.target.closest('img')||event.target.closest('video')||event.target.closest('.node-preview')) return;
+            if (event.target.closest('.port')||event.target.closest('button')||event.target.closest('textarea')||event.target.closest('input')||event.target.closest('select')||event.target.closest('.resize-handle')||event.target.closest('[data-upload]')||event.target.closest('[data-node-desc]')||event.target.closest('[draggable]')||event.target.closest('img')||event.target.closest('video')||event.target.closest('audio')||event.target.closest('.node-preview')) return;
             event.preventDefault();
             if ((event.ctrlKey||event.metaKey)&&!event.shiftKey){if(!this.selected.has(node.id)){this.selected.add(node.id);}}
             else if(event.shiftKey){if(this.selected.has(node.id)){this.selected.delete(node.id);this._renderAll();return;}this.selected.add(node.id);}
@@ -156,6 +156,7 @@ CanvasEngine.prototype._renderNodeBody = function(node) {
     var meta = this._renderNodeMeta(node);
     var renderers = {
         "image": "_renderNodeBody_image",
+        "audio": "_renderNodeBody_audio",
         "prompt": "_renderNodeBody_prompt",
         "image_gen": "_renderNodeBody_image_gen",
         "video_gen": "_renderNodeBody_video_gen",
@@ -175,13 +176,22 @@ CanvasEngine.prototype._renderNodeBody = function(node) {
 
 CanvasEngine.prototype._renderNodeBody_image = function(node, meta) {
     if (node.url) {
+                var isCropped = node.cropped === true;
+                var cropBtn = isCropped
+                    ? '<button class="tool-btn" style="width:100%;font-size:11px;padding:5px;margin-bottom:4px;background:var(--accent);color:var(--accent-ink);border:none;" onclick="event.stopPropagation();window._canvas._openCropper(\'' + this._escJs(node.id) + '\')">' + _t('cropper.recrop','✂ 重新裁剪') + '</button>'
+                    : '<button class="tool-btn" style="width:100%;font-size:11px;padding:5px;margin-bottom:4px;" onclick="event.stopPropagation();window._canvas._openCropper(\'' + this._escJs(node.id) + '\')">' + _t('cropper.crop','✂ 裁剪图片') + '</button>';
+                var restoreBtn = isCropped
+                    ? '<button class="tool-btn" style="flex:1;font-size:11px;padding:5px;" onclick="event.stopPropagation();window._canvas._restoreOriginalImage(\'' + this._escJs(node.id) + '\')">' + _t('cropper.restore','↺ 恢复原图') + '</button>'
+                    : '';
                 return `
                     <img src="${this._esc(node.url)}" style="max-width:100%;border-radius:12px;display:block" alt="${this._esc(node.label)}" onerror="this.style.display='none'">
-                    ${node.imageName ? `<div class="node-meta">${this._esc(node.imageName)}${(node.imageWidth && node.imageHeight) ? ` (${node.imageWidth}×${node.imageHeight})` : ''}</div>` : ''}
-                    <div class="node-actions" style="margin-top:6px;">
+                    ${node.imageName ? `<div class="node-meta">${this._esc(node.imageName)}${(node.imageWidth && node.imageHeight) ? ` (${node.imageWidth}×${node.imageHeight})` : ''}${isCropped ? ' <span style="color:var(--accent);font-weight:700;">[' + _t('cropper.croppedTag','已裁剪') + ']</span>' : ''}</div>` : ''}
+                    ${cropBtn}
+                    <div class="node-actions" style="margin-top:0;">
                         <label class="tool-btn" style="flex:1;cursor:pointer;text-align:center;padding:5px;font-size:11px;" data-upload="${node.id}">
                             ${_t('node.replace','替换')}<input type="file" accept="image/*" style="display:none" onchange="window._canvas._handleImageUpload('${node.id}', this)">
                         </label>
+                        ${restoreBtn}
                         <button class="tool-btn" style="flex:1;font-size:11px;padding:5px;" onclick="event.stopPropagation();window._canvas._removeImage('${node.id}')">${_t('node.delete','删除')}</button>
                     </div>
                 `;
@@ -192,6 +202,27 @@ CanvasEngine.prototype._renderNodeBody_image = function(node, meta) {
                     <input type="file" accept="image/*" style="display:none" onchange="window._canvas._handleImageUpload('${node.id}', this)">
                 </label>
             `;
+};
+
+CanvasEngine.prototype._renderNodeBody_audio = function(node, meta) {
+    if (node.url) {
+        return `
+            <audio controls preload="metadata" src="${this._esc(node.url)}" style="width:100%;border-radius:12px;display:block;"></audio>
+            ${node.imageName ? `<div class="node-meta">${this._esc(node.imageName)}</div>` : ''}
+            <div class="node-actions" style="margin-top:0;">
+                <label class="tool-btn" style="flex:1;cursor:pointer;text-align:center;padding:5px;font-size:11px;" data-upload="${node.id}">
+                    ${_t('node.replace','替换')}<input type="file" accept="audio/*" style="display:none" onchange="window._canvas._handleAudioUpload('${node.id}', this)">
+                </label>
+                <button class="tool-btn" style="flex:1;font-size:11px;padding:5px;" onclick="event.stopPropagation();window._canvas._removeAudio('${node.id}')">${_t('node.delete','删除')}</button>
+            </div>
+        `;
+    }
+    return `
+        <label style="display:block;text-align:center;padding:20px;color:var(--muted);cursor:pointer" data-upload="${node.id}">
+            ${_t('node.clickUploadAudio','点击上传音频')}<br><span style="font-size:10px;">${_t('node.dragFromAsset','或从右侧资产库拖入')}</span>
+            <input type="file" accept="audio/*" style="display:none" onchange="window._canvas._handleAudioUpload('${node.id}', this)">
+        </label>
+    `;
 };
 
 CanvasEngine.prototype._renderNodeBody_prompt = function(node, meta) {
@@ -271,7 +302,7 @@ CanvasEngine.prototype._renderNodeBody_image_gen = function(node, meta) {
             (meta || '<div class="node-meta" style="margin-bottom:2px;">' + _t('pipeline.imgGenHint','连接提示词或图片后生成结果') + '</div>') +
             '<div class="node-actions" style="margin-top:0;">' +
                 '<button class="tool-btn" style="font-size:11px;padding:4px 8px;" onclick="window._canvas._executeChain(\'' + node.id + '\')">🖼 ' + _t('nodeType.imageGen','图片生成') + '</button>' +
-            '</div>';
+            '</div>' + this._renderResultGrid(node);
     }
 };
 
@@ -279,12 +310,17 @@ CanvasEngine.prototype._renderNodeBody_video_gen = function(node, meta) {
     {
             const vidInputs = this._collectInputs(node.id);
             const hasVidRef = vidInputs.images && vidInputs.images.length > 0;
-            const curModel = node.model || '';
+            // 修复：node.model 为空时用当前平台第一个视频模型，否则时长/分辨率回退到兜底值 [5,8,10]
+            const _provs = getCachedProviders();
+            const _curProv = _provs.find(p => p.id === (node.provider_id || ''));
+            const curModel = node.model || _curProv?.video_models?.[0] || '';
+            if (!node.model && curModel) node.model = curModel;
             const durations = this._getVideoDurations(curModel);
             const selDur = node.duration || 5;
             const resolutions = this._getVideoResolutions(curModel);
             const defaultRes = hasVidRef ? 'auto' : (resolutions[0]?.v || '720p');
             const selRes = node.resolution || defaultRes;
+            const selRatio = node.aspect_ratio || '16:9';
             var autoLabel = hasVidRef ? this._fi() : this._au();
             const selOpts = 'height:28px;padding:0 6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);font-size:11px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
             return `
@@ -300,20 +336,38 @@ CanvasEngine.prototype._renderNodeBody_video_gen = function(node, meta) {
                     <select onchange="window._canvas._updateNodeProp('${node.id}','duration',parseInt(this.value))" style="flex:1;height:28px;padding:0 4px;border-radius:6px;border:1px solid var(--border);background:var(--bg);font-size:11px;color:var(--text);">
                         ${durations.map(d => `<option value="${d}" ${d===selDur?'selected':''}>⏱ ${d}s</option>`).join('')}
                     </select>
-                    <select onchange="window._canvas._updateNodeProp('${node.id}','resolution',this.value)" style="flex:1.5;height:28px;padding:0 4px;border-radius:6px;border:1px solid var(--border);background:var(--bg);font-size:11px;color:var(--text);">
+                    <select onchange="window._canvas._updateNodeProp('${node.id}','resolution',this.value)" style="flex:1.2;height:28px;padding:0 4px;border-radius:6px;border:1px solid var(--border);background:var(--bg);font-size:11px;color:var(--text);">
                         <option value="auto" ${selRes==='auto'?'selected':''}>${autoLabel}</option>
                         ${resolutions.map(r => `<option value="${r.v}" ${r.v===selRes?'selected':''}>${_tt(r.l)}</option>`).join('')}
                     </select>
+                    <select onchange="window._canvas._updateNodeProp('${node.id}','aspect_ratio',this.value)" style="flex:1;height:28px;padding:0 4px;border-radius:6px;border:1px solid var(--border);background:var(--bg);font-size:11px;color:var(--text);" ${hasVidRef?'disabled title="图生视频比例由图片尺寸决定"':''}>
+                        <option value="16:9" ${selRatio==='16:9'?'selected':''}>16:9</option>
+                        <option value="9:16" ${selRatio==='9:16'?'selected':''}>9:16</option>
+                        <option value="1:1" ${selRatio==='1:1'?'selected':''}>1:1</option>
+                        <option value="4:3" ${selRatio==='4:3'?'selected':''}>4:3</option>
+                        <option value="3:4" ${selRatio==='3:4'?'selected':''}>3:4</option>
+                        <option value="21:9" ${selRatio==='21:9'?'selected':''}>21:9</option>
+                    </select>
                 </div>
                 ${(() => {
+                    const audioRefs = vidInputs.audios || [];
+                    const isH3Max = String(curModel || '').toLowerCase().indexOf('-max') !== -1;
+                    let audioRow;
+                    if (audioRefs.length > 0) {
+                        audioRow = isH3Max
+                            ? `<div style="font-size:10px;color:#dc2626;margin-bottom:4px;">${_t('pipeline.audioRefH3Only','⚠️ 音频参考仅 MiniMax-H3 支持')}</div>`
+                            : `<div style="font-size:10px;color:var(--accent);margin-bottom:4px;">${_t('pipeline.audioRefConnected','🎵 音频参考已连接')} (${audioRefs.length})</div>`;
+                    } else {
+                        audioRow = `<div style="font-size:10px;color:var(--muted);margin-bottom:4px;">${_t('pipeline.audioRefHint','连线音频节点可作音频参考')}</div>`;
+                    }
                     return `<label style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:10px;color:var(--muted);margin-bottom:4px;">
-                        <input type="checkbox" ${node.generate_audio!==false?'checked':''} onchange="window._canvas._updateNodeProp('${node.id}','generate_audio',this.checked)" style="width:13px;height:13px;accent-color:var(--accent);">${_t('pipeline.audioLabel','🔊 有声')}</label>`;
+                        <input type="checkbox" ${node.generate_audio!==false?'checked':''} onchange="window._canvas._updateNodeProp('${node.id}','generate_audio',this.checked)" style="width:13px;height:13px;accent-color:var(--accent);">${_t('pipeline.audioLabel','🔊 有声')}</label>` + audioRow;
                 })()}
                 ${meta || '<div class="node-meta" style="margin-bottom:2px;">' + _t('pipeline.vidGenHint','连接提示词或图片后生成视频') + '</div>'}
                 <div class="node-actions" style="margin-top:0;">
                     <button class="tool-btn" style="font-size:11px;padding:4px 8px;" onclick="window._canvas._executeChain('${node.id}')">🎬 ${_t('nodeType.videoGen','视频生成')}</button>
                 </div>
-            `;
+            ` + this._renderResultGrid(node);
         }
 };
 
@@ -329,19 +383,22 @@ CanvasEngine.prototype._renderNodeBody_agent = function(node, meta) {
                 <div class="node-actions">
                     <button class="tool-btn" onclick="window._canvas._runAgent('${node.id}')">${_t('common.run','运行')}</button>
                 </div>
-            `;
+            ` + this._renderResultGrid(node, false);
 };
 
-CanvasEngine.prototype._renderNodeBody_output = function(node, meta) {
-    {
-            const renderItem = (item, i, type) => {
-                const url = typeof item === 'string' ? item : (item.url || '');
-                if (!url) return '';
-                const isImg = /\.(png|jpg|jpeg|webp|gif)$/i.test(url) || type === 'image';
-                const w = (typeof item === 'object' && item._w) || '';
-                const h = (typeof item === 'object' && item._h) || '';
-                const dim = (w && h) ? `${w}×${h}` : '';
-                return `<div style="flex:0 0 auto;width:120px;position:relative;" ondblclick="event.stopPropagation();window._canvas._showLightbox('${this._escJs(url)}','${type}')">
+CanvasEngine.prototype._renderResultGrid = function(node, showText) {
+    // v2.5.57：从 _renderNodeBody_output 抽取的共享结果网格。
+    // 生成器节点（image_gen/video_gen/comfy/agent）无输出节点时在自身就地显示结果；
+    // 输出节点仍调用本方法。showText=false 时只渲染图片/视频（agent 已单独显示 lastResult 文本）。
+    showText = showText !== false;
+    const renderItem = (item, i, type) => {
+        const url = typeof item === 'string' ? item : (item.url || '');
+        if (!url) return '';
+        const isImg = /\.(png|jpg|jpeg|webp|gif)$/i.test(url) || type === 'image';
+        const w = (typeof item === 'object' && item._w) || '';
+        const h = (typeof item === 'object' && item._h) || '';
+        const dim = (w && h) ? `${w}×${h}` : '';
+        return `<div style="flex:0 0 auto;width:120px;position:relative;" ondblclick="event.stopPropagation();window._canvas._showLightbox('${this._escJs(url)}','${type}')">
                     <div style="width:120px;height:90px;border-radius:8px;overflow:hidden;position:relative;background:var(--surface-2);">
                         ${isImg
                             ? `<img src="${this._esc(url)}" style="width:100%;height:100%;object-fit:cover;display:block;cursor:pointer;" alt="${_t('nodeType.output','输出')}" onerror="this.style.display='none'" title="${_t('output.clickToCreateImage','单击创建图片节点')}" onclick="event.stopPropagation();window._canvas._onOutputImageClick(event,'${this._escJs(url)}')">`
@@ -353,21 +410,17 @@ CanvasEngine.prototype._renderNodeBody_output = function(node, meta) {
                     ${dim ? `<div class="node-meta" style="font-size:9px;text-align:center;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${dim}</div>` : ''}
                     <button style="position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;border:none;background:rgba(0,0,0,.6);color:#fff;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:0;padding:0;z-index:1;" onclick="event.stopPropagation();window._canvas._removeOutputItem('${node.id}',${i},'${type}')" title="${_t('node.delete','删除')}">×</button>
                 </div>`;
-            };
-            const imgItems = (node.images || []).map((img, i) => renderItem(img, i, 'image')).join('');
-            const vidItems = (node.videos || []).map((vid, i) => renderItem(vid, i, 'video')).join('');
-            const hasContent = imgItems || vidItems || node.outputText;
-            if (hasContent) {
-                return `
-                    ${node.outputText ? `<div class="node-preview">${this._esc(node.outputText.slice(0, 600))}</div>` : ''}
-                    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;justify-content:flex-start;">${imgItems}${vidItems}</div>
-                    <div class="node-actions" style="margin-top:8px;">
-                        <button class="tool-btn" style="flex:1;font-size:11px;padding:4px;" onclick="event.stopPropagation();window._canvas._clearOutput('${node.id}')">${_t('output.clearAll','清除全部')}</button>
-                    </div>
-                `;
-            }
-            return '<div style="text-align:center;padding:20px;color:var(--muted)">' + _t('output.emptyHint','连接上游节点后<br>结果自动显示在这里') + '</div>';
-        }
+    };
+    const imgItems = (node.images || []).map((img, i) => renderItem(img, i, 'image')).join('');
+    const vidItems = (node.videos || []).map((vid, i) => renderItem(vid, i, 'video')).join('');
+    const text = (showText && node.outputText) ? `<div class="node-preview">${this._esc(node.outputText.slice(0, 600))}</div>` : '';
+    if (!(imgItems || vidItems || (showText && node.outputText))) return '';
+    return `${text}<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;justify-content:flex-start;">${imgItems}${vidItems}</div><div class="node-actions" style="margin-top:8px;"><button class="tool-btn" style="flex:1;font-size:11px;padding:4px;" onclick="event.stopPropagation();window._canvas._clearOutput('${node.id}')">${_t('output.clearAll','清除全部')}</button></div>`;
+};
+
+CanvasEngine.prototype._renderNodeBody_output = function(node, meta) {
+    return this._renderResultGrid(node) ||
+        '<div style="text-align:center;padding:20px;color:var(--muted)">' + _t('output.emptyHint','连接上游节点后<br>结果自动显示在这里') + '</div>';
 };
 
 CanvasEngine.prototype._renderNodeBody_loop = function(node, meta) {
@@ -438,6 +491,13 @@ CanvasEngine.prototype._renderNodeBody_comfy = function(node, meta) {
                     ${(this._comfyWfList||[]).map(w=>`<option value="${w.name}" ${w.name===node.comfyWorkflow?'selected':''}>${this._esc(w.title||w.name)}</option>`).join('')}
                 </select>
                 ${missingWf ? `<div style="color:#f87171;font-size:10px;margin-bottom:4px;font-weight:600;">⚠ ${_t('comfy.workflowMissing','工作流已删除，请重新选择或上传')}</div>` : ''}
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size:10px;color:var(--muted);">
+                    <span style="font-weight:800;white-space:nowrap;">${_t('comfy.pollLabel','轮询')}</span>
+                    <input type="number" min="1" max="1440" value="${node.comfyPollTimeout||''}" placeholder="60" title="${_t('comfy.pollTimeoutMinTip','轮询超时（分），默认 60')}" onchange="window._canvas._updateNodeProp('${node.id}','comfyPollTimeout',parseInt(this.value)||0)" style="flex:1;min-width:0;height:24px;padding:0 6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);font-size:11px;color:var(--text);outline:none;box-sizing:border-box;">
+                    <span style="white-space:nowrap;">${_t('comfy.minUnit','分')}</span>
+                    <input type="number" min="1" max="60" value="${node.comfyPollInterval||''}" placeholder="1" title="${_t('comfy.pollIntervalSecTip','轮询间隔（秒），默认 1')}" onchange="window._canvas._updateNodeProp('${node.id}','comfyPollInterval',parseInt(this.value)||0)" style="flex:1;min-width:0;height:24px;padding:0 6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);font-size:11px;color:var(--text);outline:none;box-sizing:border-box;">
+                    <span style="white-space:nowrap;">${_t('comfy.secUnit','秒')}</span>
+                </div>
                 ${fields.length ? `
                 <div style="font-size:10px;font-weight:800;color:var(--muted);margin-bottom:4px;">${_t('comfy.inputPorts','输入端口（连接上游节点）')}</div>
                 <div style="display:flex;flex-direction:column;gap:3px;margin-bottom:6px;">
@@ -453,7 +513,7 @@ CanvasEngine.prototype._renderNodeBody_comfy = function(node, meta) {
                 <div class="node-meta">${_t('comfy.hint','连接上游节点后点运行，自动按类型映射：图片→图片字段，文本→提示词字段。')}</div>
                 <div class="node-actions">${node.runState==='running'?'<button class="tool-btn" style="background:#ef4444;color:#fff;" onclick="window._canvas._cancelComfyUI(\''+node.id+'\')">⏹ '+_t('common.cancel','取消')+'</button>':'<button class="tool-btn" onclick="window._canvas._executeChain(\''+this._escJs(node.id)+'\')">'+_t('common.run','运行')+'</button>'}</div>
                 ${meta}
-            `;
+            ` + this._renderResultGrid(node);
         }
 
 };

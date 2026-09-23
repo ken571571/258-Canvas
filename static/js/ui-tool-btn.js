@@ -25,6 +25,7 @@ class UIToolBtn extends HTMLElement {
     btn.className = 'tool-btn';
     var actionMap = {
         "createNode('image')":    function() { window._canvas.createNode('image'); },
+        "createNode('audio')":    function() { window._canvas.createNode('audio'); },
         "createNode('prompt')":   function() { window._canvas.createNode('prompt'); },
         "createNode('image_gen')": function() { window._canvas.createNode('image_gen'); },
         "createNode('video_gen')": function() { window._canvas.createNode('video_gen'); },
