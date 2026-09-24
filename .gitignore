@@ -17,11 +17,11 @@ MiMo API文档.md
 # ——— Python 运行环境（嵌入式） ———
 python/
 
-# ——— 用户运行时数据 ———
-data/
-logs/
-input/
-output/
+# ——— 用户运行时数据（仅根目录，不影响 server/data/ 等代码目录）———
+/data/
+/logs/
+/input/
+/output/
 
 # skills/ 纳入版本控制分享；canvases/ 默认仅保留 .gitkeep，私人/测试画布见下方忽略规则
 
