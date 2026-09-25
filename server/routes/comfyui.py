@@ -4,6 +4,8 @@ import json
 import os
 import re
 import time
+import socket
+import ipaddress
 import asyncio
 import httpx
 from urllib.parse import quote
@@ -139,6 +141,143 @@ async def comfyui_status():
 def get_queue_status():
     """获取各后端的任务队列状态。"""
     return {addr: _backend_load.get(addr, 0) for addr in config.COMFYUI_INSTANCES}
+
+
+# ——— 局域网自动扫描 ———
+
+
+def _detect_lan_networks() -> tuple:
+    """探测本机所属的局域网 /24 网段（纯标准库，不依赖 psutil）。
+
+    两种来源互为补充：
+      1. UDP connect 技巧：socket 不会真正发包，仅让 OS 给出通往外部时
+         将使用的源 IP（主网卡，最可靠）。
+      2. gethostbyname_ex(主机名)：枚举主机绑定的其余网卡 IP。
+
+    返回: (IPv4Network 列表, 本机 IP 集合)
+    """
+    local_ips: set = set()
+
+    # 来源 1：UDP connect 技巧
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))
+        local_ips.add(s.getsockname()[0])
+    except Exception:
+        pass
+    finally:
+        s.close()
+
+    # 来源 2：主机名解析
+    try:
+        for ip in socket.gethostbyname_ex(socket.gethostname())[2]:
+            local_ips.add(ip)
+    except Exception:
+        pass
+
+    networks: list = []
+    valid_ips: set = set()
+    for ip in local_ips:
+        try:
+            addr = ipaddress.ip_address(ip)
+        except ValueError:
+            continue
+        # 仅保留 RFC1918 私有 IPv4（排除环回/链路本地/CGNAT）
+        if not isinstance(addr, ipaddress.IPv4Address) or not addr.is_private:
+            continue
+        if addr.is_loopback or addr.is_link_local:
+            continue
+        net = ipaddress.ip_interface(f"{ip}/24").network
+        if net not in networks:
+            networks.append(net)
+        valid_ips.add(ip)
+    return networks, valid_ips
+
+
+async def _probe_port(ip: str, port: int, timeout: float) -> bool:
+    """TCP 半开探测：端口能否在 timeout 内建立连接。"""
+    try:
+        reader, writer = await asyncio.wait_for(
+            asyncio.open_connection(ip, port), timeout
+        )
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except Exception:
+            pass
+        return True
+    except Exception:
+        return False
+
+
+class ScanLanReq(BaseModel):
+    port: int = 8188
+
+
+@router.post("/comfyui/scan-lan")
+async def scan_lan(req: ScanLanReq):
+    """扫描本机所在局域网，返回所有在线 ComfyUI 实例。
+
+    流程：枚举本机网段 → 并发 TCP 探测 8188 → 对开放主机请求
+    /system_stats 确认是 ComfyUI 并读取版本/设备信息。
+    """
+    port = req.port
+    if not (1 <= port <= 65535):
+        raise HTTPException(status_code=400, detail="端口号不合法")
+
+    networks, local_ips = _detect_lan_networks()
+    if not networks:
+        raise HTTPException(
+            status_code=400,
+            detail="未检测到局域网连接（本机无 RFC1918 私有网段 IP）",
+        )
+
+    # 收集候选主机（去重、跳过本机地址）
+    candidates: set = set()
+    for net in networks:
+        for host in net.hosts():
+            ip = str(host)
+            if ip in local_ips:
+                continue
+            candidates.add(ip)
+
+    # 并发 TCP 探测
+    sem = asyncio.Semaphore(128)
+
+    async def _check(ip: str) -> str:
+        async with sem:
+            return ip if await _probe_port(ip, port, 0.4) else ""
+
+    open_ips = [r for r in await asyncio.gather(*[_check(ip) for ip in candidates]) if r]
+
+    # 对开放端口确认 ComfyUI 身份并读取信息
+    existing = set(config.COMFYUI_INSTANCES)
+    found = []
+    async with httpx.AsyncClient(timeout=3, follow_redirects=False) as cli:
+        for ip in open_ips:
+            addr = f"{ip}:{port}"
+            try:
+                resp = await cli.get(f"http://{addr}/system_stats")
+                data = resp.json()
+                found.append({
+                    "address": addr,
+                    "ip": ip,
+                    "port": port,
+                    "version": data.get("system", {}).get("comfyui_version", ""),
+                    "device": data.get("system", {}).get("device", ""),
+                    "added": addr in existing,
+                })
+            except Exception:
+                # 端口开放但不是 ComfyUI/响应异常 → 不列入
+                continue
+
+    log.info(f"局域网扫描: 网段 {[str(n) for n in networks]}, "
+             f"探测 {len(candidates)} 主机, 发现 {len(found)} 个 ComfyUI")
+    return {
+        "networks": [str(n) for n in networks],
+        "hosts_scanned": len(candidates),
+        "found": found,
+    }
 
 
 # ——— ComfyUI 任务提交与轮询（共享函数） ———

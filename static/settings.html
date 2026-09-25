@@ -144,6 +144,7 @@ html.dark .platform-card:hover { box-shadow:0 6px 20px rgba(0,0,0,.3); }
 .quick-link .dot { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
 .quick-link .dot.green { background:var(--good); }
 .quick-link .dot.orange { background:var(--warn); }
+.quick-link .dot.blue { background:#3b82f6; }
 
 /* === 主内容区 === */
 .content-head {
@@ -322,6 +323,35 @@ html.dark .platform-card:hover { box-shadow:0 6px 20px rgba(0,0,0,.3); }
 #backupList .backup-item .bk-id { font-family:ui-monospace,Menlo,monospace; font-size:12px; font-weight:700; }
 #backupList .backup-item .bk-size { color:var(--muted); font-size:11px; }
 #backupList .backup-item .bk-rollback { margin-left:auto; }
+
+/* === ComfyUI 后端管理（v2.5.62） === */
+.comfy-instance-list { display:flex; flex-direction:column; gap:6px; }
+.comfy-instance {
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    padding:9px 12px; background:var(--bg); border:1px solid var(--border); border-radius:8px; font-size:12px;
+}
+.comfy-instance .ci-addr { font-weight:800; font-family:ui-monospace,Menlo,monospace; }
+.comfy-instance .ci-meta { color:var(--muted); font-size:10.5px; }
+.comfy-instance .ci-del { margin-left:auto; background:none; border:none; color:var(--bad); cursor:pointer; font-size:13px; font-weight:900; padding:2px 6px; }
+.comfy-instance .ci-del:hover { background:rgba(239,68,68,.1); border-radius:6px; }
+.comfy-empty { color:var(--muted); font-size:11.5px; padding:10px 4px; }
+.cf-item {
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    padding:8px 12px; border:1px solid var(--border); border-radius:8px; font-size:12px; margin-bottom:6px;
+}
+.cf-item .ci-add { margin-left:auto; font-size:11px; padding:5px 14px; }
+.cf-item .ci-added { margin-left:auto; color:var(--good); font-size:11px; font-weight:800; }
+.comfy-host-hint {
+    margin-top:12px; border:1px solid color-mix(in srgb, var(--warn) 35%, transparent);
+    background:color-mix(in srgb, var(--warn) 8%, transparent);
+    border-radius:8px; padding:12px 14px; font-size:11.5px; line-height:1.7;
+}
+.comfy-host-hint h4 { margin:0 0 6px; font-size:12px; }
+.comfy-host-hint code {
+    display:block; background:rgba(0,0,0,.06); border-radius:6px; padding:6px 10px;
+    font-family:ui-monospace,Menlo,monospace; font-size:10.5px; margin:6px 0; overflow-x:auto; white-space:pre;
+}
+.dark .comfy-host-hint code { background:rgba(255,255,255,.08); }
 </style>
 <script src="/static/js/i18n.js?v=2"></script>
 </head>
@@ -344,6 +374,9 @@ html.dark .platform-card:hover { box-shadow:0 6px 20px rgba(0,0,0,.3); }
         <div class="quick-links">
             <button class="quick-link" onclick="scrollToSection('securityBlock')">
                 <span class="dot green"></span> <span data-t="settings.securitySettings">安全设置</span>
+            </button>
+            <button class="quick-link" onclick="scrollToSection('comfyBackendBlock')">
+                <span class="dot blue"></span> <span data-t="settings.comfyBackend">ComfyUI 后端</span>
             </button>
         </div>
     </aside>
@@ -498,6 +531,44 @@ html.dark .platform-card:hover { box-shadow:0 6px 20px rgba(0,0,0,.3); }
                     <span class="hint" data-t="settings.corsHint">多个来源用逗号分隔</span>
                 </div>
             </div>
+        </section>
+
+        <!-- ComfyUI 后端（v2.5.62） -->
+        <section class="block" id="comfyBackendBlock">
+            <div class="block-head">
+                <div>
+                    <div class="block-title" data-t="settings.comfyBackend">ComfyUI 后端</div>
+                    <div class="block-desc" data-t="settings.comfyBackendDesc">画布 ComfyUI 节点实际调用的后端地址；可填本机，也可填局域网内另一台电脑</div>
+                </div>
+                <button class="btn btn-secondary" onclick="refreshComfyStatus(false)" style="font-size:11px;padding:6px 14px;" data-t="settings.comfyRefresh">↻ 刷新状态</button>
+            </div>
+
+            <div id="comfyInstanceList" class="comfy-instance-list"></div>
+
+            <div class="model-add-row" style="margin-top:8px;">
+                <input id="newComfyAddr" type="text" data-t-placeholder="settings.comfyAddrPlaceholder" placeholder="IP:端口，如 192.168.31.34:8188" onkeydown="if(event.key==='Enter')addComfyInstanceManual()">
+                <button class="model-add-btn" onclick="addComfyInstanceManual()" data-t="settings.comfyAddBtn">+ 添加</button>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:12px;margin-top:12px;flex-wrap:wrap;">
+                <button class="btn btn-primary" onclick="scanLanComfy()" style="font-size:12px;" data-t="settings.comfyScanBtn">🔍 扫描局域网自动发现</button>
+                <span id="comfyScanStatus" class="inline-status"></span>
+            </div>
+            <div id="comfyScanResults" style="margin-top:8px;"></div>
+
+            <details class="comfy-host-hint">
+                <summary style="font-weight:800;cursor:pointer;" data-t="settings.comfyHostHintTitle">如何让其他电脑调用这台电脑上的 ComfyUI？（点开展开）</summary>
+                <h4 data-t="settings.comfyHostStep1">① 让 ComfyUI 监听局域网（在运行 ComfyUI 的电脑上操作）</h4>
+                <span data-t="settings.comfyHostStep1Desc">ComfyUI 默认只接受本机请求。在其启动命令（整合包通常是 run_nvidia_gpu.bat）末尾加上参数 --listen 0.0.0.0，例如：</span>
+                <code>.\python_embeded\python.exe -s ComfyUI\main.py --windows-standalone-build --listen 0.0.0.0</code>
+                <h4 data-t="settings.comfyHostStep2">② 放行防火墙 8188 端口（仅首次需要）</h4>
+                <span data-t="settings.comfyHostStep2Win">Windows：以管理员身份打开 PowerShell，执行：</span>
+                <code>netsh advfirewall firewall add rule name="ComfyUI 8188" dir=in action=allow protocol=tcp localport=8188</code>
+                <span data-t="settings.comfyHostStep2Linux">Linux 执行：sudo ufw allow 8188/tcp　　macOS 默认无需配置</span>
+                <h4 data-t="settings.comfyHostStep3">③ 在另一台电脑上添加此后端</h4>
+                <span data-t="settings.comfyHostStep3Desc">在另一台电脑（运行无限画布的电脑）的设置页点「扫描局域网自动发现」并添加，或手动填写「这台电脑的IP:8188」。</span>
+                <p style="margin:8px 0 0;color:var(--warn);font-weight:700;" data-t="settings.comfySecurityNote">⚠ 安全提示：开启后同一局域网内的所有设备都能访问该 ComfyUI，请不要在公共 WiFi 下开启。</p>
+            </details>
         </section>
 
         <div style="display:flex;align-items:center;gap:10px;padding:4px 0;">
@@ -736,6 +807,8 @@ async function init() {
     // 加载安全设置 + 同步后端 Key 状态
     await loadSecuritySettings();
     await _syncServerKeyStatus();
+    // 加载 ComfyUI 后端状态（v2.5.62）
+    await refreshComfyStatus(false);
 
     renderProviderList();
     if (providers.length > 0) selectProvider(providers[0].id);
@@ -1825,6 +1898,142 @@ function showToast(msg, type) {
 
 function confirmDialog(msg) { return window.confirm(msg); }
 
+// ===== ComfyUI 后端管理（v2.5.62） =====
+var comfyStatuses = [];   // GET /api/comfyui/status 的实例状态
+var comfyLastScan = [];   // 最近一次扫描结果
+
+async function refreshComfyStatus(showMsg) {
+    try {
+        var resp = await apiFetch('/api/comfyui/status');
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        var data = await resp.json();
+        comfyStatuses = data.instances || [];
+        renderComfyInstances();
+        if (showMsg) showToast(_t('settings.comfyRefreshed', '状态已刷新'), 'ok');
+    } catch(e) {
+        if (showMsg) showToast(_t('settings.comfyRefreshFail', '刷新失败') + ': ' + e.message, 'err');
+    }
+}
+
+function renderComfyInstances() {
+    var el = document.getElementById('comfyInstanceList');
+    if (!el) return;
+    if (!comfyStatuses.length) {
+        el.innerHTML = '<div class="comfy-empty">' + _t('settings.comfyEmpty', '尚未配置后端，请手动添加或扫描局域网') + '</div>';
+        return;
+    }
+    el.innerHTML = comfyStatuses.map(function(it, i) {
+        var meta;
+        if (it.online) {
+            meta = _t('settings.comfyOnline', '在线');
+            if (it.device) meta += ' · ' + esc(it.device);
+            meta += ' · ' + _t('settings.comfyLoad', '队列') + ' ' + (it.load || 0);
+        } else {
+            meta = _t('settings.comfyOffline', '离线（无法连接）');
+        }
+        return '<div class="comfy-instance">'
+             + '<span>' + (it.online ? '🟢' : '🔴') + '</span>'
+             + '<span class="ci-addr">' + esc(it.address) + '</span>'
+             + '<span class="ci-meta">' + meta + '</span>'
+             + '<button class="ci-del" title="' + _t('settings.comfyRemove', '删除') + '" onclick="removeComfyInstance(' + i + ')">✕</button>'
+             + '</div>';
+    }).join('');
+}
+
+async function saveComfyList(list) {
+    var resp = await apiFetch('/api/comfyui/instances', {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({instances: list})
+    });
+    var data = await resp.json().catch(function(){ return {}; });
+    if (!resp.ok) throw new Error(data.detail || ('HTTP ' + resp.status));
+    await refreshComfyStatus(false);
+}
+
+async function addComfyInstanceManual() {
+    var input = document.getElementById('newComfyAddr');
+    var addr = (input.value || '').trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+    if (!addr) { showToast(_t('settings.comfyAddrEmpty', '请输入后端地址'), 'warn'); return; }
+    var list = comfyStatuses.map(function(x){ return x.address; });
+    if (list.indexOf(addr) >= 0) { showToast(_t('settings.comfyExists', '该后端已在列表中'), 'warn'); return; }
+    try {
+        list.push(addr);
+        await saveComfyList(list);
+        input.value = '';
+        showToast(_t('settings.comfyAddOk', '已添加'), 'ok');
+    } catch(e) { showToast(e.message, 'err'); }
+}
+
+async function addScannedComfy(i) {
+    var item = comfyLastScan[i];
+    if (!item || item.added) return;
+    var list = comfyStatuses.map(function(x){ return x.address; });
+    if (list.indexOf(item.address) >= 0) { item.added = true; renderComfyScanResults(); return; }
+    try {
+        list.push(item.address);
+        await saveComfyList(list);
+        item.added = true;
+        renderComfyScanResults();
+        showToast(_t('settings.comfyAddOk', '已添加'), 'ok');
+    } catch(e) { showToast(e.message, 'err'); }
+}
+
+async function removeComfyInstance(i) {
+    var target = comfyStatuses[i];
+    if (!target) return;
+    if (!confirmDialog(_t('settings.comfyRemoveConfirm', '确定删除此后端？') + '\n' + target.address)) return;
+    var list = comfyStatuses.map(function(x){ return x.address; }).filter(function(x){ return x !== target.address; });
+    try {
+        await saveComfyList(list);
+        showToast(_t('settings.comfyRemoved', '已删除'), 'ok');
+    } catch(e) { showToast(e.message, 'err'); }
+}
+
+async function scanLanComfy() {
+    var st = document.getElementById('comfyScanStatus');
+    var box = document.getElementById('comfyScanResults');
+    st.className = 'inline-status';
+    st.textContent = _t('settings.comfyScanning', '正在扫描局域网，请稍候…');
+    box.innerHTML = '';
+    try {
+        var resp = await apiFetch('/api/comfyui/scan-lan', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({port: 8188})
+        });
+        var data = await resp.json().catch(function(){ return {}; });
+        if (!resp.ok) throw new Error(data.detail || ('HTTP ' + resp.status));
+        comfyLastScan = data.found || [];
+        st.textContent = _t('settings.comfyScanDone', '扫描完成') + ' · '
+            + _t('settings.comfyScanFound', '发现') + ' ' + comfyLastScan.length + ' '
+            + _t('settings.comfyScanUnit', '台') + ' · ' + (data.networks || []).join(', ');
+        renderComfyScanResults();
+    } catch(e) {
+        st.className = 'inline-status err';
+        st.textContent = _t('settings.comfyScanFail', '扫描失败') + ': ' + e.message;
+    }
+}
+
+function renderComfyScanResults() {
+    var box = document.getElementById('comfyScanResults');
+    if (!box) return;
+    if (!comfyLastScan.length) {
+        box.innerHTML = '<div class="comfy-empty">' + _t('settings.comfyScanNone', '未发现局域网内的 ComfyUI（请确认对方已按下方说明开启监听与防火墙）') + '</div>';
+        return;
+    }
+    box.innerHTML = comfyLastScan.map(function(it, i) {
+        var meta = '';
+        if (it.version) meta += 'v' + esc(it.version);
+        if (it.device) meta += (meta ? ' · ' : '') + esc(it.device);
+        var action = it.added
+            ? '<span class="ci-added">✓ ' + _t('settings.comfyAlreadyAdded', '已添加') + '</span>'
+            : '<button class="btn btn-primary ci-add" onclick="addScannedComfy(' + i + ')">' + _t('settings.comfyAddShort', '添加') + '</button>';
+        return '<div class="cf-item"><span>🖥️</span><span class="ci-addr">' + esc(it.address) + '</span>'
+             + '<span class="ci-meta">' + meta + '</span>' + action + '</div>';
+    }).join('');
+}
+
 // ===== 初始化 =====
 (function(){ if(localStorage.theme==='dark') document.documentElement.classList.add('dark'); })();
 init();
@@ -1840,7 +2049,13 @@ window.addEventListener('message', e => {
     }
 });
 // v2.5.50：语言切换时重新渲染设置面板
-window._i18nUpdate = function() { if (typeof renderProviderList === 'function') renderProviderList(); if (typeof selectProvider === 'function' && typeof currentProviderId !== 'undefined' && currentProviderId) selectProvider(currentProviderId); };
+// v2.5.62：同步重渲染 ComfyUI 后端区块
+window._i18nUpdate = function() {
+    if (typeof renderProviderList === 'function') renderProviderList();
+    if (typeof selectProvider === 'function' && typeof currentProviderId !== 'undefined' && currentProviderId) selectProvider(currentProviderId);
+    if (typeof renderComfyInstances === 'function') renderComfyInstances();
+    if (typeof renderComfyScanResults === 'function') renderComfyScanResults();
+};
 window.addEventListener('lang-applied',function(){if(window._i18nUpdate)window._i18nUpdate();});
 
 // ===== 系统更新功能 =====

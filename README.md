@@ -5,7 +5,7 @@
 
 > AI-powered infinite canvas — aggregate multiple AI platforms for image & video generation, LLM chat, and ComfyUI workflow execution. Built-in Agent system with knowledge bases, custom Python skills, and encrypted distribution. Connect your local ComfyUI backend for seamless workflow automation. Zero-config LAN collaboration with bilingual UI.
 
-[![Version](https://img.shields.io/badge/version-2.5.54-blue)](VERSION)
+[![Version](https://img.shields.io/badge/version-2.5.62-blue)](VERSION)
 [![Python](https://img.shields.io/badge/python-3.10+-green)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-Source%20Available-orange)](LICENSE)
 
@@ -17,7 +17,7 @@
 - 🎬 **Video Generation** — Veo3 and other video models
 - 💬 **LLM Chat** — streaming/non-streaming, multi-conversation
 - 🧠 **Agent System** — ReAct execution engine, knowledge bases, custom Python skills
-- ⚡ **ComfyUI Integration** — workflow management + async execution, local backend support
+- ⚡ **ComfyUI Integration** — workflow management + async execution, local & LAN backends with one-click LAN auto-discovery
 - 🔒 **Encrypted Agent** — AES-256-GCM, machine-bound, export/distribution ready
 - 🌐 **LAN Collaboration** — zero-config multi-device, optimistic locking
 - 🌍 **Bilingual UI** — 483 translation keys, 100% Chinese/English coverage
@@ -58,6 +58,32 @@ python run.py        # macOS / Linux
 
 ---
 
+## 🖥️ Using ComfyUI on Another LAN Computer
+
+Run ComfyUI on a powerful PC and create from any other machine on the same network — no ComfyUI install needed on the client.
+
+**On the ComfyUI computer (one-time setup):**
+
+1. Make ComfyUI accept LAN requests: add `--listen 0.0.0.0` to its launch command (e.g. edit `run_nvidia_gpu.bat` for all-in-one packs):
+
+```bat
+.\python_embeded\python.exe -s ComfyUI\main.py --windows-standalone-build --listen 0.0.0.0
+```
+
+2. Open the firewall (Windows, admin PowerShell; Linux: `sudo ufw allow 8188/tcp`; macOS needs no setup):
+
+```powershell
+netsh advfirewall firewall add rule name="ComfyUI 8188" dir=in action=allow protocol=tcp localport=8188
+```
+
+**On the Infinite Canvas computer:**
+
+Open **Settings → ComfyUI Backends**, click **🔍 Scan LAN to Auto-discover**, then add the discovered backend (or enter `IP:8188` manually). ComfyUI nodes work immediately.
+
+> ⚠ When enabled, every device on the same LAN can access that ComfyUI. Do not enable it on public WiFi.
+
+---
+
 ## 📖 Project Structure
 
 ```
@@ -92,7 +118,7 @@ See [LICENSE](LICENSE).
 
 > AI 驱动的无限创作平台 — 聚合多 AI 平台的画布式创作工具。内置 Agent 智能体系统，支持知识库、自定义 Python 技能和加密分发。可对接本地 ComfyUI 后端实现无缝工作流自动化。零配置局域网协作，中英双语界面。
 
-[![Version](https://img.shields.io/badge/版本-2.5.54-blue)](VERSION)
+[![Version](https://img.shields.io/badge/版本-2.5.62-blue)](VERSION)
 [![Python](https://img.shields.io/badge/python-3.10+-green)](https://www.python.org/)
 [![License](https://img.shields.io/badge/许可-Source%20Available-orange)](LICENSE)
 
@@ -104,7 +130,7 @@ See [LICENSE](LICENSE).
 - 🎬 **视频生成** — 支持 Veo3 等视频模型
 - 💬 **LLM 对话** — 流式/非流式聊天，多对话管理
 - 🧠 **Agent 智能体** — ReAct 执行引擎，支持知识库和自定义 Python 技能
-- ⚡ **ComfyUI 集成** — 工作流管理 + 异步执行，支持对接本地 ComfyUI
+- ⚡ **ComfyUI 集成** — 工作流管理 + 异步执行，本地/局域网后端 + 局域网一键自动发现
 - 🔒 **加密 Agent** — AES-256-GCM 加密，机器绑定，支持付费分发
 - 🌐 **局域网协作** — 零配置多端使用，乐观锁防冲突
 - 🌍 **中英双语** — 483 个翻译键，100% 覆盖
@@ -142,6 +168,32 @@ python run.py        # macOS / Linux
 
 - 本机免密访问
 - 局域网输入预设密码（默认 `258`）
+
+---
+
+## 🖥️ 局域网调用另一台电脑的 ComfyUI
+
+让高性能电脑运行 ComfyUI，同一局域网内的其他电脑负责创作——客户端无需安装 ComfyUI。
+
+**在 ComfyUI 电脑上（一次性设置）：**
+
+1. 让 ComfyUI 接受局域网请求：在启动命令（整合包通常是 run_nvidia_gpu.bat）末尾加上 `--listen 0.0.0.0`：
+
+```bat
+.\python_embeded\python.exe -s ComfyUI\main.py --windows-standalone-build --listen 0.0.0.0
+```
+
+2. 放行防火墙（Windows 以管理员身份打开 PowerShell 执行；Linux：`sudo ufw allow 8188/tcp`；macOS 默认无需配置）：
+
+```powershell
+netsh advfirewall firewall add rule name="ComfyUI 8188" dir=in action=allow protocol=tcp localport=8188
+```
+
+**在无限画布电脑上：**
+
+打开 **设置 → ComfyUI 后端**，点击 **🔍 扫描局域网自动发现**，添加发现的后端（也可手动填写 `IP:8188`），ComfyUI 节点立即可用。
+
+> ⚠ 开启后同一局域网内的所有设备都能访问该 ComfyUI，请不要在公共 WiFi 下开启。
 
 ---
 
