@@ -42,6 +42,8 @@ goto :download_python
 
 :download_python
 set "PY_ZIP=%TEMP%\258-canvas-python-env.zip"
+REM NOTE: This URL resolves to the LATEST release. When publishing a new
+REM release, ALWAYS attach python-env.zip as an asset, or auto-setup breaks.
 set "PY_URL=https://github.com/ken571571/258-Canvas/releases/latest/download/python-env.zip"
 
 echo    Downloading from:

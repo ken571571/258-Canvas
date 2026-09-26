@@ -9,6 +9,9 @@ MiMo API文档.md
 **/.env
 *.bak
 
+# ——— 发行资产（55MB，通过 GitHub Releases 附带分发，禁止入库）———
+python-env.zip
+
 # ——— Python 缓存 ———
 **/__pycache__/
 *.pyc
