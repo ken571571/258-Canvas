@@ -97,7 +97,9 @@
   // --- Load Resources ---
   async function loadLocale(lng) {
     try {
-      const resp = await fetch('/static/locales/' + lng + '.json');
+      // ?t= 缓存击穿：locale 每个版本都会更新，生产模式下 StaticFiles
+      // 走浏览器启发式缓存，必须带时间戳防止回访用户拿到旧翻译（§16.8 同类）
+      const resp = await fetch('/static/locales/' + lng + '.json?t=' + Date.now());
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
       _resources[lng] = await resp.json();
     } catch(e) {
