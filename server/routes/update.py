@@ -247,7 +247,9 @@ async def do_update(payload: dict = {}):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    zip_url = f"https://github.com/{info['user']}/{info['repo']}/archive/refs/heads/{info['branch']}.zip"
+    # 直接用 codeload（github.com 的 archive 会 302 重定向到 codeload；
+    # 项目强制 follow_redirects=False，故直连避免重定向失败）
+    zip_url = f"https://codeload.github.com/{info['user']}/{info['repo']}/zip/refs/heads/{info['branch']}"
 
     # 3. 创建备份目录
     ts = datetime.now().strftime("%Y%m%d-%H%M%S")
