@@ -5,7 +5,7 @@
 
 > AI-powered infinite canvas — aggregate multiple AI platforms for image & video generation, LLM chat, and ComfyUI workflow execution. Built-in Agent system with knowledge bases, custom Python skills, and encrypted distribution. Connect your local ComfyUI backend for seamless workflow automation. Zero-config LAN collaboration with bilingual UI.
 
-[![Version](https://img.shields.io/badge/version-2.5.62-blue)](VERSION)
+[![Version](https://img.shields.io/badge/version-2.5.63-blue)](VERSION)
 [![Python](https://img.shields.io/badge/python-3.10+-green)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-Source%20Available-orange)](LICENSE)
 
@@ -118,7 +118,7 @@ See [LICENSE](LICENSE).
 
 > AI 驱动的无限创作平台 — 聚合多 AI 平台的画布式创作工具。内置 Agent 智能体系统，支持知识库、自定义 Python 技能和加密分发。可对接本地 ComfyUI 后端实现无缝工作流自动化。零配置局域网协作，中英双语界面。
 
-[![Version](https://img.shields.io/badge/版本-2.5.62-blue)](VERSION)
+[![Version](https://img.shields.io/badge/版本-2.5.63-blue)](VERSION)
 [![Python](https://img.shields.io/badge/python-3.10+-green)](https://www.python.org/)
 [![License](https://img.shields.io/badge/许可-Source%20Available-orange)](LICENSE)
 
