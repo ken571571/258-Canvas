@@ -3,8 +3,11 @@ chcp 65001 >nul 2>&1
 cd /d "%~dp0"
 
 echo.
+REM --- Banner: version read live from VERSION file (v2.5.62) ---
+set "CANVAS_VER=dev"
+if exist "%~dp0VERSION" set /p CANVAS_VER=<"%~dp0VERSION"
 echo ============================================
-echo       Infinite Canvas  v2.5.61
+echo       Infinite Canvas  v%CANVAS_VER%
 echo       258-Canvas / github.com/ken571571
 echo ============================================
 echo.
