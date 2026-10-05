@@ -81,8 +81,9 @@ echo.
 echo    Please manually download Python 3.10+ from:
 echo      https://www.python.org/downloads/
 echo    Remember to check "Add Python to PATH" during install.
-echo    Then run this script again.
+echo Then run this script again.
 echo.
+del "%PY_ZIP%" >nul 2>&1
 pause
 exit /b 1
 
@@ -100,6 +101,7 @@ if %errorlevel% neq 0 (
     echo [ERROR] Extraction failed.
     echo    Please install Python 3.10+ manually:
 echo      https://www.python.org/downloads/
+del "%PY_ZIP%" >nul 2>&1
     pause
     exit /b 1
 )
@@ -112,6 +114,7 @@ if not exist "%~dp0python\python.exe" (
     echo [ERROR] Python extraction incomplete - python.exe not found.
     echo    Please install Python 3.10+ manually:
 echo      https://www.python.org/downloads/
+del "%PY_ZIP%" >nul 2>&1
     pause
     exit /b 1
 )
