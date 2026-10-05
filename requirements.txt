@@ -6,7 +6,7 @@
 # ——— Web 框架 ———
 fastapi>=0.100.0,<1.0.0
 uvicorn>=0.20.0,<1.0.0
-starlette>=0.30.0,<1.0.0
+starlette>=0.30.0,<2.0.0
 
 # ——— HTTP 客户端（AI API 调用） ———
 httpx>=0.25.0,<1.0.0
@@ -19,5 +19,5 @@ Pillow>=10.0.0
 
 # ——— 辅助 ———
 python-multipart>=0.0.5     # FastAPI UploadFile 支持
-cryptography>=41.0.0,<45.0
-websockets>=10.0,<15.0     # WebSocket 支持
+cryptography>=41.0.0,<50.0
+websockets>=10.0,<17.0     # WebSocket 支持
