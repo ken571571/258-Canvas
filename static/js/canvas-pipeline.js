@@ -750,6 +750,148 @@ CanvasEngine.prototype.cancelPipeline = function() {
     }
 };
 
+// ——— 组级编排（§13.8 第一步：组内一键 + 手动选组传图，不做拓扑自动推导）———
+
+CanvasEngine.prototype._groupById2 = function(groupId) {
+    return this.groups.find(g => g.id === groupId);
+};
+
+// 设置组运行状态并同步 Store（runState: idle/running/success/error）
+CanvasEngine.prototype._setGroupState = function(groupId, state, message) {
+    var g = this._groupById2(groupId);
+    if (!g) return;
+    g.runState = state;
+    g.runMessage = message || '';
+    if (this.store && this.store.updateGroup) {
+        this.store.updateGroup(groupId, { runState: state, runMessage: message || '' });
+    }
+    var gel = this.groupsEl && this.groupsEl.querySelector('[data-group-id="' + groupId + '"]');
+    if (gel) gel.classList.add('group-run-' + state);
+};
+
+// 运行整组：从组内无入边的根节点沿连线执行，再校验组内所有可执行节点
+CanvasEngine.prototype._runGroup = async function(groupId) {
+    var g = this._groupById2(groupId);
+    if (!g) return { success: false, error: 'group not found' };
+    if (this._runningGroupId) {
+        return { success: false, error: _t('pipeline.groupBusy', '另一组正在运行，请等待完成') };
+    }
+    this._runningGroupId = groupId;
+
+    var ids = new Set(g.childIds);
+    // 组内根节点：没有任何"组内来源"连线指向它
+    var internalIncoming = new Set();
+    this.connections.forEach(c => {
+        if (c.to && ids.has(c.to) && ids.has(c.from)) internalIncoming.add(c.to);
+    });
+    var roots = g.childIds.filter(id => !internalIncoming.has(id))
+        .map(id => this.nodes.find(n => n.id === id))
+        .filter(n => n && this._isExecutable(n));
+
+    this._setGroupState(groupId, 'running', _t('pipeline.groupRunning', '组运行中...'));
+    this._renderAll();
+
+    var success = true;
+    var errorMsg = '';
+    try {
+        if (!roots.length) {
+            success = false;
+            errorMsg = _t('pipeline.groupNoRoot', '未找到可执行起点');
+        } else {
+            for (var r = 0; r < roots.length; r++) {
+                await this._executeFrom(roots[r].id);
+            }
+            // 校验组内所有可执行节点
+            var failed = g.childIds
+                .map(id => this.nodes.find(n => n.id === id))
+                .filter(n => n && this._isExecutable(n) && n.runState !== 'success');
+            if (failed.length) {
+                success = false;
+                var fn = failed[0];
+                errorMsg = (fn.runMessage || fn.runState || '').slice(0, 120);
+            }
+        }
+    } catch (e) {
+        success = false;
+        errorMsg = (e && e.message ? e.message : String(e)).slice(0, 120);
+    }
+
+    if (this._runningGroupId === groupId) this._runningGroupId = null;
+    this._setGroupState(groupId, success ? 'success' : 'error',
+        success ? _t('pipeline.groupDone', '整组完成') : (_t('pipeline.groupFailed', '组运行失败') + (errorMsg ? ': ' + errorMsg : '')));
+    this._renderAll();
+    if (!success) this._markDirty();
+    return { success: success, error: errorMsg };
+};
+
+// 收集组内所有 output 节点产出的媒体（图片优先、视频其次）
+CanvasEngine.prototype._groupMedia = function(groupId) {
+    var g = this._groupById2(groupId);
+    if (!g) return [];
+    var items = {};
+    g.childIds.forEach(id => {
+        var n = this.nodes.find(x => x.id === id);
+        if (!n || n.type !== 'output') return;
+        (n.images || []).forEach(it => {
+            var u = (it && it.url) || it;
+            if (u && !items[u]) items[u] = u;
+        });
+        (n.videos || []).forEach(it => {
+            var u = (it && it.url) || it;
+            if (u && !items[u]) items[u] = u;
+        });
+    });
+    return Object.keys(items).map(u => items[u]);
+};
+
+// 把上游组的产物按顺序送入目标组的 image 入口节点（简化映射，用户可再手动调整）
+CanvasEngine.prototype._passGroupTo = function(fromGroupId, toGroupId) {
+    if (fromGroupId === toGroupId) return;
+    var target = this._groupById2(toGroupId);
+    if (!target) return;
+    var entries = target.childIds
+        .map(id => this.nodes.find(n => n.id === id))
+        .filter(n => n && n.type === 'image');
+    var media = this._groupMedia(fromGroupId);
+    if (!entries.length || !media.length) {
+        alert(_t('pipeline.passEmpty', '无产物或目标组无图片入口'));
+        return;
+    }
+    var count = Math.min(entries.length, media.length);
+    for (var i = 0; i < count; i++) {
+        entries[i].url = media[i];
+        this.store.updateNode(entries[i].id, { url: media[i] });
+    }
+    this._renderAll();
+    this._markDirty();
+    alert(_t('pipeline.passDone', '已送入 {n} 张到「{label}」')
+        .replace('{n}', count).replace('{label}', target.label || ''));
+};
+
+// 选择"送入哪个下游组"：弹菜单
+CanvasEngine.prototype._choosePassTarget = function(groupId, anchorEl) {
+    var menu = document.getElementById('create-menu');
+    if (!menu) return;
+    var self = this;
+    var others = this.groups.filter(g => g.id !== groupId);
+    if (!others.length) return;
+    menu.innerHTML = '<div class="menu-section-title">' + _t('pipeline.passTitle', '把本组产物送入') + '</div>';
+    others.forEach(g => {
+        var b = document.createElement('button');
+        b.textContent = g.label || g.id;
+        b.onclick = function() {
+            self._passGroupTo(groupId, g.id);
+            menu.style.display = 'none';
+        };
+        menu.appendChild(b);
+    });
+    var rect = anchorEl ? anchorEl.getBoundingClientRect() : { left: window.innerWidth / 2, top: 80 };
+    menu.style.display = 'block';
+    menu.style.left = Math.min(rect.left, window.innerWidth - 200) + 'px';
+    menu.style.top = Math.min((rect.bottom || rect.top) + 4, window.innerHeight - 240) + 'px';
+};
+
+
 CanvasEngine.prototype._runGenerator = async function(id) {
     const node = this.nodes.find(item => item.id === id);
     if (!node) return;

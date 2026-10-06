@@ -49,6 +49,7 @@ CanvasEngine.prototype._renderGroups = function() {
 
         const div = document.createElement('div');
         div.className = 'group-container';
+        if (group.runState) div.classList.add('group-run-' + group.runState);
         div.style.left = `${bounds.x}px`;
         div.style.top = `${bounds.y}px`;
         div.style.width = `${bounds.w}px`;
@@ -56,11 +57,13 @@ CanvasEngine.prototype._renderGroups = function() {
         div.setAttribute('data-group-id', group.id);
         div.innerHTML = `
             <div class="group-label-wrap">
+                <button class="group-run-btn" title="${_t('group.runTitle','运行整组')}">▶</button>
                 <input class="group-label-input" data-group-id="${group.id}" value="${this._esc(group.label || '')}" placeholder="${_t('group.placeholder','输入组名')}" maxlength="40"
                     onblur="window._canvas._updateGroupLabel('${group.id}', this.value)"
                     onkeydown="if(event.key==='Enter')this.blur()"
                     onclick="event.stopPropagation()"
                     onmousedown="event.stopPropagation()">
+                <button class="group-pass-btn" title="${_t('group.passTitle','把本组产物送入...')}">⇩</button>
                 <button class="group-delete" title="${_t('group.deleteTitle','删除组（保留节点）')}" onclick="event.stopPropagation();">&times;</button>
             </div>
             <div class="group-resize nw" data-corner="nw"></div>
@@ -68,6 +71,18 @@ CanvasEngine.prototype._renderGroups = function() {
             <div class="group-resize sw" data-corner="sw"></div>
             <div class="group-resize se" data-corner="se"></div>
         `;
+
+        // 运行整组
+        div.querySelector('.group-run-btn')?.addEventListener('click', event => {
+            event.stopPropagation();
+            this._runGroup(group.id);
+        });
+
+        // 把产物送入其他组
+        div.querySelector('.group-pass-btn')?.addEventListener('click', event => {
+            event.stopPropagation();
+            this._choosePassTarget(group.id, event.currentTarget);
+        });
 
         // 删除按钮
         div.querySelector('.group-delete')?.addEventListener('click', event => {

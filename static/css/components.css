@@ -644,6 +644,29 @@
     display: flex; align-items: center; justify-content: center; flex-shrink: 0;
   }
   .group-delete:hover { background: rgba(0,0,0,.35); }
+
+  .group-run-btn, .group-pass-btn {
+    width: 20px; height: 20px; border: none; border-radius: 5px;
+    background: rgba(0,0,0,.15); color: var(--accent-ink);
+    font-size: 10px; line-height: 1; cursor: pointer; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0;
+  }
+  .group-run-btn:hover, .group-pass-btn:hover { background: rgba(0,0,0,.35); }
+  .group-run-btn:active { transform: scale(.92); }
+
+  /* 组运行状态描边 */
+  .group-container.group-run-running {
+    border-color: #3b82f6;
+    box-shadow: 0 0 16px rgba(59,130,246,.35);
+  }
+  .group-container.group-run-success {
+    border-color: #22c55e;
+  }
+  .group-container.group-run-error {
+    border-color: #ef4444;
+    box-shadow: 0 0 16px rgba(239,68,68,.3);
+  }
   .group-resize {
     position: absolute;
     width: 12px;
