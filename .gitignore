@@ -54,8 +54,10 @@ test_regression.json
 canvases/*测试*/
 # 未命名画布等临时画布
 canvases/未命名画布_*/
-# 已跟踪的实际画布：移出版本控制（见 git rm --cached）
+# 旧测试画布（已不再使用，目录名保留在 .gitignore 防止误传）
 canvases/电商流1_1ea56bdc/
+# 注：canvases/数字人_个人IP流_c4cd80fc/ 与 canvases/服饰电商流_3197b21e/ 是示例画布，
+# 其 canvas.json 已入库供新用户参考，运行时产生的 modified 改动不推送（保持远程为干净示例）。
 # 仅本地使用的私人画布（含业务提示词/工作流编排，不上传）
 canvases/服饰电商流_ComfyUI_H3_17d032cd/
 
