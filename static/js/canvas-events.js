@@ -267,6 +267,13 @@ CanvasEngine.prototype._initEvents = function() {
             return;
         }
 
+        // Esc: 取消所有运行中的节点（裁剪器打开时优先让裁剪器处理）
+        if (event.key === 'Escape' && !this._crop && this._anyNodeRunning && this._anyNodeRunning()) {
+            event.preventDefault();
+            this.cancelPipeline();
+            return;
+        }
+
         // Delete/Backspace: 删除
         if (event.key === 'Delete' || event.key === 'Backspace') {
             if (this.selectedConnectionId) {

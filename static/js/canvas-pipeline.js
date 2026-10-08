@@ -5,14 +5,12 @@
 // Class-level data fields
 // ============================================================
 
-CanvasEngine.prototype._activePipelineAbort = null;
-CanvasEngine.prototype._activeVideoAbort = null;
-CanvasEngine.prototype._activeComfyAbort = null;
+CanvasEngine.prototype._activeComfyAbort = null;  // 独立运行 ComfyUI 的兜底控制器（链上下文缺位时）
 
-// v2.5.56：LOOP 批次内已跑 agent 去重集合（loop 进入时创建、退出时恢复，支持嵌套）
-// 直接挂在生成器上游、不经 LOOP 的 agent（如 agent2→comfy 且 agent1→LOOP→comfy）
-// 其输出与批次游标无关，整个 loop 只应跑一次；用此集合跨批次去重。
-CanvasEngine.prototype._loopRanAgents = null;
+// v2.5.70：链级执行上下文注册表——每条运行中的链一个 ctx（独立 AbortController + 去重集合），
+// 多链并发互不干扰；节点「取消」只中止所在链，全局「停止」/ESC 中止全部。
+// ctx 结构：{ id, rootId, abort, signal, ranAgents, loopRanAgents, nodes }
+CanvasEngine.prototype._activeChains = new Map(); // ctx.id -> ctx
 
 // 视频模型时长和分辨率参数 —— 运行时由 _loadVideoModelParams() 从 GET /api/video/model-params 填充
 CanvasEngine.prototype._videoDurations = {};
@@ -88,6 +86,17 @@ CanvasEngine.prototype._collectInputs = function(nodeId) {
                 var u = from.url;
                 if (/\.(mp4|webm|mov|m4v)$/i.test(u)) videos.push(tag ? tag+'::'+u : u);
                 else images.push(tag ? tag+'::'+u : u);
+            }
+            // v2.5.67：输出节点产物可沿连线流入下游（支持组间直连；role 由连线 fieldId 标签携带）
+            if (from.type === 'output') {
+                (from.images || []).forEach(function(it) {
+                    var u = (it && it.url) || it;
+                    if (u) images.push(tag ? tag + '::' + u : u);
+                });
+                (from.videos || []).forEach(function(it) {
+                    var u = (it && it.url) || it;
+                    if (u) videos.push(tag ? tag + '::' + u : u);
+                });
             }
             // v2.5.59：音频节点连线 → 音频参考（如 MiniMax-H3 r2va 音频驱动）
             if (from.type === 'audio' && from.url) {
@@ -339,8 +348,24 @@ CanvasEngine.prototype._onLoopDrop = function(event, nodeId) {
 
 // ——— Loop 执行引擎 ———
 
-CanvasEngine.prototype._runLoop = async function(nodeId, visited) {
+// v2.5.73：列队文本统一分段（执行与 UI 预览共用），三级回退：
+//          1) 优先 ---- 分隔（项目强约束格式）
+//          2) 失败时识别「独立分隔行」：一行仅由 3+ 个 - = _ * — 组成（如 markdown 的 --- 或中文 ——）
+//          3) 再失败回退空行分段（Agent 未必每次遵守 ---- 约束，可能只用空行分段）
+CanvasEngine.prototype._splitLoopSegments = function(raw) {
+    var s = String(raw || '');
+    var segs = s.split('----').map(function(x) { return x.trim(); }).filter(Boolean);
+    if (segs.length > 1) return segs;
+    // 分隔行必须整行只有分隔字符（两侧可空白），行内混有文字（如「——因为」）不会误切
+    segs = s.split(/\n\s*[-=_*—]{3,}\s*\n/).map(function(x) { return x.trim(); }).filter(Boolean);
+    if (segs.length > 1) return segs;
+    return s.split(/\n\s*\n+/).map(function(x) { return x.trim(); }).filter(Boolean);
+};
+
+CanvasEngine.prototype._runLoop = async function(nodeId, visited, ctx) {
     var self = this;
+    ctx = self._ensureCtx(ctx, nodeId);
+    ctx.nodes.add(nodeId);
     var node = self.nodes.find(function(n) { return n.id === nodeId; });
     if (!node) return;
     if (!node._queue) node._queue = [];
@@ -348,14 +373,40 @@ CanvasEngine.prototype._runLoop = async function(nodeId, visited) {
     // v2.5.52：快照防竞态 — await 期间用户可能添加/删除队列项，快照确保执行期间数据一致
     var execQueue = node._queue.slice();
     var execTexts = node._textSegments.slice();
+    // v2.5.74：快照前预执行上游未跑 agent —— 修复时序缺陷：旧逻辑在批次内才跑 agent，
+    //          文本快照永远是上一轮陈旧 lastResult（列队异常出图根因之二）。
+    //          与 comfy 分支同款去重（ctx.ranAgents / ctx.loopRanAgents），批次内不会重跑。
+    var upIds = self._upstreamOrder(nodeId);
+    for (var ui = 0; ui < upIds.length; ui++) {
+        var un = self.nodes.find(function(n) { return n.id === upIds[ui]; });
+        if (!un || un.type !== 'agent') continue;
+        if (visited.has(un.id)) continue;
+        if (ctx.ranAgents.has(un.id) || (ctx.loopRanAgents && ctx.loopRanAgents.has(un.id))) continue;
+        if (ctx.signal.aborted || node._cancelled) {
+            self._setNodeRunState(node, 'cancelled', _t('pipeline.cancelled','Cancelled'));
+            self._renderAll(); self._markDirty(); return;
+        }
+        ctx.ranAgents.add(un.id);
+        await self._runAgent(un.id, ctx);
+        if (ctx.loopRanAgents) ctx.loopRanAgents.add(un.id);
+        if (un.runState === 'cancelled') {
+            self._setNodeRunState(node, 'cancelled', _t('pipeline.cancelled','Cancelled'));
+            self._renderAll(); self._markDirty(); return;
+        }
+        if (un.runState === 'error') {
+            // v2.5.74：上游失败不开批，防止空/垃圾数据进入队列出图
+            self._setNodeRunState(node, 'error', _t('pipeline.upstreamFailed','上游 Agent 执行失败，列队未开批'));
+            self._renderAll(); self._markDirty(); return;
+        }
+    }
     // v2.5.53：收集上游文本并剥离 fieldId 标签，防止标签泄漏到 _textSegments
     var upstreamTexts = self._collectInputs(nodeId).texts.map(function(t) {
         var parts = String(t).split('::');
         return parts.length >= 2 ? parts.slice(1).join('::') : t;
     });
+    // v2.5.73：统一分段（---- → 分隔行 → 空行，见 _splitLoopSegments）
     if (upstreamTexts.length) {
-        var raw = upstreamTexts.join('\n');
-        execTexts = raw.split('----').map(function(s) { return s.trim(); }).filter(Boolean);
+        execTexts = self._splitLoopSegments(upstreamTexts.join('\n'));
     }
     // 执行期间将 node 指向快照，确保所有下游读取一致
     node._queue = execQueue;
@@ -391,23 +442,32 @@ CanvasEngine.prototype._runLoop = async function(nodeId, visited) {
         self._setNodeRunState(node, 'error',  _t('pipeline.loopEmpty','队列和文本均为空'));
         return;
     }
+    // v2.5.74：调试日志（排查列队出图问题；控制台按 [loop] 过滤）
+    console.log('[loop] ' + nodeId + ' segments=' + totalTexts + ' queueImgs=' + totalImages
+        + ' batchSize=' + batchSize + ' batches=' + batchCount + ' txtDriven=' + txtDriven,
+        execTexts.slice(0, 5));
     // 计算有效图片数（可被 batchSize 整除的部分）和剩余
     var effectiveImages = totalImages - (totalImages % batchSize);
     node._cursorImg = 0;
     node._cursorTxt = 0;
     node._cancelled = false;
     self._setNodeRunState(node, 'running', _t('pipeline.batchStart','开始批次处理...'));
+    node._runCtx = ctx;  // v2.5.71：登记运行归属（取消级联防并发链互染）
     self._renderAll();
     // v2.5.56：本 loop 的"已跑 agent"集合——跨批次去重直接挂生成器上游的 agent。
-    // 继承父 loop 的集合（嵌套 loop 场景），退出时恢复父值。
-    var _prevRanAgents = self._loopRanAgents;
-    self._loopRanAgents = _prevRanAgents ? new Set(_prevRanAgents) : new Set();
+    // v2.5.70：集合挂在链上下文上（ctx.loopRanAgents），嵌套 loop 继承父集合，退出时恢复父值；
+    //          并发链各自持有，互不污染。
+    var _prevRanAgents = ctx.loopRanAgents;
+    ctx.loopRanAgents = _prevRanAgents ? new Set(_prevRanAgents) : new Set();
     try {
     for (var b = 0; b < batchCount; b++) {
-        if (node._cancelled) {
+        // v2.5.70：链被取消（节点取消/全局停止/ESC）或 loop 专用取消 → 立即退出批次循环
+        if (node._cancelled || ctx.signal.aborted) {
             self._setNodeRunState(node, 'cancelled', _t('pipeline.cancelled','Cancelled'));
             self._renderAll(); self._markDirty(); return;
         }
+        // v2.5.72：批次进度写入 meta（badge 显示「调度中」，同屏只有下游执行节点显示「运行中」）
+        self._setNodeRunState(node, 'running', _t('pipeline.batchProgress','批次 {i}/{n} · 下游执行中').replace('{i}', b + 1).replace('{n}', batchCount));
         // 设置当前批次游标
         if (txtDriven && effectiveImages > 0) {
             node._cursorImg = (b * batchSize) % effectiveImages;  // 循环取图起点
@@ -421,7 +481,7 @@ CanvasEngine.prototype._runLoop = async function(nodeId, visited) {
         var batchVisited = new Set(visited);
         for (var d = 0; d < downstreams.length; d++) {
             if (!triggered[downstreams[d].id]) {
-                await self._executeFrom(downstreams[d].id, batchVisited);
+                await self._executeFrom(downstreams[d].id, batchVisited, ctx);
                 self._markTriggered(downstreams[d].id, triggered);
                 var ds = self.nodes.find(function(n) { return n.id === downstreams[d].id; });
                 var descIds = self._findDownstream(downstreams[d].id);
@@ -433,7 +493,7 @@ CanvasEngine.prototype._runLoop = async function(nodeId, visited) {
                 if (hasError) { batchFailed = true; break; }
             }
         }
-        if (node._cancelled) {
+        if (node._cancelled || ctx.signal.aborted) {
             self._setNodeRunState(node, 'cancelled', _t('pipeline.cancelled','Cancelled'));
             self._renderAll(); self._markDirty(); return;
         }
@@ -446,7 +506,7 @@ CanvasEngine.prototype._runLoop = async function(nodeId, visited) {
     self._setNodeRunState(node, 'success', _t('pipeline.batchComplete','完成 图片{cursorImg}/{queueLen} 张 · 文本{cursorTxt}/{textLen}段').replace('{cursorImg}',node._cursorImg).replace('{queueLen}',totalImages).replace('{cursorTxt}',node._cursorTxt).replace('{textLen}',totalTexts));
     self._renderAll(); self._markDirty();
     } finally {
-        self._loopRanAgents = _prevRanAgents;
+        ctx.loopRanAgents = _prevRanAgents;
     }
 };
 
@@ -551,18 +611,124 @@ CanvasEngine.prototype._findChainRoot = function(nodeId, visited) {
     if (visited.has(nodeId)) return nodeId;
     visited.add(nodeId);
     var self = this;
+    // v2.5.68：穿透数据节点（image/audio/output/prompt）回溯到真正的可执行根节点，
+    // 使跨组连线（如 output→agent）能被纳入同一条执行链。
+    var execUp = this._nearestExecutableUpstream(nodeId, new Set());
+    if (execUp) return this._findChainRoot(execUp, visited);
+    // 没有可执行上游：当前可执行节点就是根
+    var node = this.nodes.find(function(n) { return n.id === nodeId; });
+    if (node && self._isExecutable(node)) return nodeId;
+    return nodeId;
+};
+
+// v2.5.68：BFS 穿透数据节点，找到最近的可执行上游节点（无则返回 null）
+CanvasEngine.prototype._nearestExecutableUpstream = function(nodeId, traversed) {
+    traversed = traversed || new Set();
+    if (traversed.has(nodeId)) return null;
+    traversed.add(nodeId);
+    var self = this;
     var ups = this.connections
         .filter(function(c) { return c.to === nodeId; })
         .map(function(c) { return self.nodes.find(function(n) { return n.id === c.from; }); })
-        .filter(function(n) { return self._isExecutable(n); });
-    if (!ups.length) return nodeId;
-    return this._findChainRoot(ups[0].id, visited);
+        .filter(Boolean);
+    for (var i = 0; i < ups.length; i++) {
+        if (self._isExecutable(ups[i])) return ups[i].id;
+    }
+    for (var i = 0; i < ups.length; i++) {
+        var deeper = this._nearestExecutableUpstream(ups[i].id, traversed);
+        if (deeper) return deeper;
+    }
+    return null;
+};
+
+// v2.5.68：穿透数据节点，收集当前节点所有可达的可执行下游节点（BFS，带环路保护）。
+// 用于跨组自动串联：image_gen→output→agent 这种"数据节点隔档"的下游能被触发。
+CanvasEngine.prototype._nextExecutableDownstreams = function(nodeId, traversed) {
+    traversed = traversed || new Set();
+    if (traversed.has(nodeId)) return [];
+    traversed.add(nodeId);
+    var self = this;
+    var result = [];
+    var directDowns = this.connections
+        .filter(function(c) { return c.from === nodeId; })
+        .map(function(c) { return self.nodes.find(function(n) { return n.id === c.to; }); })
+        .filter(Boolean);
+    directDowns.forEach(function(n) {
+        if (self._isExecutable(n)) {
+            if (!result.some(function(x) { return x.id === n.id; })) result.push(n);
+        } else {
+            // 数据节点（image/audio/output/prompt）→ 穿透继续向下找
+            self._nextExecutableDownstreams(n.id, traversed).forEach(function(d) {
+                if (!result.some(function(x) { return x.id === d.id; })) result.push(d);
+            });
+        }
+    });
+    return result;
+};
+
+// ——— v2.5.70：链级执行上下文（chain context）辅助方法 ———
+
+// 创建并注册一条链的执行上下文（独立 AbortController，取消只影响本链）
+CanvasEngine.prototype._createChainCtx = function(rootId) {
+    var ctx = {
+        id: 'chain_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8),
+        rootId: rootId || '',
+        abort: new AbortController(),
+        ranAgents: new Set(),      // 链级已跑 agent 去重（原 _chainRanAgents）
+        loopRanAgents: null,       // 由 _runLoop 管理（保存/恢复，嵌套继承）
+        nodes: new Set()           // 链已触及的节点（节点级取消定位用）
+    };
+    ctx.signal = ctx.abort.signal;
+    this._activeChains.set(ctx.id, ctx);
+    return ctx;
+};
+
+// 注销链上下文（仅当未被替换）
+CanvasEngine.prototype._removeChainCtx = function(ctx) {
+    if (ctx && ctx.id && this._activeChains.get(ctx.id) === ctx) {
+        this._activeChains.delete(ctx.id);
+    }
+};
+
+// 防御兜底：调用方未传 ctx 时创建临时上下文（不注册，无法被取消定位，仅保证信号可用）
+CanvasEngine.prototype._ensureCtx = function(ctx, rootId) {
+    if (ctx) return ctx;
+    var c = { id: '', rootId: rootId || '', abort: new AbortController(), ranAgents: new Set(), loopRanAgents: null, nodes: new Set() };
+    c.signal = c.abort.signal;
+    return c;
+};
+
+// 按节点定位所在链：链根命中优先，其次取已触及该节点的链（多链命中时取最后注册的）
+CanvasEngine.prototype._findChainCtxByNode = function(nodeId) {
+    var self = this;
+    var hit = null;
+    this._activeChains.forEach(function(ctx) {
+        if (ctx.rootId === nodeId) hit = ctx;
+    });
+    if (!hit) {
+        this._activeChains.forEach(function(ctx) {
+            if (ctx.nodes.has(nodeId)) hit = ctx;
+        });
+    }
+    return hit;
 };
 
 // 点击任意节点 [运行] → 从链起点执行到终点
 CanvasEngine.prototype._executeChain = async function(nodeId) {
+    // v2.5.70：链级执行上下文——每条链独立 AbortController + ranAgents 去重，
+    // 多链并发互不干扰；节点「取消」只中止所在链，全局「停止」/ESC 中止全部。
     var rootId = this._findChainRoot(nodeId);
-    return this._executeFrom(rootId);
+    // v2.5.71：防重复启动——同一链已在运行则忽略本次点击（防双击/并发双跑同一链）
+    var busy = false;
+    this._activeChains.forEach(function(c) { if (c.rootId === rootId) busy = true; });
+    if (busy) { console.warn('[canvas] chain already running, ignored:', rootId); return; }
+    var ctx = this._createChainCtx(rootId);
+    try {
+        ctx.nodes.add(rootId);
+        return await this._executeFrom(rootId, new Set(), ctx);
+    } finally {
+        this._removeChainCtx(ctx);
+    }
 };
 
 // 标记节点及其所有下游为"已触发"（防止 loop 重复执行同一链上的节点）
@@ -576,8 +742,10 @@ CanvasEngine.prototype._markTriggered = function(nodeId, triggered) {
 };
 
 // 从某个节点开始执行，递归向下游传播
-CanvasEngine.prototype._executeFrom = async function(nodeId, visited) {
+CanvasEngine.prototype._executeFrom = async function(nodeId, visited, ctx) {
     var self = this;
+    // v2.5.70：链级上下文贯穿（防御兜底：缺位时用临时 ctx，仅保证信号可用）
+    ctx = self._ensureCtx(ctx, nodeId);
     // 环路保护：同一链上不重复执行
     if (!visited) visited = new Set();
     if (visited.has(nodeId)) return;
@@ -587,57 +755,73 @@ CanvasEngine.prototype._executeFrom = async function(nodeId, visited) {
     if (!node) return;
     if (!self._isExecutable(node)) return;
 
+    // v2.5.70：登记链已触及节点（节点级取消定位用）
+    ctx.nodes.add(nodeId);
+
     if (node.type === 'agent') {
-        await self._runAgent(nodeId);
+        // 链级去重：若已被 _runPipeline/comfy 内部跑过则跳过（菱形汇聚场景）
+        if (ctx.ranAgents.has(nodeId)) return;
+        ctx.ranAgents.add(nodeId);
+        await self._runAgent(nodeId, ctx);
     } else if (node.type === 'loop') {
-        await self._runLoop(nodeId, visited);  // 内部每批调 _executeFrom 传播
+        await self._runLoop(nodeId, visited, ctx);  // 内部每批调 _executeFrom 传播
         return;  // loop 内部已处理下游传播，不需要外面的逻辑
     } else if (node.type === 'comfy') {
         // 先执行上游 agent（Loop 由父链 _executeFrom(loopId) 处理，这里不重复执行）
         // v2.5.56：跳过 visited 中已执行的 agent（链根 agent，避免 LOOP 每批重跑）；
-        //          并用 _loopRanAgents 跨批次去重直接挂生成器上游的 agent（整个 loop 只跑一次）
+        //          并用 loopRanAgents 跨批次去重直接挂生成器上游的 agent（整个 loop 只跑一次）
         var upstreamIds = self._upstreamOrder(nodeId);
         for (var i = 0; i < upstreamIds.length; i++) {
             var un = self.nodes.find(function(n) { return n.id === upstreamIds[i]; });
-            if (un && un.type === 'agent' && !visited.has(un.id) && !(self._loopRanAgents && self._loopRanAgents.has(un.id))) {
-                await self._runAgent(upstreamIds[i]);
-                if (self._loopRanAgents) self._loopRanAgents.add(un.id);
+            if (un && un.type === 'agent' && !visited.has(un.id) && !(ctx.loopRanAgents && ctx.loopRanAgents.has(un.id)) && !ctx.ranAgents.has(un.id)) {
+                ctx.ranAgents.add(un.id);
+                await self._runAgent(upstreamIds[i], ctx);
+                if (ctx.loopRanAgents) ctx.loopRanAgents.add(un.id);
             }
         }
-        await self._runComfyUI(nodeId);
+        await self._runComfyUI(nodeId, ctx);
     } else if (node.type === 'prompt') {
         // 提示词节点是数据节点，不执行，只向下游传播
     } else {
         // image_gen / video_gen → _runPipeline 内部处理上游 agent
-        await self._runPipeline(nodeId, visited);
+        await self._runPipeline(nodeId, visited, ctx);
     }
+
+    // v2.5.70：链被取消时立即停止传播
+    if (ctx.signal.aborted) return;
 
     // v2.5.52：取消/错误时阻断下游传播，避免已取消链路的节点继续执行
     var nodeAfter = self.nodes.find(function(n) { return n.id === nodeId; });
     if (nodeAfter && (nodeAfter.runState === 'cancelled' || nodeAfter.runState === 'error')) return;
 
-    // 向下游传播
-    var downstreams = self.connections
-        .filter(function(c) { return c.from === nodeId; })
-        .map(function(c) { return self.nodes.find(function(n) { return n.id === c.to; }); })
-        .filter(function(n) { return self._isExecutable(n); });
+    // 向下游传播（v2.5.68：穿透数据节点，跨组自动串联）
+    var downstreams = self._nextExecutableDownstreams(nodeId);
     for (var j = 0; j < downstreams.length; j++) {
-        await self._executeFrom(downstreams[j].id, visited);
+        await self._executeFrom(downstreams[j].id, visited, ctx);
     }
 };
 
-CanvasEngine.prototype._runComfyUI = async function(nodeId) {
+CanvasEngine.prototype._runComfyUI = async function(nodeId, ctx) {
     var node = this.nodes.find(function(n) { return n.id === nodeId; });
     if (!node) return;
     if (!node.comfyWorkflow) { this._setNodeRunState(node,'error',_t('pipeline.selectWorkflow','请选择工作流')); return; }
     var inputs = this._collectInputs(nodeId);
 
-    // 创建独立的 AbortController（解决 P0-5：独立运行时取消无效）
-    if (this._activeComfyAbort) { this._activeComfyAbort.abort(); }
-    this._activeComfyAbort = new AbortController();
-    var comfySignal = this._activeComfyAbort.signal;
+    // v2.5.70：链上下文中用链级信号（节点「取消」只中止所在链）；
+    // 独立运行兜底时才创建专用 AbortController（解决 P0-5：独立运行时取消无效）
+    var standaloneComfy = null;
+    var comfySignal;
+    if (ctx) {
+        comfySignal = ctx.signal;
+    } else {
+        if (this._activeComfyAbort) { this._activeComfyAbort.abort(); }
+        standaloneComfy = new AbortController();
+        this._activeComfyAbort = standaloneComfy;
+        comfySignal = standaloneComfy.signal;
+    }
 
     this._setNodeRunState(node,'running',_t('pipeline.comfySubmitting','提交 ComfyUI...'));
+    node._runCtx = ctx || null;  // v2.5.71：登记运行归属（取消级联防并发链互染）
     this._renderAll();
     try {
         var fields = {};
@@ -696,17 +880,14 @@ CanvasEngine.prototype._runComfyUI = async function(nodeId) {
         }
     }finally{
         this._renderAll();this._markDirty();this.save();
-        if (this._activeComfyAbort === comfySignal) this._activeComfyAbort = null;
+        if (standaloneComfy && this._activeComfyAbort === standaloneComfy) this._activeComfyAbort = null;
     }
 };
 
-CanvasEngine.prototype._runPipeline = async function(nodeId, visited) {
-    // 取消之前的 pipeline（如果有）
-    if (this._activePipelineAbort) {
-        this._activePipelineAbort.abort();
-    }
-    this._activePipelineAbort = new AbortController();
-    var signal = this._activePipelineAbort.signal;
+CanvasEngine.prototype._runPipeline = async function(nodeId, visited, ctx) {
+    // v2.5.70：使用链级信号（不再创建全局 _activePipelineAbort；多链并发互不干扰）
+    ctx = this._ensureCtx(ctx, nodeId);
+    var signal = ctx.signal;
 
     try {
         const gen = this.nodes.find(n => n.id === nodeId);
@@ -719,180 +900,74 @@ CanvasEngine.prototype._runPipeline = async function(nodeId, visited) {
             const node = this.nodes.find(n => n.id === uid);
             if (!node) continue;
             // v2.5.56：跳过 visited 中已执行的 agent（链根 agent，避免 LOOP 每批重跑）；
-            //          并用 _loopRanAgents 跨批次去重直接挂生成器上游的 agent（整个 loop 只跑一次）
-            if (node.type === 'agent' && !(visited && visited.has(node.id)) && !(this._loopRanAgents && this._loopRanAgents.has(node.id))) {
+            //          并用 loopRanAgents 跨批次去重直接挂生成器上游的 agent（整个 loop 只跑一次）
+            if (node.type === 'agent' && !(visited && visited.has(node.id)) && !(ctx.loopRanAgents && ctx.loopRanAgents.has(node.id)) && !ctx.ranAgents.has(node.id)) {
+                ctx.ranAgents.add(node.id);
+                ctx.nodes.add(node.id);
                 this._setNodeRunState(node, 'running', _t('pipeline.pipelineRunning','管线执行中...'));
-                await this._runAgent(uid);
-                if (this._loopRanAgents) this._loopRanAgents.add(node.id);
+                await this._runAgent(uid, ctx);
+                if (ctx.loopRanAgents) ctx.loopRanAgents.add(node.id);
             }
         }
 
         // 2. 执行生图
         if (!signal.aborted) {
-            await this._runGenerator(nodeId);
+            await this._runGenerator(nodeId, ctx);
         }
     } finally {
-        if (this._activePipelineAbort === signal) {
-            this._activePipelineAbort = null;
-        }
+        // v2.5.70：链上下文由 _executeChain 统一注销，此处无需清理
     }
 };
 
 CanvasEngine.prototype.cancelPipeline = function() {
-    if (this._activePipelineAbort) {
-        this._activePipelineAbort.abort();
-    }
-    if (this._activeVideoAbort) {
-        this._activeVideoAbort.abort();
-    }
+    // v2.5.70：中止所有活动链（链级 AbortController）——全局「停止」按钮 / ESC 入口
+    var self = this;
+    this._activeChains.forEach(function(ctx) { ctx.abort.abort(); });
+    // 兜底：独立运行的 ComfyUI（无链上下文时）
     if (this._activeComfyAbort) {
         this._activeComfyAbort.abort();
     }
-};
-
-// ——— 组级编排（§13.8 第一步：组内一键 + 手动选组传图，不做拓扑自动推导）———
-
-CanvasEngine.prototype._groupById2 = function(groupId) {
-    return this.groups.find(g => g.id === groupId);
-};
-
-// 设置组运行状态并同步 Store（runState: idle/running/success/error）
-CanvasEngine.prototype._setGroupState = function(groupId, state, message) {
-    var g = this._groupById2(groupId);
-    if (!g) return;
-    g.runState = state;
-    g.runMessage = message || '';
-    if (this.store && this.store.updateGroup) {
-        this.store.updateGroup(groupId, { runState: state, runMessage: message || '' });
-    }
-    var gel = this.groupsEl && this.groupsEl.querySelector('[data-group-id="' + groupId + '"]');
-    if (gel) gel.classList.add('group-run-' + state);
-};
-
-// 运行整组：从组内无入边的根节点沿连线执行，再校验组内所有可执行节点
-CanvasEngine.prototype._runGroup = async function(groupId) {
-    var g = this._groupById2(groupId);
-    if (!g) return { success: false, error: 'group not found' };
-    if (this._runningGroupId) {
-        return { success: false, error: _t('pipeline.groupBusy', '另一组正在运行，请等待完成') };
-    }
-    this._runningGroupId = groupId;
-
-    var ids = new Set(g.childIds);
-    // 组内根节点：没有任何"组内来源"连线指向它
-    var internalIncoming = new Set();
-    this.connections.forEach(c => {
-        if (c.to && ids.has(c.to) && ids.has(c.from)) internalIncoming.add(c.to);
+    // 即时反馈：所有 running 节点 → cancelled（异步回调稍后也会确认，幂等）
+    this.nodes.forEach(function(n) {
+        if (n.runState === 'running') self._setNodeRunState(n, 'cancelled', _t('pipeline.cancelled','Cancelled'));
     });
-    var roots = g.childIds.filter(id => !internalIncoming.has(id))
-        .map(id => this.nodes.find(n => n.id === id))
-        .filter(n => n && this._isExecutable(n));
-
-    this._setGroupState(groupId, 'running', _t('pipeline.groupRunning', '组运行中...'));
-    this._renderAll();
-
-    var success = true;
-    var errorMsg = '';
-    try {
-        if (!roots.length) {
-            success = false;
-            errorMsg = _t('pipeline.groupNoRoot', '未找到可执行起点');
-        } else {
-            for (var r = 0; r < roots.length; r++) {
-                await this._executeFrom(roots[r].id);
-            }
-            // 校验组内所有可执行节点
-            var failed = g.childIds
-                .map(id => this.nodes.find(n => n.id === id))
-                .filter(n => n && this._isExecutable(n) && n.runState !== 'success');
-            if (failed.length) {
-                success = false;
-                var fn = failed[0];
-                errorMsg = (fn.runMessage || fn.runState || '').slice(0, 120);
-            }
-        }
-    } catch (e) {
-        success = false;
-        errorMsg = (e && e.message ? e.message : String(e)).slice(0, 120);
-    }
-
-    if (this._runningGroupId === groupId) this._runningGroupId = null;
-    this._setGroupState(groupId, success ? 'success' : 'error',
-        success ? _t('pipeline.groupDone', '整组完成') : (_t('pipeline.groupFailed', '组运行失败') + (errorMsg ? ': ' + errorMsg : '')));
-    this._renderAll();
-    if (!success) this._markDirty();
-    return { success: success, error: errorMsg };
 };
 
-// 收集组内所有 output 节点产出的媒体（图片优先、视频其次）
-CanvasEngine.prototype._groupMedia = function(groupId) {
-    var g = this._groupById2(groupId);
-    if (!g) return [];
-    var items = {};
-    g.childIds.forEach(id => {
-        var n = this.nodes.find(x => x.id === id);
-        if (!n || n.type !== 'output') return;
-        (n.images || []).forEach(it => {
-            var u = (it && it.url) || it;
-            if (u && !items[u]) items[u] = u;
-        });
-        (n.videos || []).forEach(it => {
-            var u = (it && it.url) || it;
-            if (u && !items[u]) items[u] = u;
-        });
-    });
-    return Object.keys(items).map(u => items[u]);
+// v2.5.69：检测是否有任何节点正在运行（用于工具栏「停止」按钮显隐 / ESC 快捷键）
+CanvasEngine.prototype._anyNodeRunning = function() {
+    return this.nodes.some(function(n) { return n.runState === 'running'; });
 };
 
-// 把上游组的产物按顺序送入目标组的 image 入口节点（简化映射，用户可再手动调整）
-CanvasEngine.prototype._passGroupTo = function(fromGroupId, toGroupId) {
-    if (fromGroupId === toGroupId) return;
-    var target = this._groupById2(toGroupId);
-    if (!target) return;
-    var entries = target.childIds
-        .map(id => this.nodes.find(n => n.id === id))
-        .filter(n => n && n.type === 'image');
-    var media = this._groupMedia(fromGroupId);
-    if (!entries.length || !media.length) {
-        alert(_t('pipeline.passEmpty', '无产物或目标组无图片入口'));
+// v2.5.70：节点级取消入口——定位节点所在链，只中止该链（多链并发互不影响）
+CanvasEngine.prototype._cancelNodeRun = function(nodeId) {
+    var hit = this._findChainCtxByNode(nodeId);
+    if (hit) {
+        hit.abort.abort();
+        // 即时反馈：链上所有 running 节点 → cancelled
+        // v2.5.71：归属过滤——仅重置「正由本链执行」的节点（_runCtx 为空视为陈旧状态，一并复位），
+        //          防止并发链共享节点时误染另一条链的运行状态
+        var self = this;
+        this.nodes.forEach(function(n) {
+            if (n.runState === 'running' && (n.id === hit.rootId || hit.nodes.has(n.id)) && (!n._runCtx || n._runCtx === hit)) {
+                self._setNodeRunState(n, 'cancelled', _t('pipeline.cancelled','Cancelled'));
+            }
+        });
+        // loop 需同时置 _cancelled，让批次循环立即退出
+        var ln = this.nodes.find(function(n) { return n.id === nodeId; });
+        if (ln && ln.type === 'loop') ln._cancelled = true;
         return;
     }
-    var count = Math.min(entries.length, media.length);
-    for (var i = 0; i < count; i++) {
-        entries[i].url = media[i];
-        this.store.updateNode(entries[i].id, { url: media[i] });
+    // 兜底：节点不在任何活动链中（loop 的 _cancelled 机制 / 独立 ComfyUI / 陈旧 running 状态）
+    var node = this.nodes.find(function(n) { return n.id === nodeId; });
+    if (!node) return;
+    if (node.type === 'loop') { this._cancelLoop(nodeId); return; }
+    if (node.type === 'comfy') { this._cancelComfyUI(nodeId); return; }
+    if (node.runState === 'running') {
+        this._setNodeRunState(node, 'cancelled', _t('pipeline.cancelled','Cancelled'));
     }
-    this._renderAll();
-    this._markDirty();
-    alert(_t('pipeline.passDone', '已送入 {n} 张到「{label}」')
-        .replace('{n}', count).replace('{label}', target.label || ''));
 };
 
-// 选择"送入哪个下游组"：弹菜单
-CanvasEngine.prototype._choosePassTarget = function(groupId, anchorEl) {
-    var menu = document.getElementById('create-menu');
-    if (!menu) return;
-    var self = this;
-    var others = this.groups.filter(g => g.id !== groupId);
-    if (!others.length) return;
-    menu.innerHTML = '<div class="menu-section-title">' + _t('pipeline.passTitle', '把本组产物送入') + '</div>';
-    others.forEach(g => {
-        var b = document.createElement('button');
-        b.textContent = g.label || g.id;
-        b.onclick = function() {
-            self._passGroupTo(groupId, g.id);
-            menu.style.display = 'none';
-        };
-        menu.appendChild(b);
-    });
-    var rect = anchorEl ? anchorEl.getBoundingClientRect() : { left: window.innerWidth / 2, top: 80 };
-    menu.style.display = 'block';
-    menu.style.left = Math.min(rect.left, window.innerWidth - 200) + 'px';
-    menu.style.top = Math.min((rect.bottom || rect.top) + 4, window.innerHeight - 240) + 'px';
-};
-
-
-CanvasEngine.prototype._runGenerator = async function(id) {
+CanvasEngine.prototype._runGenerator = async function(id, ctx) {
     const node = this.nodes.find(item => item.id === id);
     if (!node) return;
 
@@ -921,22 +996,21 @@ CanvasEngine.prototype._runGenerator = async function(id) {
 
     if (isVideoModel) {
         // 视频生成：异步提交 → 轮询
-        await this._runVideoGenerator(node, inputs, provider, model);
+        await this._runVideoGenerator(node, inputs, provider, model, ctx);
     } else {
         // 图片生成
-        await this._runImageGenerator(node, inputs, provider, model);
+        await this._runImageGenerator(node, inputs, provider, model, ctx);
     }
 };
 
-CanvasEngine.prototype._runImageGenerator = async function(node, inputs, provider, model) {
+CanvasEngine.prototype._runImageGenerator = async function(node, inputs, provider, model, ctx) {
     // v2.5.52 修复 TOCTOU：捕获信号快照，避免动态读取被后续运行替换
-    // v2.5.60：单独运行 agent 节点时没有管线 AbortController，api.js 会注入 60s 默认超时；
-    //          而 mimo 长 JSON 生成实测需 80~100s，会被 60s 超时中断导致“运行失败”。
-    //          此处给独立运行兑底一个 300s 超时信号（管线运行仍用管线信号，可随时取消）。
-    var mySignal = this._activePipelineAbort
-        ? this._activePipelineAbort.signal
-        : (typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(300000) : undefined);
+    // v2.5.70：使用链级信号（ctx 由 _executeChain 提供；兜底临时 ctx 仅保证信号可用）
+    ctx = this._ensureCtx(ctx, node.id);
+    var mySignal = ctx.signal;
+    ctx.nodes.add(node.id);
     this._setNodeRunState(node, 'running', _t('pipeline.generatingImage','正在生成图片...'));
+    node._runCtx = ctx;  // v2.5.71：登记运行归属（取消级联防并发链互染）
     try {
         const response = await apiFetch('/api/generate', {
             method: 'POST',
@@ -982,22 +1056,19 @@ CanvasEngine.prototype._runImageGenerator = async function(node, inputs, provide
     }
 };
 
-CanvasEngine.prototype._runVideoGenerator = async function(node, inputs, provider, model) {
-    // 取消之前的视频任务（如果有）
-    if (this._activeVideoAbort) {
-        this._activeVideoAbort.abort();
-    }
-    this._activeVideoAbort = new AbortController();
-    var signal = this._activeVideoAbort.signal;
+CanvasEngine.prototype._runVideoGenerator = async function(node, inputs, provider, model, ctx) {
+    // v2.5.70：使用链级信号（不再创建全局 _activeVideoAbort；多链并发互不干扰）
+    ctx = this._ensureCtx(ctx, node.id);
+    var signal = ctx.signal;
+    ctx.nodes.add(node.id);
 
-    // 检查管线级中止信号
-    function _isCancelled(self) {
-        if (signal.aborted) return true;
-        if (self._activePipelineAbort && self._activePipelineAbort.signal.aborted) return true;
-        return false;
+    // 检查链级中止信号
+    function _isCancelled() {
+        return signal.aborted;
     }
 
     this._setNodeRunState(node, 'running', _t('pipeline.videoSubmitting','正在提交视频生成...'));
+    node._runCtx = ctx;  // v2.5.71：登记运行归属（取消级联防并发链互染）
     try {
         // 1. 提交异步视频任务
         const submitResp = await apiFetch('/api/video/generate/async', {
@@ -1082,31 +1153,41 @@ CanvasEngine.prototype._runVideoGenerator = async function(node, inputs, provide
         this._renderAll();
         this._markDirty();
     } finally {
-        if (this._activeVideoAbort === signal) {
-            this._activeVideoAbort = null;
-        }
+        // v2.5.70：链上下文由 _executeChain 统一注销，此处无需清理
     }
 };
 
-CanvasEngine.prototype._runAgent = async function(id) {
+CanvasEngine.prototype._runAgent = async function(id, ctx) {
     // v2.5.52 修复 TOCTOU：捕获信号快照，避免动态读取被后续运行替换
-    // v2.5.60：单独运行 agent 节点时没有管线 AbortController，api.js 会注入 60s 默认超时；
-    //          而 mimo 长 JSON 生成实测需 80~100s，会被 60s 超时中断导致“运行失败”。
-    //          此处给独立运行兑底一个 300s 超时信号（管线运行仍用管线信号，可随时取消）。
-    var mySignal = this._activePipelineAbort
-        ? this._activePipelineAbort.signal
-        : (typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(300000) : undefined);
+    // v2.5.70：链上下文中用链级信号；独立运行（节点按钮直调）时创建并注册专用链 ctx——
+    //          取消按钮/ESC 可中断，仍保留 300s 超时兜底（mimo 长 JSON 实测需 80~100s）。
+    var standaloneCtx = null;
+    if (!ctx) {
+        // v2.5.71：防重复——该 agent 已在某条活动链中执行时忽略本次点击（防并发双跑）
+        if (this._findChainCtxByNode(id)) { console.warn('[canvas] agent already running in a chain, ignored:', id); return; }
+        standaloneCtx = this._createChainCtx(id);
+        ctx = standaloneCtx;
+    }
+    ctx.nodes.add(id);
+    var mySignal = standaloneCtx && typeof AbortSignal.any === 'function' && typeof AbortSignal.timeout === 'function'
+        ? AbortSignal.any([ctx.signal, AbortSignal.timeout(300000)])
+        : ctx.signal;
     const node = this.nodes.find(item => item.id === id);
-    if (!node) return;
+    if (!node) {
+        if (standaloneCtx) this._removeChainCtx(standaloneCtx);
+        return;
+    }
 
     if (!node.agentId) {
         this._setNodeRunState(node, 'error', _t('pipeline.selectAgent','请先在上方下拉框选择一个智能体'));
+        if (standaloneCtx) this._removeChainCtx(standaloneCtx);
         return;
     }
 
     const inputs = this._collectInputs(id);
     const finalInput = [inputs.texts.join('\n'), node.userInput].filter(Boolean).join('\n') || _t('pipeline.defaultTask','请执行任务');
     this._setNodeRunState(node, 'running', _t('pipeline.agentRunning','Agent 执行中...'));
+    node._runCtx = ctx;  // v2.5.71：登记运行归属（取消级联防并发链互染）
 
     try {
         const response = await apiFetch(`/api/agents/${node.agentId}/run`, {
@@ -1124,6 +1205,14 @@ CanvasEngine.prototype._runAgent = async function(id) {
             this._renderAll();
             this._markDirty();
             return;
+        }
+        // v2.5.74：失败/降级响应直接抛错，防止垃圾文本（如「任务已执行但未获得最终输出。」）
+        //          冒充正常结果存入 lastResult 并向下游列队/生图传播（列队异常出图根因之一）
+        if (data.success === false) {
+            throw new Error(data.error || _t('pipeline.agentFailed','Agent 失败'));
+        }
+        if (data.degraded || !data.final_output) {
+            throw new Error(_t('pipeline.agentNoOutput','Agent 未产生最终输出（请检查模型是否支持图片等输入格式）'));
         }
         node.lastResult = data.final_output || '';
         this.store.updateNode(id, { lastResult: node.lastResult });
@@ -1148,6 +1237,9 @@ CanvasEngine.prototype._runAgent = async function(id) {
             this._setNodeRunState(node, 'error', error.message ? error.message.slice(0, 200) : _t('pipeline.agentFailed','Agent 失败'));
         }
         this._markDirty();
+    } finally {
+        // v2.5.70：独立运行的 agent 链 ctx 用完即注销（链上下文由 _executeChain 注销）
+        if (standaloneCtx) this._removeChainCtx(standaloneCtx);
     }
 };
 

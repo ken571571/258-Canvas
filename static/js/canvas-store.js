@@ -170,14 +170,6 @@ var CanvasStore = (function() {
         this._notify({ type: 'group-added', id: group.id });
     };
 
-    /** 合并更新单个组字段（如 runState/runMessage），标记脏以便 save 持久化 */
-    CanvasStore.prototype.updateGroup = function(id, patch) {
-        var g = this._groupById.get(id);
-        if (!g) return;
-        Object.assign(g, patch);
-        this._dirty.groups.add(id);
-    };
-
     CanvasStore.prototype.removeGroup = function(id) {
         this.groups = this.groups.filter(function(g) { return g.id !== id; });
         this._groupById.delete(id);

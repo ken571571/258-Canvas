@@ -178,7 +178,7 @@ class CanvasEngine {
         // 保存前：将引擎完整同步到 Store（全字段，跳过运行时状态）
         // 设计：save() 从 Store 序列化负载，如果某字段只在引擎改了而 Store 没同步，刷新后丢失。
         // 之前只同步 x/y/w/h，导致 node.desc / _queue 排序 / ComfyUI 连线等多处遗漏 → 全字段同步根治。
-        var SKIP_SAVE = {runState:1, runMessage:1, _cursorImg:1, _cursorTxt:1, _cancelled:1, _taH:1, _upstreamLast:1};
+        var SKIP_SAVE = {runState:1, runMessage:1, _cursorImg:1, _cursorTxt:1, _cancelled:1, _taH:1, _upstreamLast:1, _runCtx:1};
         for (var i = 0; i < this.nodes.length; i++) {
             var en = this.nodes[i];
             var sn = this.store.getNode(en.id);
@@ -592,17 +592,20 @@ class CanvasEngine {
     }
 
     // 输出节点缩略图点击：单击→创建图片节点，双击→灯箱
+    // v2.5.74：对齐素材库的单击/双击协议——300ms 窗口 + 原生 dblclick 兜底。
+    //          旧实现 120ms 窗口过窄（真实双击间隔常见 150~250ms），首击定时器先到点 →
+    //          createNode → _renderAll 重建 DOM → 二击落在新元素上，浏览器不再派发 dblclick，
+    //          双击被拆成两次单击（建两个节点、无预览）。
     _onOutputImageClick(event, url) {
         var self = this;
-        // 用定时器区分单击/双击：120ms 内再次点击视为双击
         if (self._outputClickTimer) {
-            // 第二次点击 → 双击 → 开灯箱，取消创建节点
+            // 第二次点击 → 双击 → 开灯箱（首次创建尚未发生，无需回滚）
             clearTimeout(self._outputClickTimer);
             self._outputClickTimer = null;
             self._showLightbox(url, 'image');
             return;
         }
-        // 第一次点击 → 等待 120ms，无第二次点击则执行单击动作
+        // 第一次点击 → 等待 300ms，无第二次点击则执行单击动作
         self._outputClickTimer = setTimeout(function() {
             self._outputClickTimer = null;
             var center = self._screenToWorld(window.innerWidth / 2, window.innerHeight / 2);
@@ -616,7 +619,16 @@ class CanvasEngine {
                     self._renderLinks();
                 }
             });
-        }, 120);
+        }, 300);
+    }
+
+    // v2.5.74：双击预览（外层容器原生 dblclick 兜底）——取消待定的单击创建并开灯箱
+    //          type 透传：视频缩略图双击仍走 _showLightbox(url,'video')
+    _onOutputImageDblClick(event, url, type) {
+        if (event) event.stopPropagation();
+        clearTimeout(this._outputClickTimer);
+        this._outputClickTimer = null;
+        this._showLightbox(url, type || 'image');
     }
 
     async _loadAgentOpts() {

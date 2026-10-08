@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>无限画布</title>
 <link rel="stylesheet" href="/static/css/style.css?v=10">
-<link rel="stylesheet" href="/static/css/components.css?v=7">
+<link rel="stylesheet" href="/static/css/components.css?v=9">
 <style>
 /* ===== 图片裁剪模态 ===== */
 .cropper-overlay{position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.88);display:none;align-items:center;justify-content:center;}
@@ -87,6 +87,10 @@
         <ui-tool-btn icon="save" label="toolbar.save" fallback="保存" action="saveCanvas()"></ui-tool-btn>
         <ui-tool-btn divider></ui-tool-btn>
         <ui-tool-btn icon="folder" label="toolbar.assets" fallback="资产库" action="engine._toggleAssetPanel()"></ui-tool-btn>
+        <ui-tool-btn divider></ui-tool-btn>
+        <button id="toolbar-stop-all" class="tool-btn" style="display:none;background:#ef4444;color:#fff;border:none;" onclick="window._canvas.cancelPipeline()" title="ESC">
+            ⏹ <span data-t="toolbar.stopAll">停止</span>
+        </button>
         <div class="toolbar-status">
             <span data-t="toolbar.status">当前状态</span>
             <strong id="save-indicator" data-t="toolbar.waiting">等待编辑</strong>
@@ -219,20 +223,20 @@
 <script src="/static/js/ui-tool-btn.js?v=3"></script>
 <script src="/static/js/i18n.js?v=3"></script>
 <script src="/static/js/api.js?v=14"></script>
-<script src="/static/js/canvas-store.js?v=5"></script>
-<script src="/static/js/canvas-core.js?v=32"></script>
+<script src="/static/js/canvas-store.js?v=6"></script>
+<script src="/static/js/canvas-core.js?v=34"></script>
 <script src="/static/js/canvas-undo.js?v=3"></script>
 <script src="/static/js/canvas-viewport.js?v=3"></script>
 <!-- 渲染器模块（按依赖顺序加载） -->
-<script src="/static/js/canvas-renderer-core.js?v=4"></script>
+<script src="/static/js/canvas-renderer-core.js?v=8"></script>
 <script src="/static/js/canvas-renderer-providers.js?v=2"></script>
-<script src="/static/js/canvas-renderer-nodes.js?v=32"></script>
-<script src="/static/js/canvas-renderer-groups.js?v=6"></script>
-<script src="/static/js/canvas-renderer-links.js?v=3"></script>
+<script src="/static/js/canvas-renderer-nodes.js?v=37"></script>
+<script src="/static/js/canvas-renderer-groups.js?v=7"></script>
+<script src="/static/js/canvas-renderer-links.js?v=4"></script>
 <script src="/static/js/canvas-renderer-lightbox.js?v=4"></script>
 <script src="/static/js/canvas-renderer-assets.js?v=4"></script>
-<script src="/static/js/canvas-pipeline.js?v=84"></script>
-<script src="/static/js/canvas-events.js?v=3"></script>
+<script src="/static/js/canvas-pipeline.js?v=96"></script>
+<script src="/static/js/canvas-events.js?v=4"></script>
 <script>
 const engine = new CanvasEngine('board', 'world', 'nodes-container', 'links');
 engine.init().then(() => {

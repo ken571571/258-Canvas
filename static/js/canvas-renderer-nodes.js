@@ -61,7 +61,7 @@ CanvasEngine.prototype._renderNodes = function() {
         el.className = [
             'node',
             this.selected.has(node.id) ? 'selected' : '',
-            node.runState === 'running' ? 'is-running' : '',
+            node.runState === 'running' ? (node.type === 'loop' ? 'is-orchestrating' : 'is-running') : '',
             node.runState === 'success' ? 'is-success' : '',
             node.runState === 'error' ? 'is-error' : '',
             node.runState === 'cancelled' ? 'is-cancelled' : '',
@@ -301,7 +301,9 @@ CanvasEngine.prototype._renderNodeBody_image_gen = function(node, meta) {
         return this._renderGenBody(node, '4px', '28px', 'image') +
             (meta || '<div class="node-meta" style="margin-bottom:2px;">' + _t('pipeline.imgGenHint','连接提示词或图片后生成结果') + '</div>') +
             '<div class="node-actions" style="margin-top:0;">' +
-                '<button class="tool-btn" style="font-size:11px;padding:4px 8px;" onclick="window._canvas._executeChain(\'' + node.id + '\')">🖼 ' + _t('nodeType.imageGen','图片生成') + '</button>' +
+                (node.runState === 'running'
+                    ? '<button class="tool-btn" style="font-size:11px;padding:4px 8px;background:#ef4444;color:#fff;" onclick="window._canvas._cancelNodeRun(\'' + this._escJs(node.id) + '\')">⏹ ' + _t('common.cancel','取消') + '</button>'
+                    : '<button class="tool-btn" style="font-size:11px;padding:4px 8px;" onclick="window._canvas._executeChain(\'' + this._escJs(node.id) + '\')">🖼 ' + _t('nodeType.imageGen','图片生成') + '</button>') +
             '</div>' + this._renderResultGrid(node);
     }
 };
@@ -365,7 +367,9 @@ CanvasEngine.prototype._renderNodeBody_video_gen = function(node, meta) {
                 })()}
                 ${meta || '<div class="node-meta" style="margin-bottom:2px;">' + _t('pipeline.vidGenHint','连接提示词或图片后生成视频') + '</div>'}
                 <div class="node-actions" style="margin-top:0;">
-                    <button class="tool-btn" style="font-size:11px;padding:4px 8px;" onclick="window._canvas._executeChain('${node.id}')">🎬 ${_t('nodeType.videoGen','视频生成')}</button>
+                    ${node.runState === 'running'
+                        ? '<button class="tool-btn" style="font-size:11px;padding:4px 8px;background:#ef4444;color:#fff;" onclick="window._canvas._cancelNodeRun(\'' + this._escJs(node.id) + '\')">⏹ ' + _t('common.cancel','取消') + '</button>'
+                        : '<button class="tool-btn" style="font-size:11px;padding:4px 8px;" onclick="window._canvas._executeChain(\'' + this._escJs(node.id) + '\')">🎬 ' + _t('nodeType.videoGen','视频生成') + '</button>'}
                 </div>
             ` + this._renderResultGrid(node);
         }
@@ -381,7 +385,9 @@ CanvasEngine.prototype._renderNodeBody_agent = function(node, meta) {
                 ${meta || `<div class="node-meta">${_t('pipeline.defaultTask','选择已有的智能体并输入任务要求。')}</div>`}
                 ${node.lastResult ? `<div class="node-preview" style="max-height:192px;overflow-y:auto;white-space:pre-wrap;word-break:break-word;">${this._esc(node.lastResult)}</div>` : ''}
                 <div class="node-actions">
-                    <button class="tool-btn" onclick="window._canvas._runAgent('${node.id}')">${_t('common.run','运行')}</button>
+                    ${node.runState==='running'?
+                        '<button class="tool-btn" style="background:#ef4444;color:#fff;" onclick="window._canvas._cancelNodeRun(\''+this._escJs(node.id)+'\')">⏹ '+_t('common.cancel','取消')+'</button>':
+                        '<button class="tool-btn" onclick="window._canvas._runAgent(\''+this._escJs(node.id)+'\')">'+_t('common.run','运行')+'</button>'}
                 </div>
             ` + this._renderResultGrid(node, false);
 };
@@ -398,7 +404,7 @@ CanvasEngine.prototype._renderResultGrid = function(node, showText) {
         const w = (typeof item === 'object' && item._w) || '';
         const h = (typeof item === 'object' && item._h) || '';
         const dim = (w && h) ? `${w}×${h}` : '';
-        return `<div style="flex:0 0 auto;width:120px;position:relative;" ondblclick="event.stopPropagation();window._canvas._showLightbox('${this._escJs(url)}','${type}')">
+        return `<div style="flex:0 0 auto;width:120px;position:relative;" ondblclick="event.stopPropagation();window._canvas._onOutputImageDblClick(event,'${this._escJs(url)}','${type}')">
                     <div style="width:120px;height:90px;border-radius:8px;overflow:hidden;position:relative;background:var(--surface-2);">
                         ${isImg
                             ? `<img src="${this._esc(url)}" style="width:100%;height:100%;object-fit:cover;display:block;cursor:pointer;" alt="${_t('nodeType.output','输出')}" onerror="this.style.display='none'" title="${_t('output.clickToCreateImage','单击创建图片节点')}" onclick="event.stopPropagation();window._canvas._onOutputImageClick(event,'${this._escJs(url)}')">`
@@ -464,8 +470,8 @@ CanvasEngine.prototype._renderNodeBody_loop = function(node, meta) {
                         </div>
                     `).join('') : '<span style="color:var(--muted);font-size:12px;">' + _t('loop.emptyHint','连接图片后显示') + '</span>'}
                 </div>
-                ${(() => { try { var allTexts = (inputs.texts||[]).slice(); if (allTexts.length) { var segs = allTexts.join('\n').split('----').map(function(s){return s.trim();}).filter(Boolean); if (segs.length) return '<div style="margin-top:8px;"><div style="font-weight:700;margin-bottom:4px;font-size:10px;color:var(--muted);">' + _t('loop.segPreview','文本段预览') + ' · ' + segs.length + ' ' + _t('loop.segCount','段') + '</div><div style="display:flex;gap:6px;overflow-x:auto;padding:4px 0;">' + segs.map(function(s,i){ return '<div style="flex-shrink:0;padding:4px 8px;background:var(--surface-2);border-radius:6px;font-size:10px;color:var(--text);max-width:80px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + window._canvas._esc(s) + '"><span style="color:var(--accent);font-weight:700;">' + _t('loop.seg','段') + (i+1) + '</span> ' + window._canvas._esc(s.slice(0,4)) + (s.length>4?'…':'') + '</div>'; }).join('') + '</div></div>'; } } catch(_){} return ''; })()}
-                ${(() => { try { var bs = node._batchSize || 1; var ic = queue.length; var tc = (() => { var t = (inputs.texts||[]).join('\n'); return t.split('----').map(function(s){return s.trim();}).filter(Boolean).length; })(); var txtDriven = tc > 0; var imgDriven = tc === 0 && ic > 0; var batches = txtDriven ? tc : (imgDriven ? Math.floor(ic / bs) : 0); var rem = (ic > 0 && ic % bs !== 0) ? ic % bs : 0; var remHtml = rem > 0 ? '<span style="color:#f87171;font-weight:900;">' + _t('loop.remainder','剩余{rem}张').replace('{rem}',rem) + '</span>' : ''; var parts = []; if (ic > 0 && tc > 0) parts.push(_t('loop.batchSummary','{img}张图/{txt}段文本').replace('{img}',ic).replace('{txt}',tc)); else if (ic > 0) parts.push(_t('loop.imgOnly','{img}张图').replace('{img}',ic)); else if (tc > 0) parts.push(_t('loop.txtOnly','{txt}段文本').replace('{txt}',tc)); parts.push(_t('loop.perBatch','{bs}张/批').replace('{bs}',bs)); parts.push(_t('loop.totalBatches','共{batches}批').replace('{batches}',batches)); if (remHtml) parts.push(remHtml); return '<div style="margin-top:6px;font-size:10px;color:var(--accent);font-weight:600;">' + parts.join(' · ') + '</div>'; } catch(_){return '';} })()}
+                ${(() => { try { var allTexts = (inputs.texts||[]).slice(); if (allTexts.length) { var segs = window._canvas._splitLoopSegments(allTexts.join('\n')); if (segs.length) return '<div style="margin-top:8px;"><div style="font-weight:700;margin-bottom:4px;font-size:10px;color:var(--muted);">' + _t('loop.segPreview','文本段预览') + ' · ' + segs.length + ' ' + _t('loop.segCount','段') + '</div><div style="display:flex;gap:6px;overflow-x:auto;padding:4px 0;">' + segs.map(function(s,i){ return '<div style="flex-shrink:0;padding:4px 8px;background:var(--surface-2);border-radius:6px;font-size:10px;color:var(--text);max-width:80px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + window._canvas._esc(s) + '"><span style="color:var(--accent);font-weight:700;">' + _t('loop.seg','段') + (i+1) + '</span> ' + window._canvas._esc(s.slice(0,4)) + (s.length>4?'…':'') + '</div>'; }).join('') + '</div></div>'; } } catch(_){} return ''; })()}
+                ${(() => { try { var bs = node._batchSize || 1; var ic = queue.length; var tc = (() => { return window._canvas._splitLoopSegments((inputs.texts||[]).join('\n')).length; })(); var txtDriven = tc > 0; var imgDriven = tc === 0 && ic > 0; var batches = txtDriven ? tc : (imgDriven ? Math.floor(ic / bs) : 0); var rem = (ic > 0 && ic % bs !== 0) ? ic % bs : 0; var remHtml = rem > 0 ? '<span style="color:#f87171;font-weight:900;">' + _t('loop.remainder','剩余{rem}张').replace('{rem}',rem) + '</span>' : ''; var parts = []; if (ic > 0 && tc > 0) parts.push(_t('loop.batchSummary','{img}张图/{txt}段文本').replace('{img}',ic).replace('{txt}',tc)); else if (ic > 0) parts.push(_t('loop.imgOnly','{img}张图').replace('{img}',ic)); else if (tc > 0) parts.push(_t('loop.txtOnly','{txt}段文本').replace('{txt}',tc)); parts.push(_t('loop.perBatch','{bs}张/批').replace('{bs}',bs)); parts.push(_t('loop.totalBatches','共{batches}批').replace('{batches}',batches)); if (remHtml) parts.push(remHtml); return '<div style="margin-top:6px;font-size:10px;color:var(--accent);font-weight:600;">' + parts.join(' · ') + '</div>'; } catch(_){return '';} })()}
                 <div style="display:flex;gap:6px;align-items:center;margin-top:4px;">
                     <span style="font-size:10px;color:var(--muted);">${_t('loop.batchSize','每批')}</span>
                     <select onchange="window._canvas._updateNodeProp('${node.id}','_batchSize',parseInt(this.value));window._canvas._renderAll()" style="height:24px;padding:0 4px;border-radius:4px;border:1px solid var(--border);background:var(--bg);font-size:11px;color:var(--text);">
@@ -474,7 +480,7 @@ CanvasEngine.prototype._renderNodeBody_loop = function(node, meta) {
                 </div>
                 <div class="node-meta" style="color:#f87171;font-weight:600;">${_t('loop.segHint','上游文本用 ---- 分隔多段，连接 prompt 节点传入')} · ${_t('loop.count','共 # 张').replace('#',queue.length||0)}</div>
                 ${meta}
-                ${node.runState==='running'?'<div class="node-actions"><button class="tool-btn" style="background:#ef4444;color:#fff;" onclick="window._canvas._cancelLoop(\''+node.id+'\')">⏹ '+_t('common.cancel','取消')+'</button></div>':''}
+                ${node.runState==='running'?'<div class="node-actions"><button class="tool-btn" style="background:#ef4444;color:#fff;" onclick="window._canvas._cancelNodeRun(\''+this._escJs(node.id)+'\')">⏹ '+_t('common.cancel','取消')+'</button></div>':''}
             `;
         }
 };
@@ -511,7 +517,7 @@ CanvasEngine.prototype._renderNodeBody_comfy = function(node, meta) {
                 </div>
                 ` : ''}
                 <div class="node-meta">${_t('comfy.hint','连接上游节点后点运行，自动按类型映射：图片→图片字段，文本→提示词字段。')}</div>
-                <div class="node-actions">${node.runState==='running'?'<button class="tool-btn" style="background:#ef4444;color:#fff;" onclick="window._canvas._cancelComfyUI(\''+node.id+'\')">⏹ '+_t('common.cancel','取消')+'</button>':'<button class="tool-btn" onclick="window._canvas._executeChain(\''+this._escJs(node.id)+'\')">'+_t('common.run','运行')+'</button>'}</div>
+                <div class="node-actions">${node.runState==='running'?'<button class="tool-btn" style="background:#ef4444;color:#fff;" onclick="window._canvas._cancelNodeRun(\''+this._escJs(node.id)+'\')">⏹ '+_t('common.cancel','取消')+'</button>':'<button class="tool-btn" onclick="window._canvas._executeChain(\''+this._escJs(node.id)+'\')">'+_t('common.run','运行')+'</button>'}</div>
                 ${meta}
             ` + this._renderResultGrid(node);
         }

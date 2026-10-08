@@ -21,7 +21,8 @@
     "save": "保存",
     "assets": "资产库",
     "status": "当前状态",
-    "waiting": "等待编辑"
+    "waiting": "等待编辑",
+    "stopAll": "停止"
   },
   "node": {
     "dblClickDesc": "双击添加描述",
@@ -46,6 +47,7 @@
   },
   "nodeState": {
     "running": "运行中",
+    "orchestrating": "调度中",
     "success": "成功",
     "error": "失败",
     "cancelled": "已取消"
@@ -145,9 +147,7 @@
   },
   "group": {
     "placeholder": "输入组名",
-    "deleteTitle": "删除组（保留节点）",
-    "runTitle": "运行整组",
-    "passTitle": "把本组产物送入..."
+    "deleteTitle": "删除组（保留节点）"
   },
   "pipeline": {
     "savedToAssets": "已保存到资产库",
@@ -176,7 +176,10 @@
     "agentRunning": "Agent 执行中...",
     "agentComplete": "Agent 完成",
     "agentFailed": "Agent 失败",
+    "agentNoOutput": "Agent 未产生最终输出（请检查模型是否支持图片等输入格式）",
+    "upstreamFailed": "上游 Agent 执行失败，列队未开批",
     "batchStart": "开始批次处理...",
+    "batchProgress": "批次 {i}/{n} · 下游执行中",
     "batchComplete": "完成 图片{cursorImg}/{queueLen} 张 · 文本{cursorTxt}/{textLen}段",
     "comfyImageResult": "ComfyUI结果",
     "comfyVideoResult": "ComfyUI视频",
@@ -197,15 +200,7 @@
     "videoPolling": "视频生成中 ({t}s)...",
     "audioRefConnected": "🎵 音频参考已连接",
     "audioRefHint": "连线音频节点可作音频参考",
-    "audioRefH3Only": "⚠️ 音频参考仅 MiniMax-H3 支持",
-    "groupBusy": "另一组正在运行，请等待完成",
-    "groupRunning": "组运行中...",
-    "groupDone": "整组完成",
-    "groupFailed": "组运行失败",
-    "groupNoRoot": "未找到可执行起点",
-    "passEmpty": "无产物或目标组无图片入口",
-    "passDone": "已送入 {n} 张到「{label}」",
-    "passTitle": "把本组产物送入"
+    "audioRefH3Only": "⚠️ 音频参考仅 MiniMax-H3 支持"
   },
   "auth": {
     "enterPassword": "请输入访问密码"
@@ -273,7 +268,7 @@
   },
   "loop": {
     "emptyHint": "连接图片后显示",
-    "segHint": "上游文本用 ---- 分隔多段，连接 prompt 节点传入",
+    "segHint": "上游文本用 ---- 分隔多段（无分隔符时自动按空行/分隔行分段），连接 prompt 节点传入",
     "count": "共 # 张",
     "batchSize": "每批",
     "perBatch": "{bs}张/批",

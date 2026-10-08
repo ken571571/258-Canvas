@@ -21,6 +21,7 @@
     "assets": "Assets",
     "status": "Status",
     "waiting": "Waiting",
+    "stopAll": "Stop",
     "audio": "Audio"
   },
   "node": {
@@ -46,6 +47,7 @@
   },
   "nodeState": {
     "running": "Running",
+    "orchestrating": "Dispatching",
     "success": "Success",
     "error": "Error",
     "cancelled": "Cancelled"
@@ -145,9 +147,7 @@
   },
   "group": {
     "placeholder": "Group name",
-    "deleteTitle": "Delete group (keep nodes)",
-    "runTitle": "Run whole group",
-    "passTitle": "Pass this group's output to..."
+    "deleteTitle": "Delete group (keep nodes)"
   },
   "pipeline": {
     "savedToAssets": "Saved to assets",
@@ -176,7 +176,10 @@
     "agentRunning": "Agent running...",
     "agentComplete": "Agent Complete",
     "agentFailed": "Agent Failed",
+    "agentNoOutput": "Agent produced no final output (check whether the model supports image input)",
+    "upstreamFailed": "Upstream Agent failed, loop batches not started",
     "batchStart": "Starting batch process...",
+    "batchProgress": "Batch {i}/{n} · downstream running",
     "batchComplete": "Done {cursorImg}/{queueLen} images · {cursorTxt}/{textLen} texts",
     "comfyImageResult": "ComfyUI Result",
     "comfyVideoResult": "ComfyUI Video",
@@ -197,15 +200,7 @@
     "videoPolling": "Video generating ({t}s)...",
     "audioRefConnected": "🎵 Audio reference connected",
     "audioRefHint": "Connect an audio node for audio reference",
-    "audioRefH3Only": "⚠️ Audio reference requires MiniMax-H3",
-    "groupBusy": "Another group is running, please wait",
-    "groupRunning": "Group running...",
-    "groupDone": "Group complete",
-    "groupFailed": "Group failed",
-    "groupNoRoot": "No executable starting point found",
-    "passEmpty": "No output or target group has no image input",
-    "passDone": "Passed {n} item(s) to \"{label}\"",
-    "passTitle": "Pass this group's output to"
+    "audioRefH3Only": "⚠️ Audio reference requires MiniMax-H3"
   },
   "auth": {
     "enterPassword": "Enter access password"
@@ -273,7 +268,7 @@
   },
   "loop": {
     "emptyHint": "Connect images to show",
-    "segHint": "Upstream text separated by ---- , connect a prompt node",
+    "segHint": "Upstream text separated by ---- (blank lines or divider lines auto-detected), connect a prompt node",
     "count": "# items",
     "batchSize": "per batch",
     "perBatch": "{bs}/batch",

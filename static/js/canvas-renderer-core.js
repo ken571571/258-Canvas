@@ -5,6 +5,11 @@ CanvasEngine.prototype._renderAll = function() {
     this._renderLinks();
     this._renderMarquee();
     this._renderMinimap();
+    // v2.5.69：全量渲染后同步工具栏「停止」按钮显隐（加载画布/状态变化后兜底）
+    var stopBtn = document.getElementById('toolbar-stop-all');
+    if (stopBtn) {
+        stopBtn.style.display = this.nodes.some(function(n) { return n.runState === 'running'; }) ? '' : 'none';
+    }
     // 全量渲染完成后清除脏标记，使后续增量渲染可以生效
     if (this.store) this.store.clearDirty();
 };
@@ -145,7 +150,11 @@ CanvasEngine.prototype._curveMeta = function(start, end) {
 
 CanvasEngine.prototype._renderNodeStateBadge = function(node) {
     // v2.5.52：改用 _t() 替代 _tt()，避免 _tt 映射表遗漏导致英文模式显示中文
-    if (node.runState === 'running') return '<span class="node-state-badge is-running">' + _t('nodeState.running','运行中') + '</span>';
+    if (node.runState === 'running') {
+        // v2.5.72：loop 为调度器，批次期间显示「调度中」，与下游执行节点的「运行中」区分
+        if (node.type === 'loop') return '<span class="node-state-badge is-orchestrating">' + _t('nodeState.orchestrating','调度中') + '</span>';
+        return '<span class="node-state-badge is-running">' + _t('nodeState.running','运行中') + '</span>';
+    }
     if (node.runState === 'success') return '<span class="node-state-badge is-success">' + _t('nodeState.success','成功') + '</span>';
     if (node.runState === 'error') return '<span class="node-state-badge is-error">' + _t('nodeState.error','失败') + '</span>';
     if (node.runState === 'cancelled') return '<span class="node-state-badge is-cancelled">' + _t('nodeState.cancelled','已取消') + '</span>';
@@ -162,12 +171,17 @@ CanvasEngine.prototype._renderNodeMeta = function(node) {
 CanvasEngine.prototype._setNodeRunState = function(node, state, message = '') {
     node.runState = state;
     node.runMessage = message;
+    // v2.5.71：结束态清除节点运行归属（并发链取消级联防互染）
+    if (state !== 'running') node._runCtx = null;
+    // v2.5.72：loop 为调度器——运行期间显示「调度中」，批次内真正执行的下游节点才显示「运行中」
+    var isOrch = state === 'running' && node.type === 'loop';
     // 优先直接更新 DOM badge（避免 _renderAll 全量重建）
     var el = this.nodesEl && this.nodesEl.querySelector('[data-id="' + node.id + '"]');
     if (el) {
         // 更新 state class
-        el.classList.remove('is-running', 'is-success', 'is-error', 'is-cancelled');
-        if (state === 'running') el.classList.add('is-running');
+        el.classList.remove('is-running', 'is-orchestrating', 'is-success', 'is-error', 'is-cancelled');
+        if (isOrch) el.classList.add('is-orchestrating');
+        else if (state === 'running') el.classList.add('is-running');
         else if (state === 'success') el.classList.add('is-success');
         else if (state === 'error') el.classList.add('is-error');
         else if (state === 'cancelled') el.classList.add('is-cancelled');
@@ -195,6 +209,51 @@ CanvasEngine.prototype._setNodeRunState = function(node, state, message = '') {
     } else {
         // 节点 DOM 尚未创建 → 全量渲染
         this._renderAll();
+    }
+
+    // v2.5.68：同步更新该节点所有入边连线的 running 样式（避免 agent 等快速节点
+    // 运行时连线看不到流动动画——_renderLinks 仅在 _renderAll 时重建）
+    // v2.5.72：loop 调度期间不做入边流动动画——数据在开始时已快照入队，批次期间无数据流入 loop；
+    //          流动动画只出现在真正消费数据的边上（如 loop→image_gen 在生成执行时流动）
+    if (this.linksEl) {
+        var incoming = this.connections.filter(function(c) { return c.to === node.id; });
+        incoming.forEach(function(c) {
+            var path = this.linksEl.querySelector('.connection-line[data-connection-id="' + c.id + '"]');
+            if (path) {
+                path.classList.remove('is-running-target');
+                if (state === 'running' && !isOrch) path.classList.add('is-running-target');
+            }
+        }, this);
+    }
+
+    // v2.5.69：同步工具栏「停止」按钮显隐（有任意节点 running 时显示）
+    var stopBtn = document.getElementById('toolbar-stop-all');
+    if (stopBtn) {
+        var anyRunning = this.nodes.some(function(n) { return n.runState === 'running'; });
+        stopBtn.style.display = anyRunning ? '' : 'none';
+    }
+
+    // v2.5.69：局部刷新 agent/image_gen/video_gen 的按钮区（运行↔取消切换，避免全量 _renderAll 闪烁）
+    if (node.type === 'agent' || node.type === 'image_gen' || node.type === 'video_gen') {
+        var actionsEl = el && el.querySelector('.node-actions');
+        if (actionsEl) {
+            var nodeIdEsc = this._escJs(node.id);
+            var btn;
+            if (node.type === 'agent') {
+                btn = state === 'running'
+                    ? '<button class="tool-btn" style="background:#ef4444;color:#fff;" onclick="window._canvas._cancelNodeRun(\'' + nodeIdEsc + '\')">⏹ ' + _t('common.cancel','取消') + '</button>'
+                    : '<button class="tool-btn" onclick="window._canvas._runAgent(\'' + nodeIdEsc + '\')">' + _t('common.run','运行') + '</button>';
+            } else if (node.type === 'image_gen') {
+                btn = state === 'running'
+                    ? '<button class="tool-btn" style="font-size:11px;padding:4px 8px;background:#ef4444;color:#fff;" onclick="window._canvas._cancelNodeRun(\'' + nodeIdEsc + '\')">⏹ ' + _t('common.cancel','取消') + '</button>'
+                    : '<button class="tool-btn" style="font-size:11px;padding:4px 8px;" onclick="window._canvas._executeChain(\'' + nodeIdEsc + '\')">🖼 ' + _t('nodeType.imageGen','图片生成') + '</button>';
+            } else {
+                btn = state === 'running'
+                    ? '<button class="tool-btn" style="font-size:11px;padding:4px 8px;background:#ef4444;color:#fff;" onclick="window._canvas._cancelNodeRun(\'' + nodeIdEsc + '\')">⏹ ' + _t('common.cancel','取消') + '</button>'
+                    : '<button class="tool-btn" style="font-size:11px;padding:4px 8px;" onclick="window._canvas._executeChain(\'' + nodeIdEsc + '\')">🎬 ' + _t('nodeType.videoGen','视频生成') + '</button>';
+            }
+            actionsEl.innerHTML = btn;
+        }
     }
 };
 

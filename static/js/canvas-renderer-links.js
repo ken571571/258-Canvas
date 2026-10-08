@@ -61,7 +61,8 @@ CanvasEngine.prototype._renderLinks = function() {
         var end = this._getPortPoint(to, 'in', connection.fieldId||'');
         var curve = this._curveMeta(start, end);
         var selected = connection.id === this.selectedConnectionId ? ' is-selected' : '';
-        var running = to.runState === 'running' ? ' is-running-target' : '';
+        // v2.5.72：loop 调度期间不做入边流动动画（数据已快照入队，批次期间无数据流入 loop）
+        var running = (to.runState === 'running' && to.type !== 'loop') ? ' is-running-target' : '';
         html += '<g class="connection-group' + selected + '" data-connection-id="' + connection.id + '">' +
             '<path class="connection-hit" data-connection-id="' + connection.id + '" d="' + curve.path + '" />' +
             '<path class="connection-line' + selected + running + '" data-connection-id="' + connection.id + '" d="' + curve.path + '" />' +

@@ -155,12 +155,17 @@ async def run_agent(
             except Exception as e:
                 _log.warning("Agent final summary failed: %s", e)
 
+        # v2.5.74：降级兜底必须带 degraded 标志——前端据此判失败并阻断传播，
+        #          防止占位文案冒充正常结果流向列队/生图（列队异常出图根因之一）
+        degraded = False
         if not final_output:
             final_output = "任务已执行但未获得最终输出。"
+            degraded = True
 
         elapsed = int((time.time() - started) * 1000)
         return {
             "success": True,
+            "degraded": degraded,
             "steps": steps,
             "final_output": final_output,
             "output_images": [],

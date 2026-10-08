@@ -351,6 +351,17 @@
     50% { border-color: color-mix(in srgb, var(--accent) 50%, transparent); }
   }
 
+  /* v2.5.72：loop 调度态——琥珀色缓脉冲，与执行节点的「运行中」蓝色区分 */
+  .node.is-orchestrating {
+    border-color: var(--warn);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 18%, transparent);
+    animation: pulse-border-orch 2.2s ease-in-out infinite;
+  }
+  @keyframes pulse-border-orch {
+    0%,100% { border-color: var(--warn); }
+    50% { border-color: color-mix(in srgb, var(--warn) 40%, transparent); }
+  }
+
   .node.is-success {
     border-color: var(--good);
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--good) 20%, transparent);
@@ -412,6 +423,12 @@
   .node-state-badge.is-running {
     background: rgba(37, 99, 235, 0.12);
     color: var(--accent);
+  }
+
+  /* v2.5.72：loop 调度中徽章——琥珀色，与流动连线同色系（琥珀=数据在管线中流转） */
+  .node-state-badge.is-orchestrating {
+    background: rgba(245, 158, 11, 0.14);
+    color: var(--warn);
   }
 
   .node-state-badge.is-success {
@@ -645,28 +662,6 @@
   }
   .group-delete:hover { background: rgba(0,0,0,.35); }
 
-  .group-run-btn, .group-pass-btn {
-    width: 20px; height: 20px; border: none; border-radius: 5px;
-    background: rgba(0,0,0,.15); color: var(--accent-ink);
-    font-size: 10px; line-height: 1; cursor: pointer; flex-shrink: 0;
-    display: flex; align-items: center; justify-content: center;
-    padding: 0;
-  }
-  .group-run-btn:hover, .group-pass-btn:hover { background: rgba(0,0,0,.35); }
-  .group-run-btn:active { transform: scale(.92); }
-
-  /* 组运行状态描边 */
-  .group-container.group-run-running {
-    border-color: #3b82f6;
-    box-shadow: 0 0 16px rgba(59,130,246,.35);
-  }
-  .group-container.group-run-success {
-    border-color: #22c55e;
-  }
-  .group-container.group-run-error {
-    border-color: #ef4444;
-    box-shadow: 0 0 16px rgba(239,68,68,.3);
-  }
   .group-resize {
     position: absolute;
     width: 12px;
