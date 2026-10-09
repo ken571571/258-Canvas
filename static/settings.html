@@ -308,22 +308,6 @@ html.dark .platform-card:hover { box-shadow:0 6px 20px rgba(0,0,0,.3); }
     .form-grid, .model-grid { grid-template-columns:1fr; }
     .content-head { flex-direction:column; align-items:flex-start; }
 }
-/* === 系统更新区域 === */
-.update-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; }
-.update-card {
-    background:var(--surface); border:1px solid var(--border); border-radius:10px;
-    padding:14px 16px; display:flex; flex-direction:column; gap:6px;
-}
-.update-card-label { font-size:11px; color:var(--muted); font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
-.update-card-value { font-size:22px; font-weight:900; color:var(--text); font-family:ui-monospace,Menlo,monospace; }
-#backupList .backup-item {
-    display:flex; align-items:center; gap:10px; padding:8px 12px;
-    background:var(--surface); border:1px solid var(--border); border-radius:8px; margin-bottom:6px;
-}
-#backupList .backup-item .bk-id { font-family:ui-monospace,Menlo,monospace; font-size:12px; font-weight:700; }
-#backupList .backup-item .bk-size { color:var(--muted); font-size:11px; }
-#backupList .backup-item .bk-rollback { margin-left:auto; }
-
 /* === ComfyUI 后端管理（v2.5.62） === */
 .comfy-instance-list { display:flex; flex-direction:column; gap:6px; }
 .comfy-instance {
@@ -587,53 +571,6 @@ html.dark .platform-card:hover { box-shadow:0 6px 20px rgba(0,0,0,.3); }
             <div class="platforms-card-grid" id="platformsCardGrid"></div>
         </div>
 
-        <!-- === 系统更新区域 === -->
-        <section class="block" id="updateSection">
-            <div class="block-head">
-                <div>
-                    <div class="block-title">🔄 系统更新</div>
-                    <div class="block-desc">从 GitHub 仓库一键更新到最新版本（仅更新代码，不影响你的画布、智能体和配置）</div>
-                </div>
-            </div>
-
-            <div class="update-grid">
-                <!-- 当前版本 -->
-                <div class="update-card">
-                    <div class="update-card-label">当前版本</div>
-                    <div class="update-card-value" id="currentVerDisplay">—</div>
-                </div>
-                <div class="update-card">
-                    <div class="update-card-label">最新版本</div>
-                    <div class="update-card-value" id="latestVerDisplay">检查后显示</div>
-                </div>
-            </div>
-
-            <!-- 更新源配置 -->
-            <div class="field full" style="margin-top:14px;">
-                <label>更新源（GitHub 仓库地址）</label>
-                <div style="display:flex;gap:8px;">
-                    <input id="updateRepoInput" type="text" placeholder="https://raw.githubusercontent.com/用户名/仓库名/main" style="flex:1;">
-                    <button class="btn btn-secondary" onclick="saveUpdateRepo()">保存</button>
-                </div>
-                <span class="hint">仅支持 raw.githubusercontent.com 等白名单域名，留空则禁用更新</span>
-            </div>
-
-            <!-- 操作按钮 -->
-            <div style="display:flex;gap:10px;align-items:center;margin-top:14px;flex-wrap:wrap;">
-                <button class="btn btn-secondary" onclick="checkForUpdate()">检查更新</button>
-                <button class="btn btn-primary" id="doUpdateBtn" onclick="doUpdate()" disabled>立即更新</button>
-                <span id="updateMsg" class="inline-status"></span>
-            </div>
-
-            <!-- 备份与回滚 -->
-            <div style="margin-top:20px;">
-                <div class="block-title" style="font-size:13px;">📦 备份与回滚</div>
-                <div style="display:flex;gap:8px;align-items:center;margin-top:8px;">
-                    <button class="btn btn-secondary" onclick="loadBackups()">刷新备份列表</button>
-                </div>
-                <div id="backupList" style="margin-top:10px;font-size:12px;color:var(--muted);">点击"刷新备份列表"查看</div>
-            </div>
-        </section>
     </main>
 </div>
 
@@ -814,8 +751,6 @@ async function init() {
     renderProviderList();
     if (providers.length > 0) selectProvider(providers[0].id);
 
-    // 初始化系统更新区域
-    initUpdateSection();
 }
 
 function initDefaultProviders() {
@@ -2058,154 +1993,6 @@ window._i18nUpdate = function() {
     if (typeof renderComfyScanResults === 'function') renderComfyScanResults();
 };
 window.addEventListener('lang-applied',function(){if(window._i18nUpdate)window._i18nUpdate();});
-
-// ===== 系统更新功能 =====
-var _latestVersion = '';
-
-async function initUpdateSection() {
-    try {
-        var resp = await apiFetch('/api/app-info');
-        var info = await resp.json();
-        document.getElementById('currentVerDisplay').textContent = 'v' + info.version;
-        if (info.repo_url) {
-            document.getElementById('updateRepoInput').value = info.repo_url;
-        }
-    } catch(e) {}
-}
-
-async function saveUpdateRepo() {
-    var url = document.getElementById('updateRepoInput').value.trim();
-    var msg = document.getElementById('updateMsg');
-    try {
-        var resp = await apiFetch('/api/settings/update-repo', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ repo_url: url })
-        });
-        var data = await resp.json();
-        if (data.ok) {
-            msg.textContent = url ? '更新源已保存' : '已禁用更新';
-            msg.className = 'inline-status ok';
-        } else {
-            msg.textContent = data.detail || '保存失败';
-            msg.className = 'inline-status err';
-        }
-    } catch(e) {
-        msg.textContent = '保存失败: ' + e.message;
-        msg.className = 'inline-status err';
-    }
-    setTimeout(function() { msg.textContent = ''; }, 4000);
-}
-
-async function checkForUpdate() {
-    var msg = document.getElementById('updateMsg');
-    var btn = event.target;
-    btn.disabled = true;
-    msg.textContent = '检查中…';
-    msg.className = 'inline-status';
-    try {
-        var resp = await apiFetch('/api/check-update');
-        var data = await resp.json();
-        if (data.error) {
-            msg.textContent = '检查失败: ' + data.error;
-            msg.className = 'inline-status err';
-            document.getElementById('latestVerDisplay').textContent = '—';
-            document.getElementById('doUpdateBtn').disabled = true;
-        } else if (data.update_available) {
-            _latestVersion = data.latest.version;
-            document.getElementById('latestVerDisplay').textContent = 'v' + data.latest.version;
-            msg.textContent = '发现新版本 v' + data.latest.version + '，可点击"立即更新"';
-            msg.className = 'inline-status ok';
-            document.getElementById('doUpdateBtn').disabled = false;
-        } else {
-            document.getElementById('latestVerDisplay').textContent = 'v' + data.current;
-            msg.textContent = '已是最新版本 ✓';
-            msg.className = 'inline-status ok';
-            document.getElementById('doUpdateBtn').disabled = true;
-        }
-    } catch(e) {
-        msg.textContent = '网络错误: ' + e.message;
-        msg.className = 'inline-status err';
-    } finally {
-        btn.disabled = false;
-    }
-}
-
-async function doUpdate() {
-    if (!confirm('确定要更新到最新版本吗？\n\n更新过程中请勿关闭页面。\n更新完成后需要重启服务才能生效。')) return;
-    var msg = document.getElementById('updateMsg');
-    var btn = document.getElementById('doUpdateBtn');
-    btn.disabled = true;
-    msg.textContent = '正在下载并更新，请稍候…';
-    msg.className = 'inline-status';
-    try {
-        var resp = await apiFetch('/api/update', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ confirm: true })
-        });
-        var data = await resp.json();
-        if (data.ok) {
-            msg.textContent = '更新完成（' + data.updated.length + ' 个文件），请重启服务生效。备份: ' + data.backup;
-            msg.className = 'inline-status ok';
-            document.getElementById('currentVerDisplay').textContent = 'v' + data.new_version;
-        } else {
-            msg.textContent = data.detail || '更新失败';
-            msg.className = 'inline-status err';
-        }
-    } catch(e) {
-        msg.textContent = '更新失败: ' + e.message;
-        msg.className = 'inline-status err';
-    } finally {
-        btn.disabled = false;
-    }
-}
-
-async function loadBackups() {
-    var list = document.getElementById('backupList');
-    list.textContent = '加载中…';
-    try {
-        var resp = await apiFetch('/api/update/backups');
-        var data = await resp.json();
-        if (!data.backups || data.backups.length === 0) {
-            list.textContent = '暂无备份';
-            return;
-        }
-        var html = '';
-        for (var i = 0; i < data.backups.length; i++) {
-            var b = data.backups[i];
-            var sizeKB = (b.size / 1024).toFixed(1);
-            html += '<div class="backup-item">' +
-                '<span class="bk-id">' + esc(b.id) + '</span>' +
-                '<span class="bk-size">' + sizeKB + ' KB</span>' +
-                '<button class="btn btn-secondary bk-rollback" style="font-size:11px;padding:4px 10px;" onclick="rollbackBackup(\'' + esc(b.id) + '\')">回滚</button>' +
-                '</div>';
-        }
-        list.innerHTML = html;
-    } catch(e) {
-        list.textContent = '加载失败: ' + e.message;
-    }
-}
-
-async function rollbackBackup(id) {
-    if (!confirm('确定要回滚到备份 ' + id + ' 吗？\n\n回滚后需要重启服务才能生效。')) return;
-    var msg = document.getElementById('updateMsg');
-    try {
-        var resp = await apiFetch('/api/update/rollback?backup_id=' + encodeURIComponent(id), { method: 'POST' });
-        var data = await resp.json();
-        if (data.ok) {
-            msg.textContent = data.message;
-            msg.className = 'inline-status ok';
-        } else {
-            msg.textContent = data.detail || '回滚失败';
-            msg.className = 'inline-status err';
-        }
-    } catch(e) {
-        msg.textContent = '回滚失败: ' + e.message;
-        msg.className = 'inline-status err';
-    }
-    setTimeout(function() { msg.textContent = ''; }, 6000);
-}
 </script>
 </body>
 </html>
