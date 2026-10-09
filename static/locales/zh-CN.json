@@ -530,7 +530,7 @@
     "comfyAlreadyAdded": "已添加",
     "comfyHostHintTitle": "如何让其他电脑调用这台电脑上的 ComfyUI？（点开展开）",
     "comfyHostStep1": "① 让 ComfyUI 监听局域网（在运行 ComfyUI 的电脑上操作）",
-    "comfyHostStep1Desc": "ComfyUI 默认只接受本机请求。在其启动命令（整合包通常是 run_nvidia_gpu.bat）末尾加上参数 --listen 0.0.0.0，例如：",
+    "comfyHostStep1Desc": "ComfyUI 默认只接受本机请求。在其启动命令末尾加上参数 --listen 0.0.0.0，例如：",
     "comfyHostStep2": "② 放行防火墙 8188 端口（仅首次需要）",
     "comfyHostStep2Win": "Windows：以管理员身份打开 PowerShell，执行：",
     "comfyHostStep2Linux": "Linux 执行：sudo ufw allow 8188/tcp　　macOS 默认无需配置",

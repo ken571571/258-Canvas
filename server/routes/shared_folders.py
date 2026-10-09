@@ -52,6 +52,15 @@ _FORBIDDEN_ROOTS = [
     "/root",
     "/var/log",
     "/var/run",
+    # macOS 系统目录
+    "/System",
+    "/Library",
+    "/usr",
+    "/bin",
+    "/sbin",
+    "/private/etc",
+    "/private/var",
+    "/opt",
 ]
 
 _FORBIDDEN_PREFIXES = [
@@ -66,6 +75,15 @@ _FORBIDDEN_PREFIXES = [
     "/sys/",
     "/boot/",
     "/root/",
+    # macOS
+    "/System/",
+    "/Library/",
+    "/usr/",
+    "/bin/",
+    "/sbin/",
+    "/private/etc/",
+    "/private/var/",
+    "/opt/",
 ]
 
 

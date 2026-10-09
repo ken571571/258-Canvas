@@ -5,7 +5,7 @@
 
 > AI-powered infinite canvas — aggregate multiple AI platforms for image & video generation, LLM chat, and ComfyUI workflow execution. Built-in Agent system with knowledge bases, custom Python skills, and encrypted distribution. Connect your local ComfyUI backend for seamless workflow automation. Zero-config LAN collaboration with bilingual UI.
 
-[![Version](https://img.shields.io/badge/version-2.5.75-blue)](VERSION)
+[![Version](https://img.shields.io/badge/version-2.5.76-blue)](VERSION)
 [![Python](https://img.shields.io/badge/python-3.10+-green)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-Source%20Available-orange)](LICENSE)
 
@@ -49,6 +49,7 @@ cp API/.env.example API/.env
 # 4. Run
 python run.py        # macOS / Linux
 # or double-click 启动服务.bat on Windows
+# or bash mac启动服务.sh on macOS (auto-setup + auto-open browser)
 
 # 5. Open browser → http://127.0.0.1:3571
 ```
@@ -64,10 +65,13 @@ Run ComfyUI on a powerful PC and create from any other machine on the same netwo
 
 **On the ComfyUI computer (one-time setup):**
 
-1. Make ComfyUI accept LAN requests: add `--listen 0.0.0.0` to its launch command (e.g. edit `run_nvidia_gpu.bat` for all-in-one packs):
+1. Make ComfyUI accept LAN requests: add `--listen 0.0.0.0` to its launch command:
 
 ```bat
+# Windows (all-in-one pack)
 .\python_embeded\python.exe -s ComfyUI\main.py --windows-standalone-build --listen 0.0.0.0
+# macOS / Linux
+python3 main.py --listen 0.0.0.0
 ```
 
 2. Open the firewall (Windows, admin PowerShell; Linux: `sudo ufw allow 8188/tcp`; macOS needs no setup):
@@ -118,7 +122,7 @@ See [LICENSE](LICENSE).
 
 > AI 驱动的无限创作平台 — 聚合多 AI 平台的画布式创作工具。内置 Agent 智能体系统，支持知识库、自定义 Python 技能和加密分发。可对接本地 ComfyUI 后端实现无缝工作流自动化。零配置局域网协作，中英双语界面。
 
-[![Version](https://img.shields.io/badge/版本-2.5.75-blue)](VERSION)
+[![Version](https://img.shields.io/badge/版本-2.5.76-blue)](VERSION)
 [![Python](https://img.shields.io/badge/python-3.10+-green)](https://www.python.org/)
 [![License](https://img.shields.io/badge/许可-Source%20Available-orange)](LICENSE)
 
@@ -162,6 +166,7 @@ cp API/.env.example API/.env
 # 4. 运行
 python run.py        # macOS / Linux
 # Windows 双击 启动服务.bat
+# macOS 运行 bash mac启动服务.sh（自动安装依赖 + 自动打开浏览器）
 
 # 5. 打开浏览器 → http://127.0.0.1:3571
 ```
@@ -177,10 +182,13 @@ python run.py        # macOS / Linux
 
 **在 ComfyUI 电脑上（一次性设置）：**
 
-1. 让 ComfyUI 接受局域网请求：在启动命令（整合包通常是 run_nvidia_gpu.bat）末尾加上 `--listen 0.0.0.0`：
+1. 让 ComfyUI 接受局域网请求：在启动命令末尾加上 `--listen 0.0.0.0`：
 
 ```bat
+# Windows 整合包
 .\python_embeded\python.exe -s ComfyUI\main.py --windows-standalone-build --listen 0.0.0.0
+# macOS / Linux
+python3 main.py --listen 0.0.0.0
 ```
 
 2. 放行防火墙（Windows 以管理员身份打开 PowerShell 执行；Linux：`sudo ufw allow 8188/tcp`；macOS 默认无需配置）：

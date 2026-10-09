@@ -559,8 +559,9 @@ html.dark .platform-card:hover { box-shadow:0 6px 20px rgba(0,0,0,.3); }
             <details class="comfy-host-hint">
                 <summary style="font-weight:800;cursor:pointer;" data-t="settings.comfyHostHintTitle">如何让其他电脑调用这台电脑上的 ComfyUI？（点开展开）</summary>
                 <h4 data-t="settings.comfyHostStep1">① 让 ComfyUI 监听局域网（在运行 ComfyUI 的电脑上操作）</h4>
-                <span data-t="settings.comfyHostStep1Desc">ComfyUI 默认只接受本机请求。在其启动命令（整合包通常是 run_nvidia_gpu.bat）末尾加上参数 --listen 0.0.0.0，例如：</span>
-                <code>.\python_embeded\python.exe -s ComfyUI\main.py --windows-standalone-build --listen 0.0.0.0</code>
+                <span data-t="settings.comfyHostStep1Desc">ComfyUI 默认只接受本机请求。在其启动命令末尾加上参数 --listen 0.0.0.0，例如：</span>
+                <code>.\python_embeded\python.exe -s ComfyUI\main.py --windows-standalone-build --listen 0.0.0.0</code><br>
+                <code>python3 main.py --listen 0.0.0.0  # macOS / Linux</code>
                 <h4 data-t="settings.comfyHostStep2">② 放行防火墙 8188 端口（仅首次需要）</h4>
                 <span data-t="settings.comfyHostStep2Win">Windows：以管理员身份打开 PowerShell，执行：</span>
                 <code>netsh advfirewall firewall add rule name="ComfyUI 8188" dir=in action=allow protocol=tcp localport=8188</code>

@@ -530,7 +530,7 @@
     "comfyAlreadyAdded": "Added",
     "comfyHostHintTitle": "How can other computers use the ComfyUI on this machine? (click to expand)",
     "comfyHostStep1": "1) Make ComfyUI listen on the LAN (on the computer running ComfyUI)",
-    "comfyHostStep1Desc": "ComfyUI accepts only local requests by default. Add the argument --listen 0.0.0.0 to its launch command (usually run_nvidia_gpu.bat for all-in-one packs), for example:",
+    "comfyHostStep1Desc": "ComfyUI accepts only local requests by default. Add the argument --listen 0.0.0.0 to its launch command, for example:",
     "comfyHostStep2": "2) Allow port 8188 in the firewall (first time only)",
     "comfyHostStep2Win": "Windows: open PowerShell as administrator and run:",
     "comfyHostStep2Linux": "Linux: sudo ufw allow 8188/tcp    macOS: no setup needed by default",

@@ -83,6 +83,32 @@ def collect_machine_fingerprint() -> str:
                 sources.append(lines[0])
         except Exception:
             pass
+    elif sys.platform == "darwin":
+        # macOS: IOPlatformUUID (ioreg) or hw.uuid (sysctl)
+        try:
+            r = subprocess.run(
+                ["ioreg", "-d2", "-c", "IOPlatformExpertDevice"],
+                capture_output=True, text=True, timeout=5
+            )
+            for line in r.stdout.splitlines():
+                if "IOPlatformUUID" in line:
+                    parts = line.split('"')
+                    if len(parts) >= 4 and parts[3]:
+                        sources.append(parts[3])
+                        break
+        except Exception:
+            pass
+        if not any("IOPlatformUUID" in s for s in sources):
+            try:
+                r = subprocess.run(
+                    ["sysctl", "-n", "hw.uuid"],
+                    capture_output=True, text=True, timeout=5
+                )
+                v = r.stdout.strip()
+                if v:
+                    sources.append(v)
+            except Exception:
+                pass
     else:
         # Linux: /etc/machine-id + DMI + MAC
         try:

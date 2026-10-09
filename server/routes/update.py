@@ -50,6 +50,7 @@ UPDATE_WHITELIST_FILES = [
     "README.md",
     "LICENSE",
     "启动服务.bat",
+    "mac启动服务.sh",
 ]
 # workflows/ 整体允许覆盖，但排除 workflows/custom/（用户自定义工作流）
 UPDATE_WHITELIST_DIRS_WITH_EXCLUDE = {
